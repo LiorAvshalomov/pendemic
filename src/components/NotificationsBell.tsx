@@ -19,6 +19,12 @@ type NotificationRow = {
   read_at: string | null
 }
 
+type ProfileLite = {
+  id: string
+  username: string | null
+  display_name: string | null
+}
+
 function asString(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v : null
 }
@@ -63,6 +69,7 @@ function verbFor(type: string, count: number): string {
   if (type === 'follow') return plural ? 'התחילו' : 'התחיל/ה'
   if (type === 'comment') return plural ? 'הגיבו' : 'הגיב/ה'
   if (type === 'reaction') return plural ? 'עשו ריאקשן' : 'עשה/תה ריאקשן'
+  if (type === 'new_post') return plural ? 'פרסמו' : 'פרסם/ה'
   return plural ? 'שלחו' : 'שלח/ה'
 }
 
@@ -70,6 +77,7 @@ function actionPhraseFor(type: string): string {
   if (type === 'follow') return 'לעקוב אחריך'
   if (type === 'comment') return 'לפוסט שלך'
   if (type === 'reaction') return 'לפוסט שלך'
+  if (type === 'new_post') return 'פוסט חדש'
   return 'התראה'
 }
 
@@ -90,6 +98,7 @@ export default function NotificationsBell() {
 
   const [open, setOpen] = useState(false)
   const [rows, setRows] = useState<NotificationRow[]>([])
+  const [actorsById, setActorsById] = useState<Record<string, ProfileLite>>({})
   const [loading, setLoading] = useState(false)
 
   useClickOutside(boxRef, () => setOpen(false), open)
@@ -115,9 +124,36 @@ export default function NotificationsBell() {
       .order('created_at', { ascending: false })
       .limit(80)
 
-    if (!error) setRows((data ?? []) as NotificationRow[])
+    if (!error) {
+      const nextRows = (data ?? []) as NotificationRow[]
+      setRows(nextRows)
+
+      // Enrich actor display names (avoid depending on payload; one batched lookup)
+      const missing = Array.from(
+        new Set(
+          nextRows
+            .map(r => r.actor_id)
+            .filter((id): id is string => Boolean(id) && !actorsById[id!])
+        )
+      )
+
+      if (missing.length > 0) {
+        const { data: profs } = await supabase
+          .from('profiles')
+          .select('id, username, display_name')
+          .in('id', missing)
+
+        if (profs && profs.length > 0) {
+          setActorsById(prev => {
+            const merged = { ...prev }
+            for (const p of profs as ProfileLite[]) merged[p.id] = p
+            return merged
+          })
+        }
+      }
+    }
     setLoading(false)
-  }, [])
+  }, [actorsById])
 
   const markAllRead = useCallback(async () => {
     const { data: sessionData } = await supabase.auth.getSession()
@@ -200,16 +236,20 @@ export default function NotificationsBell() {
       const postId = asString(payload['post_id']) ?? n.entity_id
       const postSlug = asString(payload['post_slug'])
       const postTitle = asString(payload['post_title'])
+      const actorFromMap = n.actor_id ? actorsById[n.actor_id] : null
       const actorDisplay =
         asString(payload['actor_display_name']) ??
+        actorFromMap?.display_name ??
         asString(payload['actor_username']) ??
+        actorFromMap?.username ??
         'מישהו'
-      const actorUsername = asString(payload['actor_username']) ?? ''
+      const actorUsername =
+        asString(payload['actor_username']) ?? actorFromMap?.username ?? ''
 
-      const key =
-        n.type === 'follow'
-          ? `follow`
-          : `${n.type}:${postId ?? 'unknown'}`
+      // grouping:
+      // - follow: all together
+      // - comment/reaction/new_post: grouped by post id
+      const key = n.type === 'follow' ? `follow` : `${n.type}:${postId ?? 'unknown'}`
 
       const existing = map.get(key)
       if (!existing) {
@@ -273,6 +313,10 @@ export default function NotificationsBell() {
     if (g.type === 'follow') return `${actorsText} ${verb} ${phrase}`
     if (g.type === 'comment') return `${actorsText} ${verb} ${phrase}${postSuffix}`
     if (g.type === 'reaction') return `${actorsText} ${verb} ${phrase}${postSuffix}`
+    if (g.type === 'new_post') {
+      const title = g.post_title ? `: "${g.post_title}"` : ''
+      return `${actorsText} ${verb} ${phrase}${title}`
+    }
     return `${actorsText} ${verb} ${phrase}`
   }, [])
 

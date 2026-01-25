@@ -172,6 +172,16 @@ export default function SiteHeader() {
               <Link href="/" className="text-sm font-semibold hover:underline" onClick={closeAll}>
                 בית
               </Link>
+              {user ? (
+                <Link
+                  href="/notes"
+                  className="text-sm font-semibold hover:underline"
+                  onClick={closeAll}
+                  title="פתקים מהקהילה"
+                >
+                  פתקים
+                </Link>
+              ) : null}
             </div>
 
             {/* שמאל: actions */}
@@ -332,9 +342,9 @@ export default function SiteHeader() {
             </div>
 
             {/* Left: search */}
-<div className="flex justify-end md:justify-start">
-  <SearchPostsBar />
-</div>
+            <div className="flex justify-self-end md:justify-start">
+              <SearchPostsBar />
+            </div>
           </div>
         </div>
       </div>

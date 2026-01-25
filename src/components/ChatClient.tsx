@@ -101,7 +101,45 @@ export default function ChatClient({ conversationId }: { conversationId: string 
   const [myId, setMyId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportCategory, setReportCategory] = useState<'harassment' | 'spam' | 'self-harm' | 'other'>('harassment')
+  const [reportDetails, setReportDetails] = useState('')
+  const [reportSending, setReportSending] = useState(false)
+  const [reportOk, setReportOk] = useState<string | null>(null)
+  const [reportErr, setReportErr] = useState<string | null>(null)
+
   const [other, setOther] = useState<MiniProfile | null>(null)
+
+  const [reportedMessage, setReportedMessage] = useState<Msg | null>(null)
+
+  const canReport = !!myId && !!other?.id && other.id !== myId
+
+  const submitReport = useCallback(async () => {
+    if (!canReport || !other?.id || !myId) return
+    setReportOk(null)
+    setReportErr(null)
+    try {
+      setReportSending(true)
+      const { error } = await supabase.from('user_reports').insert({
+        reporter_id: myId,
+        reported_user_id: other.id,
+        conversation_id: conversationId,
+        category: reportCategory,
+        details: reportDetails.trim() || null,
+        message_id: reportedMessage?.id ?? null,
+        message_created_at: reportedMessage?.created_at ?? null,
+        message_excerpt: reportedMessage ? String(reportedMessage.body).slice(0, 280) : null,
+      })
+      if (error) throw error
+      setReportOk('דיווח נשלח. תודה ששמרת על הקהילה 🙏')
+      setReportDetails('')
+      setReportedMessage(null)
+    } catch (err: any) {
+      setReportErr(err?.message ?? 'לא הצלחנו לשלוח דיווח')
+    } finally {
+      setReportSending(false)
+    }
+  }, [canReport, other?.id, myId, conversationId, reportCategory, reportDetails, reportedMessage?.id])
 
   // typing
   const [isOtherTyping, setIsOtherTyping] = useState(false)
@@ -184,25 +222,25 @@ export default function ChatClient({ conversationId }: { conversationId: string 
   }
 
   // mark-read policy: רק אם באמת בתחתית ונשאר שם ~1.8s
-const scheduleMarkReadIfStableBottom = useCallback(
-  (unreadNowLocal: number) => {
-    clearStableBottomTimer()
-    if (unreadNowLocal <= 0) return
-    if (!isAtBottomRef.current) return
-
-    // capture session at scheduling time
-    const sessionAtSchedule = bottomSessionRef.current
-
-    stableBottomTimerRef.current = window.setTimeout(async () => {
-      // אם בינתיים יצאת מהתחתית אפילו פעם אחת -> לא מסמנים
-      if (bottomSessionRef.current !== sessionAtSchedule) return
+  const scheduleMarkReadIfStableBottom = useCallback(
+    (unreadNowLocal: number) => {
+      clearStableBottomTimer()
+      if (unreadNowLocal <= 0) return
       if (!isAtBottomRef.current) return
 
-      await markReadNow()
-    }, 1800)
-  },
-  [markReadNow]
-)
+      // capture session at scheduling time
+      const sessionAtSchedule = bottomSessionRef.current
+
+      stableBottomTimerRef.current = window.setTimeout(async () => {
+        // אם בינתיים יצאת מהתחתית אפילו פעם אחת -> לא מסמנים
+        if (bottomSessionRef.current !== sessionAtSchedule) return
+        if (!isAtBottomRef.current) return
+
+        await markReadNow()
+      }, 1800)
+    },
+    [markReadNow]
+  )
 
   // ---- auth (me) ----
   useEffect(() => {
@@ -300,26 +338,26 @@ const scheduleMarkReadIfStableBottom = useCallback(
   }, [messages])
 
   useLayoutEffect(() => {
-  if (loading) return
-  if (didInitialScrollRef.current) return
+    if (loading) return
+    if (didInitialScrollRef.current) return
 
-  // מחכים שה-DOM יתיישב (לפעמים צריך 2 פריימים)
-  requestAnimationFrame(() => {
+    // מחכים שה-DOM יתיישב (לפעמים צריך 2 פריימים)
     requestAnimationFrame(() => {
-      scrollListToBottom('auto')
-      const atBottomNow = computeIsAtBottom()
-      setIsAtBottom(atBottomNow)
-      isAtBottomRef.current = atBottomNow
+      requestAnimationFrame(() => {
+        scrollListToBottom('auto')
+        const atBottomNow = computeIsAtBottom()
+        setIsAtBottom(atBottomNow)
+        isAtBottomRef.current = atBottomNow
 
-      // אם יש unread – תציג UI (אבל לא לסמן נקרא מיד)
-      if (unreadNow > 0) setUnreadUiVisible(true)
+        // אם יש unread – תציג UI (אבל לא לסמן נקרא מיד)
+        if (unreadNow > 0) setUnreadUiVisible(true)
 
-      if (atBottomNow) scheduleMarkReadIfStableBottom(unreadNow)
+        if (atBottomNow) scheduleMarkReadIfStableBottom(unreadNow)
 
-      didInitialScrollRef.current = true
+        didInitialScrollRef.current = true
+      })
     })
-  })
-}, [loading, messages.length, scrollListToBottom, computeIsAtBottom, unreadNow, scheduleMarkReadIfStableBottom])
+  }, [loading, messages.length, scrollListToBottom, computeIsAtBottom, unreadNow, scheduleMarkReadIfStableBottom])
 
 
   // initial load (fixed: compute unread from fetched list + real myId)
@@ -375,11 +413,11 @@ const scheduleMarkReadIfStableBottom = useCallback(
 
     function onScroll() {
       const el = listRef.current
-if (el) {
-  const epsilon = 10
-  const atBottomSync = el.scrollTop + el.clientHeight >= el.scrollHeight - epsilon
-  isAtBottomRef.current = atBottomSync
-}
+      if (el) {
+        const epsilon = 10
+        const atBottomSync = el.scrollTop + el.clientHeight >= el.scrollHeight - epsilon
+        isAtBottomRef.current = atBottomSync
+      }
 
       cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
@@ -422,12 +460,12 @@ if (el) {
 
         // mark read only after stable bottom
         if (atBottomNow) {
-  scheduleMarkReadIfStableBottom(unreadNow)
-} else {
-  // יצאנו מהתחתית -> invalidate לכל טיימר קיים/עתידי שנקבע קודם
-  bottomSessionRef.current += 1
-  clearStableBottomTimer()
-}
+          scheduleMarkReadIfStableBottom(unreadNow)
+        } else {
+          // יצאנו מהתחתית -> invalidate לכל טיימר קיים/עתידי שנקבע קודם
+          bottomSessionRef.current += 1
+          clearStableBottomTimer()
+        }
       })
     }
 
@@ -600,28 +638,142 @@ if (el) {
       dir="rtl"
     >
       {/* Header */}
-      <div className="relative flex items-center gap-3 border-b border-black/5 bg-white/70 px-4 py-3 backdrop-blur">
-        <div className="absolute inset-y-2 right-0 w-1 rounded-l-full bg-[#D64545]/70" aria-hidden="true" />
-        <Avatar src={other?.avatar_url ?? null} name={otherDisplay} size={40} shape="square" />
+      <div className="flex items-center justify-between border-b border-black/5 bg-white/70 px-4 py-3 backdrop-blur">
+        {/* Right side: avatar + name */}
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="absolute inset-y-2 right-0 w-1 rounded-l-full bg-[#D64545]/70" aria-hidden="true" />
+          <Avatar src={other?.avatar_url ?? null} name={otherDisplay} size={40} shape="square" />
 
-        <div className="min-w-0">
-          {other?.username ? (
-            <Link
-              href={`/u/${other.username}`}
-              className="truncate text-sm font-black hover:underline"
-              title={`לפרופיל של @${other.username}`}
-            >
-              {otherDisplay}
-            </Link>
-          ) : (
-            <div className="truncate text-sm font-black">{otherDisplay}</div>
-          )}
-          <div className="text-xs text-muted-foreground">{headerSubText}</div>
+          <div className="min-w-0">
+            {other?.username ? (
+              <Link
+                href={`/u/${other.username}`}
+                className="truncate text-sm font-black hover:underline"
+              >
+                {otherDisplay}
+              </Link>
+            ) : (
+              <div className="truncate text-sm font-black">{otherDisplay}</div>
+            )}
+            <div className="text-xs text-muted-foreground">{headerSubText}</div>
+          </div>
         </div>
+
+        {/* Left side: report */}
+        {canReport && (
+          <button
+            type="button"
+            onClick={() => {
+              setReportErr(null)
+              setReportOk(null)
+              setReportedMessage(null)
+              setReportOpen(true)
+            }}
+            className="shrink-0 rounded-full border px-3 py-1 text-xs font-bold hover:bg-black/5"
+          >
+            דווח/י
+          </button>
+        )}
       </div>
+
+
 
       {/* Wrapper relative for overlay */}
       <div className="relative flex min-h-0 flex-1 flex-col">
+        {/* Report modal */}
+        {reportOpen && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+            <div className="w-full max-w-lg rounded-3xl border bg-white p-5 shadow-xl">
+              <div className="flex items-start gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-black">דיווח על התנהגות פוגענית</div>
+                  <div className="mt-1 text-xs text-neutral-600">
+                    הדיווח יישלח לצוות האתר. אם יש סכנה מיידית — פנה/י לגורמי חירום.
+                  </div>
+                  {reportedMessage && (
+                    <div className="mt-3 rounded-2xl border bg-black/5 p-3 text-xs text-neutral-700">
+                      <div className="font-bold">דיווח על הודעה ספציפית</div>
+                      <div className="mt-1 whitespace-pre-wrap">{String(reportedMessage.body).slice(0, 280)}{reportedMessage.body.length > 280 ? '…' : ''}</div>
+                      <div className="mt-1 text-[11px] text-neutral-500">{formatTime(reportedMessage.created_at)}</div>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="mr-auto rounded-full border px-3 py-1 text-xs font-bold hover:bg-black/5"
+                  onClick={() => { setReportOpen(false); setReportedMessage(null) }}
+                >
+                  סגור
+                </button>
+              </div>
+
+              {!canReport ? (
+                <div className="mt-4 rounded-2xl border bg-black/5 p-3 text-sm">
+                  לא ניתן לדווח על עצמך.
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  <label className="block">
+                    <div className="mb-1 text-xs font-bold text-neutral-700">סוג דיווח</div>
+                    <select
+                      value={reportCategory}
+                      onChange={(e) => setReportCategory(e.target.value as any)}
+                      className="w-full rounded-2xl border bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black/10"
+                    >
+                      <option value="harassment">הטרדה / אלימות מילולית</option>
+                      <option value="spam">ספאם</option>
+                      <option value="self-harm">חשש לפגיעה עצמית</option>
+                      <option value="other">אחר</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <div className="mb-1 text-xs font-bold text-neutral-700">פרטים (אופציונלי)</div>
+                    <textarea
+                      value={reportDetails}
+                      onChange={(e) => setReportDetails(e.target.value)}
+                      rows={4}
+                      maxLength={2000}
+                      className="w-full resize-none rounded-2xl border bg-white px-4 py-3 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-black/10 whitespace-pre-wrap"
+                      placeholder="תיאור קצר שיעזור לנו לטפל…"
+                    />
+                    <div className="mt-1 text-xs text-neutral-500">{reportDetails.length}/2000</div>
+                  </label>
+
+                  {reportErr && (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{reportErr}</div>
+                  )}
+                  {reportOk && (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                      {reportOk}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      className="rounded-full border px-4 py-2 text-sm font-bold hover:bg-black/5"
+                      onClick={() => setReportOpen(false)}
+                    >
+                      ביטול
+                    </button>
+                    <button
+                      type="button"
+                      disabled={reportSending}
+                      onClick={submitReport}
+                      className={[
+                        "rounded-full px-5 py-2 text-sm font-black text-white",
+                        reportSending ? "bg-black/30" : "bg-black hover:bg-black/90",
+                      ].join(" ")}
+                    >
+                      {reportSending ? "שולח…" : "שלח/י דיווח"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {/* Messages scroller */}
         <div
           ref={listRef}
@@ -635,7 +787,20 @@ if (el) {
             </div>
           )}
 
-          {_groupedRender(grouped, messages, myId, firstUnreadIndex, showUnreadDivider ? unreadNow : 0)}
+          {_groupedRender(
+            grouped,
+            messages,
+            myId,
+            firstUnreadIndex,
+            showUnreadDivider ? unreadNow : 0,
+            canReport,
+            (m) => {
+              setReportErr(null)
+              setReportOk(null)
+              setReportedMessage(m)
+              setReportOpen(true)
+            }
+          )}
 
           {loading && (
             <div className="mx-auto max-w-sm rounded-2xl border bg-white/80 p-4 text-center text-sm text-muted-foreground">
@@ -733,7 +898,9 @@ function _groupedRender(
   rawMessages: Msg[],
   myId: string | null,
   firstUnreadIndex: number,
-  unreadCountForDivider: number
+  unreadCountForDivider: number,
+  canReportMessage: boolean,
+  onReportMessage: (m: Msg) => void
 ) {
   if (grouped.length === 0) {
     return (
@@ -781,7 +948,7 @@ function _groupedRender(
             )}
 
             <div className="flex">
-              <div className={`max-w-[78%] ${bubbleWrapClass}`}>
+              <div className={`group max-w-[78%] ${bubbleWrapClass}`}>
                 <div
                   className={[
                     'px-4 py-2 text-sm leading-relaxed shadow-sm',
@@ -798,6 +965,16 @@ function _groupedRender(
                 <div className={['mt-1 flex items-center gap-2 text-[11px] text-neutral-500', metaAlignClass].join(' ')}>
                   <span>{formatTime(m.created_at)}</span>
                   {status && <span>· {status}</span>}
+                  {!mine && canReportMessage && (
+                    <button
+                      type="button"
+                      onClick={() => onReportMessage(m)}
+                      className="opacity-0 group-hover:opacity-100 transition rounded-full border bg-white/70 px-2 py-0.5 text-[11px] font-bold hover:bg-white"
+                      title="דווח/י על הודעה זו"
+                    >
+                      דווח
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

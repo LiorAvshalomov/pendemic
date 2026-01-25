@@ -76,3 +76,18 @@ export function isNewPost(input: string | Date, hours = 48) {
   const diffMs = Date.now() - d.getTime()
   return diffMs >= 0 && diffMs < hours * 60 * 60 * 1000
 }
+
+export function timeAgoHeShort(iso: string | null) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const diff = Date.now() - d.getTime()
+  const sec = Math.max(0, Math.floor(diff / 1000))
+  if (sec < 60) return 'הרגע'
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `לפני ${min} דק׳`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `לפני ${hr} ש׳`
+  const day = Math.floor(hr / 24)
+  if (day < 7) return `לפני ${day} ימים`
+  return formatDateHe(d)
+}

@@ -31,6 +31,9 @@ export default function SiteFooter() {
           <Link className="hover:text-foreground" href="/search">
             חיפוש
           </Link>
+          <Link className="hover:text-foreground" href="/contact">
+            צור קשר
+          </Link>
         </div>
       </div>
     </footer>

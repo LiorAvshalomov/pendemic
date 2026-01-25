@@ -1,0 +1,456 @@
+'use client'
+
+import { supabase } from '@/lib/supabaseClient'
+import Avatar from '@/components/Avatar'
+import { timeAgoHeShort } from '@/lib/time'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+
+type NoteRow = {
+  id: string
+  user_id: string
+  body: string
+  created_at: string
+  updated_at: string
+  username: string
+  display_name: string
+  avatar_url: string | null
+}
+
+const NOTE_MAX = 220
+const COOLDOWN_SECONDS = 10 * 60
+
+function getColumnsCount() {
+  if (typeof window === 'undefined') return 1
+  const w = window.innerWidth
+  if (w >= 1024) return 3
+  if (w >= 640) return 2
+  return 1
+}
+
+function sortNotesByUpdatedAtDesc(arr: NoteRow[]) {
+  return arr
+    .slice()
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+}
+
+function secondsToClock(sec: number) {
+  const s = Math.max(0, Math.floor(sec))
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return `${m}:${String(r).padStart(2, '0')}`
+}
+
+export default function CommunityNotesWall() {
+  const router = useRouter()
+  const [meId, setMeId] = useState<string | null>(null)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [notes, setNotes] = useState<NoteRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // responsive masonry columns (keeps newest-first within each column)
+  const [colsCount, setColsCount] = useState(1)
+
+  // realtime status (fallback polling keeps everything consistent even if websocket isn't enabled)
+  const [rtStatus, setRtStatus] = useState<'INIT' | 'SUBSCRIBED' | 'CLOSED' | 'ERROR'>('INIT')
+
+  // subtle highlight for realtime updates
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+
+  const [body, setBody] = useState('')
+  const [posting, setPosting] = useState(false)
+  const [myLastUpdatedAt, setMyLastUpdatedAt] = useState<string | null>(null)
+
+  // used to animate "new note" replace without jumping
+  const lastPostedIdRef = useRef<string | null>(null)
+
+  const [tick, setTick] = useState(0)
+  const remainingSeconds = useMemo(() => {
+    if (!myLastUpdatedAt) return 0
+    const last = new Date(myLastUpdatedAt).getTime()
+    const elapsed = (Date.now() - last) / 1000
+    return Math.max(0, Math.ceil(COOLDOWN_SECONDS - elapsed))
+  }, [myLastUpdatedAt, tick])
+
+  const cooldown = remainingSeconds > 0
+
+  // Tick for countdown (keeps it moving without refresh)
+  useEffect(() => {
+    const t = setInterval(() => setTick((x) => x + 1), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  // columns count (client only)
+  useEffect(() => {
+    const apply = () => setColsCount(getColumnsCount())
+    apply()
+    window.addEventListener('resize', apply)
+    return () => window.removeEventListener('resize', apply)
+  }, [])
+
+  async function loadMe() {
+    const { data } = await supabase.auth.getUser()
+    const uid = data.user?.id ?? null
+    setMeId(uid)
+    setAuthChecked(true)
+
+    // Private page: if not logged in, redirect before loading any content.
+    if (!uid) {
+      router.replace('/auth/login')
+      return null
+    }
+    return uid
+  }
+
+  async function loadNotes() {
+    setLoading(true)
+
+    const { data, error } = await supabase
+      .from('community_notes_feed')
+      .select('id,user_id,body,created_at,updated_at,username,display_name,avatar_url')
+      .order('updated_at', { ascending: false })
+      .limit(200)
+
+    setLoading(false)
+
+    if (error) return
+
+    setNotes(sortNotesByUpdatedAtDesc((data as NoteRow[]) ?? []))
+  }
+
+  async function fetchFeedRowByUser(userId: string) {
+    const { data, error } = await supabase
+      .from('community_notes_feed')
+      .select('id,user_id,body,created_at,updated_at,username,display_name,avatar_url')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (error) return null
+    return (data as NoteRow) ?? null
+  }
+
+  async function loadMyNote() {
+    const { data: me } = await supabase.auth.getUser()
+    const uid = me.user?.id
+    if (!uid) {
+      setMyLastUpdatedAt(null)
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('community_notes')
+      .select('updated_at, body')
+      .eq('user_id', uid)
+      .maybeSingle()
+
+    if (error) return
+    if (data?.updated_at) setMyLastUpdatedAt(data.updated_at)
+  }
+
+  useEffect(() => {
+    let ch: ReturnType<typeof supabase.channel> | null = null
+
+    ;(async () => {
+      const uid = await loadMe()
+      if (!uid) return
+      await Promise.all([loadNotes(), loadMyNote()])
+
+      // Realtime: update only the changed note (avoids full reload + keeps UI snappy)
+      ch = supabase
+        .channel('community_notes_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'community_notes' }, async (payload) => {
+          const eventType = (payload as any).eventType as string
+          const next = (payload as any).new as { user_id?: string; updated_at?: string } | null
+          const prev = (payload as any).old as { user_id?: string; updated_at?: string } | null
+          const userId = next?.user_id ?? prev?.user_id
+          const updatedAt = next?.updated_at ?? prev?.updated_at
+          if (!userId) return
+
+          // keep my cooldown timer consistent if my note was updated elsewhere
+          if (userId === uid && updatedAt) {
+            setMyLastUpdatedAt(updatedAt)
+          }
+
+          if (eventType === 'DELETE') {
+            setNotes((prevList) => prevList.filter((n) => n.user_id !== userId))
+            return
+          }
+
+          // fetch the fully joined row (display_name/avatar) from the feed view
+          const { data: row } = await supabase
+            .from('community_notes_feed')
+            .select('id,user_id,body,created_at,updated_at,username,display_name,avatar_url')
+            .eq('user_id', userId)
+            .maybeSingle()
+
+          if (!row) return
+
+          setNotes((prev) => {
+            const without = prev.filter((n) => n.user_id !== (row as any).user_id)
+            return sortNotesByUpdatedAtDesc([row as NoteRow, ...without])
+          })
+
+          setHighlightId((row as any).id)
+          window.setTimeout(() => setHighlightId(null), 1200)
+        })
+        .subscribe((status) => {
+          // status can be: SUBSCRIBED, TIMED_OUT, CLOSED, CHANNEL_ERROR
+          if (status === 'SUBSCRIBED') setRtStatus('SUBSCRIBED')
+          else if (status === 'CLOSED') setRtStatus('CLOSED')
+          else setRtStatus('ERROR')
+        })
+    })()
+
+    return () => {
+      if (ch) supabase.removeChannel(ch)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Fallback polling (only if realtime isn't subscribed).
+  // This keeps the wall and the cooldown timer consistent even if websocket is disabled.
+  useEffect(() => {
+    if (!meId) return
+    if (rtStatus === 'SUBSCRIBED') return
+
+    const pollMs = 8000
+    const t = setInterval(() => loadNotes(), pollMs)
+    const onFocus = () => loadNotes()
+    window.addEventListener('focus', onFocus)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('focus', onFocus)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meId, rtStatus])
+
+  async function handlePost() {
+    if (!meId) {
+      router.push('/auth/login')
+      return
+    }
+
+    const normalized = body.replace(/\r\n/g, '\n')
+    const trimmed = normalized.trim()
+    if (!trimmed) return
+
+    if (trimmed.length > NOTE_MAX) {
+      alert(`הפתק ארוך מדי (מקסימום ${NOTE_MAX} תווים).`)
+      return
+    }
+
+    setPosting(true)
+    // NOTE: Server enforces max length + cooldown. We send the trimmed body so users can't publish empty spaces.
+    const { data, error } = await supabase.rpc('upsert_community_note', { body: trimmed })
+    setPosting(false)
+
+    if (error) {
+      // cooldown: error message is 'cooldown', remaining seconds is in error.details
+      const msg = (error.message || '').toLowerCase()
+      const remaining = Number(error.details)
+      if (msg.includes('cooldown') && Number.isFinite(remaining)) {
+        alert(`אפשר לפרסם שוב בעוד ${secondsToClock(remaining)} דקות 🙂`)
+        // force countdown to be based on server-truth
+        const serverLast = new Date(Date.now() - (COOLDOWN_SECONDS - remaining) * 1000).toISOString()
+        setMyLastUpdatedAt(serverLast)
+        return
+      }
+
+      alert('שגיאה בפרסום פתק')
+      return
+    }
+
+    if (!data) return
+
+    const row = data as { id: string; user_id: string; body: string; created_at: string; updated_at: string }
+    setMyLastUpdatedAt(row.updated_at)
+    setBody('')
+    lastPostedIdRef.current = row.id
+
+    // Optimistic update in the wall:
+    // 1) if my note exists in feed → replace it
+    // 2) else add on top
+    setNotes((prev) => {
+      const idx = prev.findIndex((n) => n.user_id === row.user_id)
+      if (idx >= 0) {
+        const copy = prev.slice()
+        copy[idx] = { ...copy[idx], body: row.body, updated_at: row.updated_at, created_at: row.created_at }
+        // move to top
+        const [picked] = copy.splice(idx, 1)
+        return sortNotesByUpdatedAtDesc([picked, ...copy])
+      }
+      return prev
+    })
+
+    // refresh from DB for display_name/avatar (in case they changed)
+    // (also helps if realtime isn't enabled)
+    loadNotes()
+  }
+
+  async function handleOpenChat(note: NoteRow) {
+    if (!meId) {
+      router.push('/auth/login')
+      return
+    }
+    if (note.user_id === meId) return
+
+    const { data, error } = await supabase.rpc('start_conversation', {
+      other_user_id: note.user_id,
+    })
+    if (error || !data) {
+      alert('שגיאה בפתיחת שיחה')
+      return
+    }
+    router.push(`/inbox/${data}`)
+  }
+
+  return (
+    <section className="space-y-4">
+      {/* If we haven't checked auth yet, keep UI minimal to avoid flashing private content */}
+      {!authChecked ? (
+        <div className="rounded-3xl border border-black/5 bg-[#FAF9F6]/80 p-6 text-sm text-muted-foreground shadow-sm backdrop-blur">
+          טוען…
+        </div>
+      ) : null}
+
+      <div className="rounded-3xl border border-black/5 bg-[#FAF9F6]/90 shadow-sm backdrop-blur">
+        <div className="px-4 py-3" dir="rtl">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-lg font-black">פתקים מהקהילה</div>
+              <div className="mt-0.5 text-sm text-muted-foreground">
+                משפט או שניים — משהו קטן להשאיר לאחרים.
+              </div>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="rounded-full border border-black/10 bg-white/60 px-2 py-1">מקס׳ {NOTE_MAX} תווים</span>
+              <span className="rounded-full border border-black/10 bg-white/60 px-2 py-1">קולדאון 10 דק׳</span>
+            </div>
+          </div>
+
+          {/* Composer */}
+          <div className="mt-3 rounded-2xl border border-black/10 bg-white/70 p-3">
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder={meId ? 'מה עובר עליך עכשיו?' : 'כדי לפרסם פתק צריך להתחבר 🙂'}
+              maxLength={NOTE_MAX}
+              rows={3}
+              className="w-full resize-y bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              dir="rtl"
+              disabled={!meId || posting}
+            />
+
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>{body.trim().length}/{NOTE_MAX}</span>
+                {cooldown && (
+                  <span className="rounded-full border border-black/10 bg-white/60 px-2 py-1">
+                    אפשר שוב בעוד {secondsToClock(remainingSeconds)}
+                  </span>
+                )}
+              </div>
+
+              <button
+                onClick={handlePost}
+                disabled={!meId || posting || cooldown || !body.trim()}
+                className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {posting ? 'מפרסם…' : cooldown ? 'המתן…' : 'פרסם פתק'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Wall */}
+      <div className="rounded-3xl border border-black/5 bg-[#FAF9F6]/80 p-3 shadow-sm backdrop-blur">
+        {loading ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div key={i} className="h-28 rounded-2xl border border-black/10 bg-white/60 animate-pulse" />
+            ))}
+          </div>
+        ) : notes.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            עדיין אין פתקים. תהיה הראשון להשאיר משהו 🙂 
+          </div>
+        ) : (
+          // Masonry columns (flex) so card heights vary naturally.
+          // We distribute in-order across columns to keep newest-first feel.
+          <div className="flex gap-3" dir="rtl">
+            {Array.from({ length: colsCount }).map((_, colIndex) => {
+              const colNotes = notes.filter((_, i) => i % colsCount === colIndex)
+              return (
+                <div key={colIndex} className="flex-1 space-y-3 min-w-0">
+                  {colNotes.map((n) => {
+              const mine = meId && n.user_id === meId
+              return (
+                <div
+                  key={n.id}
+                  className={[
+                    'group relative text-right w-full rounded-2xl border border-black/10 bg-white/70 p-3 shadow-sm transition',
+                    'will-change-transform hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-black/20',
+                    mine ? 'opacity-95' : 'cursor-pointer',
+                    (lastPostedIdRef.current === n.id || highlightId === n.id)
+                      ? 'ring-2 ring-black/20 shadow-md scale-[1.01] bg-white/80'
+                      : '',
+                  ].join(' ')}
+                  dir="rtl"
+                  title={mine ? 'זה הפתק שלך' : 'לחץ על התוכן כדי לפתוח שיחה'}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0">
+                      <Avatar src={n.avatar_url} name={n.display_name || n.username} size={34} />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <Link
+                          href={`/u/${n.username}`}
+                          className="truncate text-sm font-bold hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                          title="לפרופיל"
+                        >
+                          {n.display_name || n.username}
+                        </Link>
+                        <div className="shrink-0 text-xs text-muted-foreground">
+                          {timeAgoHeShort(n.updated_at)}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenChat(n)}
+                        disabled={!!mine}
+                        className={[
+                          'mt-1 w-full text-right text-sm leading-relaxed text-black/90',
+                          'whitespace-pre-wrap break-words',
+                          mine ? 'cursor-default' : 'cursor-pointer',
+                        ].join(' ')}
+                        title={mine ? 'זה הפתק שלך' : 'פתח שיחה'}
+                      >
+                        {n.body}
+                      </button>
+
+                      {!mine ? (
+                        <div className="mt-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+                          פתח שיחה →
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
