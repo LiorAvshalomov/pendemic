@@ -34,7 +34,7 @@ export default function ProfileRecentActivity({ userId }: { userId: string }) {
   }, [userId])
 
   return (
-    <div className="rounded-2xl border bg-white p-4 h-[320px] flex flex-col" dir="rtl">
+    <div className="rounded-2xl border bg-white p-4 h-[440px] flex flex-col" dir="rtl">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold m-0">פעילות אחרונה</h3>
         <span className="text-xs text-muted-foreground">10 אחרונות</span>

@@ -1,11 +1,10 @@
 import { supabase } from '@/lib/supabaseClient'
 import Avatar from '@/components/Avatar'
 import ProfileRecentActivity from '@/components/ProfileRecentActivity'
-import ProfileStatsCard from '@/components/ProfileStatsCard'
 import ProfileOwnerActions from '@/components/ProfileOwnerActions'
 import ProfileFollowBar from '@/components/ProfileFollowBar'
-// Posts list (with sorting + pagination) is rendered client-side for a smooth UX.
-import ProfilePostsClient from '@/components/ProfilePostsClient'
+import ProfileBottomTabsClient from '@/components/ProfileBottomTabsClient'
+import ProfilePersonalInfoCardClient from '@/components/ProfilePersonalInfoCardClient'
 
 type PageProps = {
   params: Promise<{ username: string }>
@@ -18,6 +17,15 @@ type Profile = {
   avatar_url: string | null
   bio: string | null
   created_at: string | null
+
+  // personal info (optional)
+  personal_is_shared?: boolean | null
+  personal_about?: string | null
+  personal_age?: number | null
+  personal_occupation?: string | null
+  personal_writing_about?: string | null
+  personal_books?: string | null
+  personal_favorite_category?: string | null
 }
 
 type PostRow = {
@@ -67,7 +75,9 @@ export default async function PublicProfilePage({ params }: PageProps) {
 
   const { data: profile, error: pErr } = await supabase
     .from('profiles')
-    .select('id, username, display_name, avatar_url, bio, created_at')
+    .select(
+      'id, username, display_name, avatar_url, bio, created_at, personal_is_shared, personal_about, personal_age, personal_occupation, personal_writing_about, personal_books, personal_favorite_category'
+    )
     .eq('username', username)
     .single()
 
@@ -199,19 +209,29 @@ export default async function PublicProfilePage({ params }: PageProps) {
       </section>
 
       <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-        <ProfileStatsCard
-          postsCount={postsCount ?? 0}
-          commentsWritten={commentsWritten ?? 0}
-          commentsReceived={commentsReceived ?? 0}
-          medals={medals}
-          reactionTotals={reactionTotals ?? []} // ✅ THIS is the important line
+        <ProfilePersonalInfoCardClient
+          profileId={prof.id}
+          initial={{
+            personal_is_shared: Boolean(prof.personal_is_shared),
+            personal_about: prof.personal_about ?? null,
+            personal_age: (prof.personal_age as number | null) ?? null,
+            personal_occupation: prof.personal_occupation ?? null,
+            personal_writing_about: prof.personal_writing_about ?? null,
+            personal_books: prof.personal_books ?? null,
+            personal_favorite_category: prof.personal_favorite_category ?? null,
+          }}
         />
         <ProfileRecentActivity userId={prof.id} />
       </section>
 
-      <section className="mt-6">
-        <ProfilePostsClient profileId={prof.id} username={prof.username} />
-      </section>
+      <ProfileBottomTabsClient
+        profileId={prof.id}
+        username={prof.username}
+        postsCount={postsCount ?? 0}
+        commentsWritten={commentsWritten ?? 0}
+        commentsReceived={commentsReceived ?? 0}
+        reactionTotals={reactionTotals ?? []}
+      />
     </div>
   )
 }
