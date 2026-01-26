@@ -1,5 +1,6 @@
-import { NextResponse, type NextRequest } from "next/server"
+import type { NextRequest } from "next/server"
 import { requireAdminFromRequest } from "@/lib/admin/requireAdminFromRequest"
+import { adminError, adminOk } from "@/lib/admin/adminHttp"
 
 type SupaError = { message: string }
 type SupaRes<T> = { data: T | null; error: SupaError | null }
@@ -49,19 +50,12 @@ type MsgRow = {
   created_at: string
 }
 
-type ApiOk = {
-  ok: true
-  report: ReportRow & { reporter_profile: MiniProfile | null; reported_profile: MiniProfile | null }
-  messages: Array<MsgRow & { sender_profile: MiniProfile | null }>
-}
-type ApiErr = { ok?: false; error: string }
-
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminFromRequest(req)
   if (!auth.ok) return auth.response
 
   const { id } = await ctx.params
-  if (!id) return NextResponse.json({ error: "missing id" } satisfies ApiErr, { status: 400 })
+  if (!id) return adminError("missing id", 400, "bad_request")
 
   const admin = auth.admin as unknown as AdminClient
 
@@ -73,9 +67,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     .eq("id", id)
     .maybeSingle()
 
-  if (reportRes.error) return NextResponse.json({ error: reportRes.error.message } satisfies ApiErr, { status: 500 })
+  if (reportRes.error) return adminError(reportRes.error.message, 500, "db_error")
   const report = reportRes.data
-  if (!report) return NextResponse.json({ error: "not found" } satisfies ApiErr, { status: 404 })
+  if (!report) return adminError("not found", 404, "not_found")
 
   // profiles (reporter + reported)
   const profileIds = Array.from(new Set([report.reporter_id, report.reported_user_id].filter(Boolean)))
@@ -84,8 +78,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       ? await admin.from<MiniProfile[]>("profiles").select("id, username, display_name, avatar_url").in("id", profileIds)
       : ({ data: [], error: null } as SupaRes<MiniProfile[]>)
 
+  if (profilesRes.error) return adminError(profilesRes.error.message, 500, "db_error")
+
   const profilesMap = new Map<string, MiniProfile>()
-  if (!profilesRes.error && profilesRes.data) for (const p of profilesRes.data) profilesMap.set(p.id, p)
+  if (profilesRes.data) for (const p of profilesRes.data) profilesMap.set(p.id, p)
 
   // message context (±5) anchored on message_id first (most stable), fallback to message_created_at
   let messages: MsgRow[] = []
@@ -163,11 +159,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       ? await admin.from<MiniProfile[]>("profiles").select("id, username, display_name, avatar_url").in("id", senderIds)
       : ({ data: [], error: null } as SupaRes<MiniProfile[]>)
 
-  const senderMap = new Map<string, MiniProfile>()
-  if (!senderProfilesRes.error && senderProfilesRes.data) for (const p of senderProfilesRes.data) senderMap.set(p.id, p)
+  if (senderProfilesRes.error) return adminError(senderProfilesRes.error.message, 500, "db_error")
 
-  const out: ApiOk = {
-    ok: true,
+  const senderMap = new Map<string, MiniProfile>()
+  if (senderProfilesRes.data) for (const p of senderProfilesRes.data) senderMap.set(p.id, p)
+
+  return adminOk({
     report: {
       ...report,
       reporter_profile: profilesMap.get(report.reporter_id) ?? null,
@@ -177,7 +174,5 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       ...m,
       sender_profile: senderMap.get(m.sender_id) ?? null,
     })),
-  }
-
-  return NextResponse.json(out)
+  })
 }

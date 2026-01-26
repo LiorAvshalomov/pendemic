@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server"
 import { requireAdminFromRequest } from "@/lib/admin/requireAdminFromRequest"
+import { adminError, adminOk } from "@/lib/admin/adminHttp"
 
 export async function POST(req: Request) {
   const auth = await requireAdminFromRequest(req)
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   const status = body?.status
 
   if (!id || (status !== "open" && status !== "resolved")) {
-    return NextResponse.json({ error: "bad request" }, { status: 400 })
+    return adminError("bad request", 400, "bad_request")
   }
 
   const patch: Record<string, unknown> = {
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   }
 
   const { error } = await admin.from("contact_messages").update(patch).eq("id", id)
+  if (error) return adminError(error.message, 500, "db_error")
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true })
+  return adminOk({})
 }

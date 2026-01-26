@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server"
 import { requireAdminFromRequest } from "@/lib/admin/requireAdminFromRequest"
+import { adminError, adminOk } from "@/lib/admin/adminHttp"
 
 export async function GET(req: Request) {
   const auth = await requireAdminFromRequest(req)
@@ -7,20 +7,17 @@ export async function GET(req: Request) {
 
   const { admin } = auth
 
-  // posts schema uses status + published_at (no boolean "published" column)
   const [postsTotal, postsPublished, postsDeleted, usersTotal] = await Promise.all([
-    admin.from("posts").select("id", { count: "exact", head: true }),
-    admin
-      .from("posts")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "published")
-      .is("deleted_at", null),
+    admin.from("posts").select("id", { count: "exact", head: true }).is("deleted_at", null),
+    admin.from("posts").select("id", { count: "exact", head: true }).eq("status", "published").is("deleted_at", null),
     admin.from("posts").select("id", { count: "exact", head: true }).not("deleted_at", "is", null),
     admin.from("profiles").select("id", { count: "exact", head: true }),
   ])
 
-  return NextResponse.json({
-    ok: true,
+  const firstErr = postsTotal.error || postsPublished.error || postsDeleted.error || usersTotal.error
+  if (firstErr) return adminError(firstErr.message, 500, "db_error")
+
+  return adminOk({
     posts: {
       total: postsTotal.count ?? 0,
       published: postsPublished.count ?? 0,

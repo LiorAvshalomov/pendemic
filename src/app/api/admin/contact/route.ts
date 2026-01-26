@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server"
 import { requireAdminFromRequest } from "@/lib/admin/requireAdminFromRequest"
+import { adminError, adminOk } from "@/lib/admin/adminHttp"
 
 type MiniProfile = {
   id: string
@@ -8,6 +8,8 @@ type MiniProfile = {
   avatar_url: string | null
 }
 
+const VALID_STATUSES = new Set(["open", "resolved"])
+
 export async function GET(req: Request) {
   const auth = await requireAdminFromRequest(req)
   if (!auth.ok) return auth.response
@@ -15,15 +17,13 @@ export async function GET(req: Request) {
   const { admin } = auth
 
   const url = new URL(req.url)
-  const status = (url.searchParams.get("status") || "open").toLowerCase()
-  const rawLimit = Number(url.searchParams.get("limit") || "200")
-  const limit = Math.min(Number.isFinite(rawLimit) ? Math.max(rawLimit, 1) : 200, 500)
+  const rawStatus = (url.searchParams.get("status") || "open").toLowerCase()
+  const status = VALID_STATUSES.has(rawStatus) ? (rawStatus as "open" | "resolved") : "open"
 
-  if (status !== "open" && status !== "resolved") {
-    return NextResponse.json({ error: "bad status" }, { status: 400 })
-  }
+  const rawLimit = parseInt(url.searchParams.get("limit") || "200", 10)
+  const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 200, 1), 500)
 
-  const q = admin
+  const { data, error } = await admin
     .from("contact_messages")
     .select(
       `
@@ -37,23 +37,22 @@ export async function GET(req: Request) {
       `
     )
     .order("created_at", { ascending: false })
+    .eq("status", status)
     .limit(limit)
 
-  const { data, error } = await q.eq("status", status)
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+  if (error) return adminError(error.message, 500, "db_error")
 
   const rows = data ?? []
   const ids = Array.from(new Set(rows.map((r: any) => r.user_id).filter(Boolean))) as string[]
 
   let profileMap = new Map<string, MiniProfile>()
   if (ids.length) {
-    const { data: profs } = await admin
+    const { data: profs, error: profErr } = await admin
       .from("profiles")
       .select("id, username, display_name, avatar_url")
       .in("id", ids)
+
+    if (profErr) return adminError(profErr.message, 500, "db_error")
     profileMap = new Map((profs ?? []).map((p: any) => [p.id, p as MiniProfile]))
   }
 
@@ -62,5 +61,5 @@ export async function GET(req: Request) {
     user_profile: profileMap.get(r.user_id) ?? null,
   }))
 
-  return NextResponse.json({ ok: true, messages: enriched })
+  return adminOk({ messages: enriched })
 }
