@@ -1,27 +1,183 @@
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { requireAdminFromRequest } from "@/lib/admin/requireAdminFromRequest"
 
-export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+type SupaError = { message: string }
+type SupaRes<T> = { data: T | null; error: SupaError | null }
+
+type Query<T> = Promise<SupaRes<T>> & {
+  select: (columns: string, opts?: Record<string, unknown>) => Query<T>
+  eq: (column: string, value: unknown) => Query<T>
+  in: (column: string, values: readonly unknown[]) => Query<T>
+  lte: (column: string, value: unknown) => Query<T>
+  lt: (column: string, value: unknown) => Query<T>
+  gt: (column: string, value: unknown) => Query<T>
+  order: (column: string, opts?: Record<string, unknown>) => Query<T>
+  limit: (n: number) => Query<T>
+  maybeSingle: () => Promise<SupaRes<T>>
+}
+
+type AdminClient = { from: <T = unknown>(table: string) => Query<T> }
+
+type MiniProfile = {
+  id: string
+  username: string
+  display_name: string | null
+  avatar_url: string | null
+}
+
+type ReportRow = {
+  id: string
+  created_at: string
+  category: string
+  details: string | null
+  status: "open" | "resolved"
+  resolved_at: string | null
+  resolved_by: string | null
+  reporter_id: string
+  reported_user_id: string
+  conversation_id: string | null
+  message_id: string | null
+  message_created_at: string | null
+  message_excerpt: string | null
+}
+
+type MsgRow = {
+  id: string
+  conversation_id: string
+  sender_id: string
+  body: string
+  created_at: string
+}
+
+type ApiOk = {
+  ok: true
+  report: ReportRow & { reporter_profile: MiniProfile | null; reported_profile: MiniProfile | null }
+  messages: Array<MsgRow & { sender_profile: MiniProfile | null }>
+}
+type ApiErr = { ok?: false; error: string }
+
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminFromRequest(req)
   if (!auth.ok) return auth.response
 
-  const { admin } = auth
-
-  // ✅ Next דורש unwrap של params
   const { id } = await ctx.params
+  if (!id) return NextResponse.json({ error: "missing id" } satisfies ApiErr, { status: 400 })
 
-  if (!id || id === "undefined") {
-    return NextResponse.json({ error: "missing id" }, { status: 400 })
-  }
+  const admin = auth.admin as unknown as AdminClient
 
-  const { data, error } = await admin
-    .from("user_reports")
-    .select("*")
+  const reportRes = await admin
+    .from<ReportRow>("reports")
+    .select(
+      "id, created_at, category, details, status, resolved_at, resolved_by, reporter_id, reported_user_id, conversation_id, message_id, message_created_at, message_excerpt"
+    )
     .eq("id", id)
     .maybeSingle()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!data) return NextResponse.json({ error: "not found" }, { status: 404 })
+  if (reportRes.error) return NextResponse.json({ error: reportRes.error.message } satisfies ApiErr, { status: 500 })
+  const report = reportRes.data
+  if (!report) return NextResponse.json({ error: "not found" } satisfies ApiErr, { status: 404 })
 
-  return NextResponse.json({ ok: true, report: data })
+  // profiles (reporter + reported)
+  const profileIds = Array.from(new Set([report.reporter_id, report.reported_user_id].filter(Boolean)))
+  const profilesRes =
+    profileIds.length > 0
+      ? await admin.from<MiniProfile[]>("profiles").select("id, username, display_name, avatar_url").in("id", profileIds)
+      : ({ data: [], error: null } as SupaRes<MiniProfile[]>)
+
+  const profilesMap = new Map<string, MiniProfile>()
+  if (!profilesRes.error && profilesRes.data) for (const p of profilesRes.data) profilesMap.set(p.id, p)
+
+  // message context (±5) anchored on message_id first (most stable), fallback to message_created_at
+  let messages: MsgRow[] = []
+  if (report.conversation_id) {
+    const convId = report.conversation_id
+
+    if (report.message_id) {
+      const anchorRes = await admin
+        .from<MsgRow>("messages")
+        .select("id, conversation_id, sender_id, body, created_at")
+        .eq("id", report.message_id)
+        .maybeSingle()
+
+      const anchor = anchorRes.data
+      if (anchor) {
+        const beforeRes = await admin
+          .from<MsgRow[]>("messages")
+          .select("id, conversation_id, sender_id, body, created_at")
+          .eq("conversation_id", convId)
+          .lt("created_at", anchor.created_at)
+          .order("created_at", { ascending: false })
+          .limit(5)
+
+        const afterRes = await admin
+          .from<MsgRow[]>("messages")
+          .select("id, conversation_id, sender_id, body, created_at")
+          .eq("conversation_id", convId)
+          .gt("created_at", anchor.created_at)
+          .order("created_at", { ascending: true })
+          .limit(5)
+
+        const before = (beforeRes.data ?? []).slice().reverse()
+        const after = afterRes.data ?? []
+        messages = [...before, anchor, ...after]
+      }
+    }
+
+    if (messages.length === 0 && report.message_created_at) {
+      const beforeRes = await admin
+        .from<MsgRow[]>("messages")
+        .select("id, conversation_id, sender_id, body, created_at")
+        .eq("conversation_id", convId)
+        .lte("created_at", report.message_created_at)
+        .order("created_at", { ascending: false })
+        .limit(6)
+
+      const afterRes = await admin
+        .from<MsgRow[]>("messages")
+        .select("id, conversation_id, sender_id, body, created_at")
+        .eq("conversation_id", convId)
+        .gt("created_at", report.message_created_at)
+        .order("created_at", { ascending: true })
+        .limit(5)
+
+      const before = (beforeRes.data ?? []).slice().reverse()
+      const after = afterRes.data ?? []
+      messages = [...before, ...after]
+    }
+
+    if (messages.length === 0) {
+      const lastRes = await admin
+        .from<MsgRow[]>("messages")
+        .select("id, conversation_id, sender_id, body, created_at")
+        .eq("conversation_id", convId)
+        .order("created_at", { ascending: false })
+        .limit(10)
+      messages = (lastRes.data ?? []).slice().reverse()
+    }
+  }
+
+  // sender profiles for messages
+  const senderIds = Array.from(new Set(messages.map((m) => m.sender_id))).filter(Boolean)
+  const senderProfilesRes =
+    senderIds.length > 0
+      ? await admin.from<MiniProfile[]>("profiles").select("id, username, display_name, avatar_url").in("id", senderIds)
+      : ({ data: [], error: null } as SupaRes<MiniProfile[]>)
+
+  const senderMap = new Map<string, MiniProfile>()
+  if (!senderProfilesRes.error && senderProfilesRes.data) for (const p of senderProfilesRes.data) senderMap.set(p.id, p)
+
+  const out: ApiOk = {
+    ok: true,
+    report: {
+      ...report,
+      reporter_profile: profilesMap.get(report.reporter_id) ?? null,
+      reported_profile: profilesMap.get(report.reported_user_id) ?? null,
+    },
+    messages: messages.map((m) => ({
+      ...m,
+      sender_profile: senderMap.get(m.sender_id) ?? null,
+    })),
+  }
+
+  return NextResponse.json(out)
 }
