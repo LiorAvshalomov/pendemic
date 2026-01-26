@@ -1,19 +1,17 @@
+'use client'
+
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+
 import { supabase } from '@/lib/supabaseClient'
 import Avatar from '@/components/Avatar'
-import Link from 'next/link'
 import RichText from '@/components/RichText'
 import PostShell from '@/components/PostShell'
 import PostOwnerMenu from '@/components/PostOwnerMenu'
-import { formatDateTimeHe } from '@/lib/time'
 import PostReactions from '@/components/PostReactions'
 import PostComments from '@/components/PostComments'
-
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-
-type PostPageProps = {
-  params: Promise<{ slug: string }>
-}
+import { formatDateTimeHe } from '@/lib/time'
 
 type Author = {
   id: string
@@ -22,69 +20,137 @@ type Author = {
   avatar_url: string | null
 }
 
-type Channel = {
-  name_he: string | null
+type Channel = { name_he: string | null }
+
+type PostRow = {
+  id: string
+  slug: string
+  title: string | null
+  content_json: unknown
+  created_at: string
+  author_id: string
+  channel_id: number | null
+  author: Author[] | Author | null
+  channel: Channel[] | Channel | null
 }
 
-export default async function PostPage({ params }: PostPageProps) {
-  const { slug } = await params
+function NotFoundPost() {
+  return (
+    <main className="min-h-screen bg-neutral-50" dir="rtl">
+      <div className="mx-auto max-w-5xl px-4 py-12">
+        <div className="rounded-3xl border bg-white p-10 text-center shadow-sm">
+          <h1 className="text-3xl font-bold tracking-tight">לא נמצא פוסט</h1>
+          <p className="mt-3 text-sm text-muted-foreground">הפוסט לא קיים או הוסר.</p>
 
-  const { data: post, error } = await supabase
-    .from('posts')
-    .select(
-      `
-      id,
-      title,
-      content_json,
-      created_at,
-      author_id,
-      channel_id,
-      channel:channels ( name_he ),
-      author:profiles!posts_author_id_fkey (
-        id,
-        username,
-        display_name,
-        avatar_url
-        )
-        `
-    )
-    .is('deleted_at', null)
-    .eq('slug', slug)
-    .single()
-
-  if (error || !post) {
-    return (
-      <div className="p-5" dir="rtl">
-        <h2 className="text-xl font-bold">לא נמצא פוסט</h2>
-        <pre className="mt-4 text-sm bg-neutral-50 p-3 rounded border">
-          {JSON.stringify({ slug, error }, null, 2)}
-        </pre>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <Link href="/" className="rounded-full bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800">
+              לדף הבית
+            </Link>
+            <Link href="/notebook" className="rounded-full border bg-white px-4 py-2 text-sm hover:bg-neutral-50">
+              למחברת
+            </Link>
+          </div>
+        </div>
       </div>
+    </main>
+  )
+}
+
+export default function PostPage() {
+  const params = useParams()
+  const slug = useMemo(() => (typeof params?.slug === 'string' ? params.slug : ''), [params])
+
+  const [loading, setLoading] = useState(true)
+  const [notFound, setNotFound] = useState(false)
+  const [post, setPost] = useState<PostRow | null>(null)
+
+  useEffect(() => {
+    if (!slug) return
+
+    let cancelled = false
+
+    const load = async () => {
+      setLoading(true)
+      setNotFound(false)
+      setPost(null)
+
+      const { data, error } = await supabase
+        .from('posts')
+        .select(
+          `
+          id,
+          slug,
+          title,
+          content_json,
+          created_at,
+          author_id,
+          channel_id,
+          channel:channels ( name_he ),
+          author:profiles!posts_author_id_fkey ( id, username, display_name, avatar_url )
+        `
+        )
+        .is('deleted_at', null)
+        .eq('slug', slug)
+        .single()
+
+      if (cancelled) return
+
+      if (error || !data) {
+        // PGRST116 = 0 rows for .single()
+        setNotFound(true)
+        setLoading(false)
+        return
+      }
+
+      setPost(data as PostRow)
+      setLoading(false)
+    }
+
+    void load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [slug])
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-neutral-50" dir="rtl">
+        <div className="mx-auto max-w-5xl px-4 py-12">
+          <div className="text-sm text-muted-foreground">טוען…</div>
+        </div>
+      </main>
     )
   }
 
-  // ✅ Supabase returns relations as arrays in your setup
+  if (notFound || !post) {
+    return <NotFoundPost />
+  }
+
   const author: Author | null = Array.isArray(post.author)
-    ? ((post.author[0] as Author | undefined) ?? null)
-    : ((post.author as Author | null) ?? null)
+    ? (post.author[0] ?? null)
+    : (post.author as Author | null)
 
   const channelName: string | null = Array.isArray(post.channel)
-    ? ((post.channel[0] as Channel | undefined)?.name_he ?? null)
-    : ((post.channel as Channel | null)?.name_he ?? null)
+    ? (post.channel[0]?.name_he ?? null)
+    : (post.channel as Channel | null)?.name_he ?? null
 
   const authorName = author?.display_name ?? 'אנונימי'
   const authorUsername = author?.username ?? null
 
   const channelHref =
-    post.channel_id === 1 ? '/c/release'
-      : post.channel_id === 2 ? '/c/stories'
-        : post.channel_id === 3 ? '/c/magazine'
+    post.channel_id === 1
+      ? '/c/release'
+      : post.channel_id === 2
+        ? '/c/stories'
+        : post.channel_id === 3
+          ? '/c/magazine'
           : null
 
   return (
     <PostShell
       title={post.title}
-      actions={<PostOwnerMenu postId={post.id} authorId={post.author_id} />}
+      actions={<PostOwnerMenu postId={post.id} postSlug={slug} authorId={post.author_id} />}
       meta={
         <>
           {channelName && channelHref ? (
@@ -106,9 +172,8 @@ export default async function PostPage({ params }: PostPageProps) {
       }
     >
       {/* כותב */}
-      <div className="mt-2 mb-6 flex items-center gap-3" dir="rtl">
+      <div className="mb-6 mt-2 flex items-center gap-3" dir="rtl">
         <Avatar src={author?.avatar_url ?? null} name={authorName} />
-
         <div className="flex flex-col">
           {authorUsername ? (
             <Link href={`/u/${authorUsername}`} className="font-semibold hover:underline">
@@ -117,19 +182,16 @@ export default async function PostPage({ params }: PostPageProps) {
           ) : (
             <span className="font-semibold">{authorName}</span>
           )}
-
-          {authorUsername ? (
-            <span className="text-sm text-muted-foreground">@{authorUsername}</span>
-          ) : null}
+          {authorUsername ? <span className="text-sm text-muted-foreground">@{authorUsername}</span> : null}
         </div>
       </div>
 
-      {/* תוכן הפוסט */}
+      {/* תוכן */}
       <RichText content={post.content_json} />
 
-      {/* דירוגים */}
+      {/* ריאקשנים */}
       <div className="mt-6">
-        <PostReactions postId={post.id} channelId={post.channel_id} authorId={post.author_id} />
+        <PostReactions postId={post.id} channelId={post.channel_id ?? 0} authorId={post.author_id} />
       </div>
 
       <PostComments postId={post.id} />

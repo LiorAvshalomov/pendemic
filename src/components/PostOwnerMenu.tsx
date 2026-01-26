@@ -28,7 +28,17 @@ async function authedFetch(input: string, init: RequestInit = {}) {
   return fetch(input, { ...init, headers })
 }
 
-export default function PostOwnerMenu({ postId, authorId }: { postId: string; authorId: string }) {
+export default function PostOwnerMenu({
+  postId,
+  authorId,
+  postSlug,
+  returnUrl,
+}: {
+  postId: string
+  authorId: string
+  postSlug?: string
+  returnUrl?: string
+}) {
   const [viewerId, setViewerId] = useState<string | null>(null)
   const isOwner = useMemo(() => viewerId === authorId, [viewerId, authorId])
   const [open, setOpen] = useState(false)
@@ -52,6 +62,16 @@ export default function PostOwnerMenu({ postId, authorId }: { postId: string; au
     }
   }
 
+  const safeReturn = useMemo(() => {
+    if (returnUrl && returnUrl.startsWith('/')) return returnUrl
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname + window.location.search
+      if (path.startsWith('/')) return path
+    }
+    if (postSlug) return `/post/${postSlug}`
+    return null
+  }, [returnUrl, postSlug])
+
   if (!isOwner) return null
 
   return (
@@ -70,7 +90,7 @@ export default function PostOwnerMenu({ postId, authorId }: { postId: string; au
       {open ? (
         <div className="absolute left-0 mt-2 w-40 overflow-hidden rounded border bg-white text-sm shadow-lg">
           <Link
-            href={`/write?draft=${encodeURIComponent(postId)}`}
+            href={`/write?edit=${encodeURIComponent(postId)}${safeReturn ? `&return=${encodeURIComponent(safeReturn)}` : ''}`}
             className="block px-3 py-2 hover:bg-neutral-50"
             onClick={() => setOpen(false)}
           >

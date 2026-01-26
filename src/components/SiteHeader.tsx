@@ -86,6 +86,13 @@ export default function SiteHeader() {
     setProfileOpen(false)
   }, [])
 
+  const confirmIfUnsaved = useCallback(() => {
+    if (typeof window === 'undefined') return true
+    const g = window.__PENDEMIC_UNSAVED__
+    if (!g?.enabled) return true
+    return window.confirm(g.message || 'יש לך שינויים שלא נשמרו. לצאת בכל זאת?')
+  }, [])
+
   useClickOutside(writeRef, () => setWriteOpen(false), writeOpen)
   useClickOutside(profileRef, () => setProfileOpen(false), profileOpen)
 
@@ -129,12 +136,14 @@ export default function SiteHeader() {
 
   // Load user initially + whenever route changes (e.g. after saving profile)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadUser()
   }, [loadUser, pathname])
 
   // Reload when auth state changes (login/logout)
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void loadUser()
     })
 
@@ -144,6 +153,7 @@ export default function SiteHeader() {
   }, [loadUser])
 
   function requireAuthOrGoWrite(target: 'prika' | 'stories' | 'magazine') {
+    if (!confirmIfUnsaved()) return
     if (!user) {
       alert('כדי לכתוב צריך להתחבר 🙂')
       router.push('/auth/login')
@@ -153,6 +163,7 @@ export default function SiteHeader() {
   }
 
   function requireAuthOrGo(path: string) {
+    if (!confirmIfUnsaved()) return
     if (!user) {
       alert('כדי להיכנס למחברת צריך להתחבר 🙂')
       router.push('/auth/login')
@@ -298,6 +309,14 @@ export default function SiteHeader() {
                         >
                           עריכת פרופיל
                         </Link>
+                        <Link
+                          href="/trash"
+                          onClick={closeAll}
+                          className="block rounded-xl px-3 py-2 text-sm hover:bg-neutral-50"
+                        >
+                          פוסטים שנמחקו
+                        </Link>
+
                         <button
                           onClick={async () => {
                             closeAll()

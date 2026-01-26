@@ -1,6 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+/* eslint-disable react-hooks/set-state-in-effect */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { JSONContent } from '@tiptap/react'
 import Editor from '@/components/Editor'
@@ -9,6 +11,7 @@ import { supabase } from '@/lib/supabaseClient'
 
 type Channel = { id: number; name_he: string }
 type Tag = { id: number; type: 'emotion' | 'theme' | 'genre' | 'topic'; name_he: string; channel_id: number | null }
+type TagType = Tag['type']
 type SubcategoryOption = { id: number; name_he: string }
 
 type DraftRow = {
@@ -34,7 +37,7 @@ const EXCERPT_MAX = 160
 const TAG_TYPES_BY_CHANNEL: Record<number, Array<Tag['type']>> = {
   1: ['emotion', 'theme'], // פריקה
   2: ['emotion', 'theme'], // סיפורים
-  3: ['topic', 'theme'],   // מגזין
+  3: ['topic', 'theme'], // מגזין
 }
 
 function uniqById<T extends { id: number }>(rows: T[]) {
@@ -48,16 +51,60 @@ function uniqById<T extends { id: number }>(rows: T[]) {
   return out
 }
 
-
 function clampExcerpt(s: string) {
   const trimmed = s.replace(/\s+/g, ' ').trimStart()
   return trimmed.length > EXCERPT_MAX ? trimmed.slice(0, EXCERPT_MAX) : trimmed
 }
 
+function snapshotOf(opts: {
+  title: string
+  excerpt: string
+  contentJson: JSONContent
+  coverUrl: string | null
+  coverSource: string | null
+  channelId: number | null
+  subcategoryTagId: number | null
+  selectedTagIds: number[]
+}) {
+  return JSON.stringify({
+    title: opts.title.trim(),
+    excerpt: opts.excerpt.trim(),
+    content: opts.contentJson,
+    coverUrl: opts.coverUrl,
+    coverSource: opts.coverSource,
+    channelId: opts.channelId,
+    subcategoryTagId: opts.subcategoryTagId,
+    selectedTagIds: [...opts.selectedTagIds].sort((a, b) => a - b),
+  })
+}
+
+declare global {
+  interface Window {
+    __PENDEMIC_UNSAVED__?: { enabled: boolean; message: string }
+  }
+}
+
 export default function WritePage() {
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  // draft = create/edit draft flow
+  // edit  = edit an existing post without forcing it into drafts
+  const editParam = searchParams.get('edit')
   const draftParam = searchParams.get('draft')
+  const returnParam = searchParams.get('return')
+  const channelParam = searchParams.get('channel')
+
+  const safeReturnParam = (() => {
+    if (!returnParam || !returnParam.startsWith('/')) return null
+    // guard common bad values
+    if (returnParam.includes('undefined') || returnParam.includes('null')) return null
+    if (returnParam === '/post/' || returnParam === '/post') return null
+    return returnParam
+  })()
+
+  const isEditMode = Boolean(editParam)
+  const activeIdFromUrl = editParam ?? draftParam
 
   const [userId, setUserId] = useState<string | null>(null)
 
@@ -72,7 +119,11 @@ export default function WritePage() {
 
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
 
-  const [draftId, setDraftId] = useState<string | null>(draftParam)
+  // URL-provided id is `activeIdFromUrl`. When we create a new draft locally,
+  // we store it in `createdDraftId`.
+  const [createdDraftId, setCreatedDraftId] = useState<string | null>(null)
+  const effectivePostId = activeIdFromUrl ?? createdDraftId
+
   const [draftSlug, setDraftSlug] = useState<string | null>(null)
   const [loadedStatus, setLoadedStatus] = useState<'draft' | 'published' | null>(null)
 
@@ -86,8 +137,68 @@ export default function WritePage() {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [savePending, setSavePending] = useState(false) // debounce pending
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  // ✅ Lock settings (channel/subcategory/tags) when editing an already published post.
+  const settingsLocked = useMemo(() => isEditMode && loadedStatus === 'published', [isEditMode, loadedStatus])
+  const autosaveEnabled = useMemo(() => !settingsLocked, [settingsLocked])
+
+  // Track "dirty" state for edit-mode (published) so Cancel can truly discard changes
+  const [initialSnapshot, setInitialSnapshot] = useState<string | null>(null)
+  const currentSnapshot = useMemo(() => {
+    return snapshotOf({
+      title,
+      excerpt,
+      contentJson,
+      coverUrl,
+      coverSource,
+      channelId,
+      subcategoryTagId,
+      selectedTagIds,
+    })
+  }, [title, excerpt, contentJson, coverUrl, coverSource, channelId, subcategoryTagId, selectedTagIds])
+
+  const isDirty = useMemo(() => {
+    if (!isEditMode) return false
+    if (initialSnapshot === null) return false
+    return initialSnapshot !== currentSnapshot
+  }, [isEditMode, initialSnapshot, currentSnapshot])
+
+  // New post that hasn't created a draft yet: warn if user typed anything
+  const hasUnsavedNewPost = useMemo(() => {
+    if (isEditMode) return false
+    if (effectivePostId) return false
+    const hasText = Boolean(title.trim() || excerpt.trim())
+    const hasContent = JSON.stringify(contentJson) !== JSON.stringify(EMPTY_DOC)
+    const hasMedia = Boolean(coverUrl)
+    return hasText || hasContent || hasMedia
+  }, [isEditMode, effectivePostId, title, excerpt, contentJson, coverUrl])
+
+  // Warn when:
+  // - edit mode + dirty (even if autosave enabled, because user expects confirm)
+  // - debounce save is pending
+  // - unsaved new post before a draft exists
+  const shouldWarnNavigation = useMemo(() => {
+    if (savePending) return true
+    if (isEditMode && isDirty) return true
+    if (hasUnsavedNewPost) return true
+    return false
+  }, [savePending, isEditMode, isDirty, hasUnsavedNewPost])
+
+  // Expose a global guard so navbar button-driven navigations can respect it.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.__PENDEMIC_UNSAVED__ = {
+      enabled: shouldWarnNavigation,
+      message: 'יש לך שינויים שלא נשמרו. לצאת בכל זאת?',
+    }
+    return () => {
+      // don't force-disable; just mark disabled when unmount
+      window.__PENDEMIC_UNSAVED__ = { enabled: false, message: '' }
+    }
+  }, [shouldWarnNavigation])
 
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasLoadedDraftOnce = useRef(false)
@@ -111,10 +222,7 @@ export default function WritePage() {
     const load = async () => {
       setLoading(true)
 
-      const { data: ch, error: chErr } = await supabase
-        .from('channels')
-        .select('id, name_he')
-        .order('sort_order')
+      const { data: ch, error: chErr } = await supabase.from('channels').select('id, name_he').order('sort_order')
 
       if (chErr) {
         setErrorMsg(chErr.message ?? 'שגיאה בטעינת נתונים')
@@ -134,23 +242,54 @@ export default function WritePage() {
     void load()
   }, [])
 
-  // keep draftId in sync with URL changes
+  // reset load guard when URL changes
   useEffect(() => {
-    setDraftId(draftParam)
-  }, [draftParam])
+    hasLoadedDraftOnce.current = false
+  }, [activeIdFromUrl])
+
+  // ✅ Reset editor state when navigating to "new post" (no edit/draft in URL)
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    const wantsNew = !activeIdFromUrl
+    if (!wantsNew) return
+
+    const nextChannel = channelParam ? Number(channelParam) : null
+
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    autosaveTimer.current = null
+    setSavePending(false)
+
+    setCreatedDraftId(null)
+    setDraftSlug(null)
+    setLoadedStatus(null)
+    setTitle('')
+    setExcerpt('')
+    setContentJson(EMPTY_DOC)
+    setCoverUrl(null)
+    setCoverSource(null)
+    setAutoCoverUsed(false)
+    setSelectedTagIds([])
+    setSubcategoryTagId(null)
+    setLastSavedAt(null)
+    setErrorMsg(null)
+    setInitialSnapshot(null)
+
+    if (Number.isFinite(nextChannel as number)) {
+      setChannelId(nextChannel)
+    }
+  }, [activeIdFromUrl, channelParam])
 
   // --- Load "tags" (chips) when channel changes
-  // IMPORTANT: these are NOT the subcategory. Subcategory is a single genre tag stored in posts.subcategory_tag_id.
   useEffect(() => {
     const loadTags = async () => {
       if (!channelId) return
-      const allowedTypes = TAG_TYPES_BY_CHANNEL[channelId] ?? ['emotion', 'theme']
+      const allowedTypes = (TAG_TYPES_BY_CHANNEL[channelId] ?? ['emotion', 'theme']) as TagType[]
 
       const { data, error } = await supabase
         .from('tags')
         .select('id, type, name_he, channel_id')
         .eq('is_active', true)
-        .in('type', allowedTypes as any) // PostgREST enum filter
+        .in('type', allowedTypes as unknown as string[])
 
       if (error) {
         console.error(error)
@@ -159,7 +298,6 @@ export default function WritePage() {
       }
 
       const filtered = (data ?? []).filter(t => t.channel_id === null || t.channel_id === channelId) as Tag[]
-      // Ensure we never show the subcategory tags in the chips area
       const withoutGenre = filtered.filter(t => t.type !== 'genre')
       setTags(uniqById(withoutGenre))
     }
@@ -168,7 +306,6 @@ export default function WritePage() {
   }, [channelId])
 
   // --- Load subcategories for selected channel
-  // We only show subcategories that are actually used by posts in that channel (stable + no "random tags" leakage).
   useEffect(() => {
     const loadSubcategories = async () => {
       if (!channelId) return
@@ -186,9 +323,7 @@ export default function WritePage() {
         return
       }
 
-      const ids = Array.from(
-        new Set((postRows ?? []).map(r => r.subcategory_tag_id).filter(Boolean) as number[])
-      )
+      const ids = Array.from(new Set((postRows ?? []).map(r => r.subcategory_tag_id).filter(Boolean) as number[]))
 
       if (ids.length === 0) {
         setSubcategoryOptions([])
@@ -196,10 +331,7 @@ export default function WritePage() {
         return
       }
 
-      const { data: tagRows, error: tagErr } = await supabase
-        .from('tags')
-        .select('id, name_he')
-        .in('id', ids)
+      const { data: tagRows, error: tagErr } = await supabase.from('tags').select('id, name_he').in('id', ids)
 
       if (tagErr) {
         console.error(tagErr)
@@ -222,6 +354,7 @@ export default function WritePage() {
   }, [channelId])
 
   const toggleTag = (id: number) => {
+    if (settingsLocked) return
     setSelectedTagIds(prev => {
       if (prev.includes(id)) return prev.filter(x => x !== id)
       if (prev.length >= 3) return prev
@@ -229,10 +362,10 @@ export default function WritePage() {
     })
   }
 
-  // --- Load draft (once) if ?draft=...
+  // --- Load draft/post (once) if ?draft=... or ?edit=...
   useEffect(() => {
     const loadDraft = async () => {
-      if (!draftId || !userId) return
+      if (!effectivePostId || !userId) return
       if (hasLoadedDraftOnce.current) return
 
       const { data: post, error } = await supabase
@@ -240,7 +373,7 @@ export default function WritePage() {
         .select(
           'id, slug, title, excerpt, content_json, channel_id, format_id, subcategory_tag_id, status, cover_image_url, cover_source, updated_at'
         )
-        .eq('id', draftId)
+        .eq('id', effectivePostId)
         .eq('author_id', userId)
         .single()
 
@@ -250,8 +383,6 @@ export default function WritePage() {
       }
 
       const d = post as DraftRow
-      // We allow editing drafts AND published posts here.
-      // (Owner actions link to /write?draft=<postId> for both.)
       setLoadedStatus(d.status)
 
       setDraftSlug(d.slug)
@@ -265,21 +396,35 @@ export default function WritePage() {
       setLastSavedAt(d.updated_at)
       setAutoCoverUsed(d.cover_source === 'pexels')
 
-      // load tags (non-genre)
       const { data: tagRows } = await supabase.from('post_tags').select('tag_id').eq('post_id', d.id)
-      setSelectedTagIds((tagRows ?? []).map(r => r.tag_id))
+      const loadedTagIds = (tagRows ?? []).map(r => r.tag_id)
+      setSelectedTagIds(loadedTagIds)
+
+      setInitialSnapshot(
+        snapshotOf({
+          title: (d.title ?? '').toString(),
+          excerpt: (d.excerpt ?? '').toString(),
+          contentJson: ((d.content_json as JSONContent) ?? EMPTY_DOC) as JSONContent,
+          coverUrl: d.cover_image_url,
+          coverSource: d.cover_source,
+          channelId: d.channel_id,
+          subcategoryTagId: d.subcategory_tag_id,
+          selectedTagIds: loadedTagIds,
+        })
+      )
 
       hasLoadedDraftOnce.current = true
     }
 
     void loadDraft()
-  }, [draftId, userId])
+  }, [effectivePostId, userId])
 
   const ensureDraft = useCallback(async (): Promise<{ id: string; slug: string } | null> => {
     if (!userId) return null
-    if (draftId && draftSlug) return { id: draftId, slug: draftSlug }
+    // In edit mode we never create a new draft silently.
+    if (isEditMode) return null
+    if (effectivePostId && draftSlug) return { id: effectivePostId, slug: draftSlug }
 
-    // Create a draft immediately
     const slug = crypto.randomUUID()
     const { data: created, error } = await supabase
       .from('posts')
@@ -303,38 +448,62 @@ export default function WritePage() {
       return null
     }
 
-    setDraftId(created.id)
+    setCreatedDraftId(created.id)
     setDraftSlug(created.slug)
     router.replace(`/write?draft=${created.id}`)
     return { id: created.id, slug: created.slug }
-  }, [userId, draftId, draftSlug, title, excerpt, contentJson, channelId, subcategoryTagId, coverUrl, coverSource, router])
+  }, [userId, isEditMode, effectivePostId, draftSlug, title, excerpt, contentJson, channelId, subcategoryTagId, coverUrl, coverSource, router])
 
   const syncTags = useCallback(
     async (postId: string) => {
-      // keep it simple: replace set
+      if (settingsLocked) return
       await supabase.from('post_tags').delete().eq('post_id', postId)
       if (selectedTagIds.length === 0) return
       await supabase.from('post_tags').insert(selectedTagIds.map(tag_id => ({ post_id: postId, tag_id })))
     },
-    [selectedTagIds]
+    [selectedTagIds, settingsLocked]
   )
 
-  const upsertDraftSilently = useCallback(
-    async () => {
-      if (!userId) return
+  const upsertDraftSilently = useCallback(async () => {
+    if (!userId) return
 
-      // don't create draft for completely empty state
-      const isEmpty = !title.trim() && !excerpt.trim() && JSON.stringify(contentJson) === JSON.stringify(EMPTY_DOC)
-      if (isEmpty && !draftId) return
+    const isEmpty = !title.trim() && !excerpt.trim() && JSON.stringify(contentJson) === JSON.stringify(EMPTY_DOC)
+    if (isEmpty && !effectivePostId && !isEditMode) return
 
-      setSaving(true)
-      setErrorMsg(null)
+    setSaving(true)
+    setErrorMsg(null)
 
-      const existing = await ensureDraft()
-      if (!existing) {
-        setSaving(false)
+    try {
+      // ✅ EDIT MODE:
+      if (isEditMode) {
+        if (!effectivePostId) return
+
+        const payload: Record<string, unknown> = {
+          title: title.trim() || null,
+          excerpt: excerpt.trim() || null,
+          content_json: contentJson,
+          cover_image_url: coverUrl,
+          cover_source: coverSource,
+        }
+
+        if (!settingsLocked) {
+          payload.channel_id = channelId
+          payload.subcategory_tag_id = subcategoryTagId
+        }
+
+        const { error } = await supabase.from('posts').update(payload).eq('id', effectivePostId).eq('author_id', userId)
+        if (error) {
+          setErrorMsg(error.message)
+          return
+        }
+
+        if (!settingsLocked) await syncTags(effectivePostId)
+        setLastSavedAt(new Date().toISOString())
         return
       }
+
+      const existing = await ensureDraft()
+      if (!existing) return
 
       const { id } = existing
       const { error } = await supabase
@@ -354,38 +523,134 @@ export default function WritePage() {
 
       if (error) {
         setErrorMsg(error.message)
-        setSaving(false)
         return
       }
 
       await syncTags(id)
-
-      const now = new Date().toISOString()
-      setLastSavedAt(now)
+      setLastSavedAt(new Date().toISOString())
+    } finally {
       setSaving(false)
-    },
-    [userId, title, excerpt, contentJson, draftId, ensureDraft, channelId, subcategoryTagId, coverUrl, coverSource, syncTags]
-  )
+      setSavePending(false)
+    }
+  }, [
+    userId,
+    title,
+    excerpt,
+    contentJson,
+    effectivePostId,
+    ensureDraft,
+    channelId,
+    subcategoryTagId,
+    coverUrl,
+    coverSource,
+    syncTags,
+    isEditMode,
+    settingsLocked,
+  ])
 
-  // autosave debounce
+  // autosave debounce (drafts + edit-drafts)
   useEffect(() => {
     if (!userId) return
+    if (!autosaveEnabled) return
+
+    // Prevent one transient render from old state being saved into a new draft.
+    const isTransientCarryover = !activeIdFromUrl && !createdDraftId && loadedStatus !== null
+    if (isTransientCarryover) return
+
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    setSavePending(true)
+
     autosaveTimer.current = setTimeout(() => {
       void upsertDraftSilently()
     }, 900)
+
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
     }
-  }, [userId, title, excerpt, contentJson, channelId, subcategoryTagId, coverUrl, coverSource, selectedTagIds, upsertDraftSilently])
+  }, [
+    userId,
+    autosaveEnabled,
+    title,
+    excerpt,
+    contentJson,
+    channelId,
+    subcategoryTagId,
+    coverUrl,
+    coverSource,
+    selectedTagIds,
+    upsertDraftSilently,
+    activeIdFromUrl,
+    createdDraftId,
+    loadedStatus,
+  ])
+
+  // Warn on closing tab / refreshing
+  useEffect(() => {
+    if (!shouldWarnNavigation) return
+
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [shouldWarnNavigation])
+
+  // Warn on in-app navigation for anchor links (Next <Link/> renders <a>)
+  useEffect(() => {
+    if (!shouldWarnNavigation) return
+
+    const message = 'יש לך שינויים שלא נשמרו. לצאת בכל זאת?'
+
+    const onDocumentClickCapture = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      const a = target?.closest?.('a') as HTMLAnchorElement | null
+      if (!a) return
+      const href = a.getAttribute('href')
+      if (!href) return
+
+      if (href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) return
+      if (href.startsWith('http://') || href.startsWith('https://')) return
+      if (href === window.location.pathname + window.location.search) return
+
+      const ok = window.confirm(message)
+      if (ok) return
+
+      e.preventDefault()
+      e.stopPropagation()
+    }
+
+    // Back/forward button: confirm on pop
+    const onPopState = () => {
+      const ok = window.confirm(message)
+      if (!ok) {
+        // Re-stay on the page
+        history.pushState(null, '', window.location.href)
+        return
+      }
+      // User confirmed leaving: remove handler and go back one more step
+      window.removeEventListener('popstate', onPopState)
+      document.removeEventListener('click', onDocumentClickCapture, true)
+      history.back()
+    }
+
+    history.pushState(null, '', window.location.href)
+    document.addEventListener('click', onDocumentClickCapture, true)
+    window.addEventListener('popstate', onPopState)
+    return () => {
+      document.removeEventListener('click', onDocumentClickCapture, true)
+      window.removeEventListener('popstate', onPopState)
+    }
+  }, [shouldWarnNavigation])
 
   const handlePickCoverFile = async (file: File) => {
     if (!userId) return
-    const created = await ensureDraft()
-    if (!created) return
+    const postId = isEditMode ? effectivePostId : (await ensureDraft())?.id
+    if (!postId) return
 
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
-    const path = `${userId}/${created.id}/cover-${crypto.randomUUID()}.${ext}`
+    const path = `${userId}/${postId}/cover-${crypto.randomUUID()}.${ext}`
 
     const { error: uploadErr } = await supabase.storage.from('post-assets').upload(path, file, {
       upsert: false,
@@ -409,8 +674,12 @@ export default function WritePage() {
       alert('כדי לבחור קאבר אוטומטי צריך כותרת')
       return
     }
-    const created = await ensureDraft()
-    if (!created) return
+    if (!isEditMode) {
+      const created = await ensureDraft()
+      if (!created) return
+    } else {
+      if (!effectivePostId) return
+    }
 
     setErrorMsg(null)
     const seed = Date.now()
@@ -447,29 +716,43 @@ export default function WritePage() {
   const publish = async () => {
     if (!userId) return
 
-    // חובה כותרת
-    if (!title.trim()) {
-      alert('כותרת היא חובה')
+    // ✅ In edit-mode for already published posts, "publish" is actually "save changes".
+    if (settingsLocked && effectivePostId) {
+      setSaving(true)
+      setErrorMsg(null)
+
+      const { error } = await supabase
+        .from('posts')
+        .update({
+          title: title.trim() || null,
+          excerpt: excerpt.trim() || null,
+          content_json: contentJson,
+          cover_image_url: coverUrl,
+          cover_source: coverSource,
+        })
+        .eq('id', effectivePostId)
+        .eq('author_id', userId)
+
+      if (error) {
+        setErrorMsg(error.message)
+        setSaving(false)
+        return
+      }
+
+      setInitialSnapshot(currentSnapshot)
+      setLastSavedAt(new Date().toISOString())
+
+      setSaving(false)
+      if (safeReturnParam) return router.push(safeReturnParam)
+      if (draftSlug && draftSlug !== 'undefined' && draftSlug !== 'null') return router.push(`/post/${draftSlug}`)
+      router.push('/notebook')
       return
     }
 
-    // חובה ערוץ
-    if (!channelId) {
-      alert('בחר ערוץ')
-      return
-    }
-
-    // חובה תת־קטגוריה
-    if (!subcategoryTagId) {
-      alert('בחר תת־קטגוריה')
-      return
-    }
-
-    // חובה לפחות תגית אחת (מתוך המקסימום 3 שכבר קיים)
-    if (selectedTagIds.length < 1) {
-      alert('חובה לבחור לפחות תגית אחת')
-      return
-    }
+    if (!title.trim()) return alert('כותרת היא חובה')
+    if (!channelId) return alert('בחר ערוץ')
+    if (!subcategoryTagId) return alert('בחר תת־קטגוריה')
+    if (selectedTagIds.length < 1) return alert('חובה לבחור לפחות תגית אחת')
 
     setSaving(true)
     setErrorMsg(null)
@@ -480,10 +763,8 @@ export default function WritePage() {
       return
     }
 
-    // שמירה שקטה של טיוטה + סנכרון תגיות
     await upsertDraftSilently()
 
-    // אם אין קאבר — בוחרים אוטומטית בזמן פרסום
     let finalCoverUrl = coverUrl
     let finalCoverSource = coverSource
 
@@ -497,8 +778,6 @@ export default function WritePage() {
 
       finalCoverUrl = autoUrl
       finalCoverSource = 'pexels'
-
-      // מעדכן UI גם
       setCoverUrl(autoUrl)
       setCoverSource('pexels')
       setAutoCoverUsed(true)
@@ -531,10 +810,14 @@ export default function WritePage() {
   }
 
   const savingText = saving
-    ? 'שומר טיוטה…'
-    : lastSavedAt
-      ? `נשמר • ${new Date(lastSavedAt as string).toLocaleString('he-IL')}`
-      : 'לא נשמר עדיין'
+    ? settingsLocked
+      ? 'שומר שינויים…'
+      : 'שומר טיוטה…'
+    : savePending
+      ? 'שומר…'
+      : lastSavedAt
+        ? `נשמר • ${new Date(lastSavedAt).toLocaleString('he-IL')}`
+        : 'לא נשמר עדיין'
 
   if (loading) {
     return (
@@ -550,19 +833,21 @@ export default function WritePage() {
         <header className="mb-6 flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
-              {loadedStatus === 'published' && draftId ? 'עריכת פוסט' : 'כתיבה'}
+              {loadedStatus === 'published' && effectivePostId ? 'עריכת פוסט' : 'כתיבה'}
             </h1>
             <div className="mt-2 text-sm text-muted-foreground">
-              {loadedStatus === 'published' && draftId
-                ? 'אתה עורך פוסט קיים. אפשר לשמור ולפרסם מחדש.'
-                : 'מקום לעבוד. אין לחץ לפרסם.'}
+              {settingsLocked
+                ? 'אתה עורך פוסט מפורסם. ההגדרות (קטגוריה/תת־קטגוריה/תגיות) נעולות.'
+                : loadedStatus === 'published' && effectivePostId
+                  ? 'אתה עורך פוסט קיים.'
+                  : 'מקום לעבוד. אין לחץ לפרסם.'}
             </div>
           </div>
           <div className="text-left">
             <div className="text-xs text-muted-foreground">{savingText}</div>
-            {draftId ? (
+            {effectivePostId ? (
               <div className="mt-1 text-xs text-muted-foreground">
-                {loadedStatus === 'published' ? 'פוסט:' : 'טיוטה:'} {draftId.slice(0, 8)}…
+                {loadedStatus === 'published' ? 'פוסט:' : 'טיוטה:'} {effectivePostId.slice(0, 8)}…
               </div>
             ) : null}
           </div>
@@ -572,10 +857,8 @@ export default function WritePage() {
           <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{errorMsg}</div>
         ) : null}
 
-        {/* MyPen-like preview block */}
         <section className="rounded-3xl border bg-white p-4 shadow-sm">
           <div className="grid gap-4 md:grid-cols-3">
-            {/* COVER */}
             <div className="md:col-span-1">
               <div className="overflow-hidden rounded-2xl border bg-neutral-50">
                 {coverUrl ? (
@@ -627,7 +910,6 @@ export default function WritePage() {
               ) : null}
             </div>
 
-            {/* TITLE + EXCERPT */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium">כותרת</label>
               <input
@@ -651,20 +933,29 @@ export default function WritePage() {
                 className="mt-2 w-full resize-none rounded-2xl border px-4 py-3 text-sm leading-6 outline-none focus:ring-2 focus:ring-black/10"
               />
 
-              <details className="mt-4 rounded-2xl border bg-neutral-50 p-4">
-                <summary className="cursor-pointer text-sm font-medium">הגדרות (ערוץ · תת־קטגוריה · תגיות)</summary>
+              <details className="mt-4 rounded-2xl border bg-neutral-50 p-4" open={settingsLocked ? false : undefined}>
+                <summary className="cursor-pointer text-sm font-medium">
+                  הגדרות (ערוץ · תת־קטגוריה · תגיות){settingsLocked ? ' — נעול' : ''}
+                </summary>
+
+                {settingsLocked ? (
+                  <div className="mt-3 rounded-xl border bg-white p-3 text-xs text-muted-foreground">
+                    כדי לשנות קטגוריה/תגיות צריך ליצור פוסט חדש. כאן ניתן לערוך רק תוכן/כותרת/תקציר/קאבר.
+                  </div>
+                ) : null}
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <div>
                     <label className="block text-sm font-medium">ערוץ</label>
                     <select
+                      disabled={settingsLocked}
                       value={channelId ?? ''}
                       onChange={e => {
                         const next = Number(e.target.value)
                         setChannelId(next)
                         setSubcategoryTagId(null)
                       }}
-                      className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
+                      className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm disabled:opacity-60"
                     >
                       {channels.map(c => (
                         <option key={c.id} value={c.id}>
@@ -677,12 +968,13 @@ export default function WritePage() {
                   <div>
                     <label className="block text-sm font-medium">תת־קטגוריה</label>
                     <select
+                      disabled={settingsLocked}
                       value={subcategoryTagId ?? ''}
                       onChange={e => {
                         const v = e.target.value
                         setSubcategoryTagId(v ? Number(v) : null)
                       }}
-                      className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
+                      className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm disabled:opacity-60"
                     >
                       <option value="" disabled>
                         בחר תת־קטגוריה
@@ -693,9 +985,6 @@ export default function WritePage() {
                         </option>
                       ))}
                     </select>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      תת־קטגוריה אחת בלבד — זו מה שמחליטה איפה הפוסט יופיע בעמודי הקטגוריות.
-                    </div>
                   </div>
                 </div>
 
@@ -711,9 +1000,10 @@ export default function WritePage() {
                         <button
                           key={t.id}
                           type="button"
+                          disabled={settingsLocked}
                           onClick={() => toggleTag(t.id)}
                           className={
-                            'rounded-full border px-3 py-1.5 text-sm transition ' +
+                            'rounded-full border px-3 py-1.5 text-sm transition disabled:opacity-60 ' +
                             (selected ? 'bg-neutral-900 text-white border-neutral-900' : 'bg-white hover:bg-neutral-50')
                           }
                         >
@@ -728,29 +1018,62 @@ export default function WritePage() {
           </div>
         </section>
 
-        {/* Editor */}
         <section className="mt-5 rounded-3xl border bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-sm font-medium">הטקסט</h2>
-            <div className="text-xs text-muted-foreground">הטקסט נשמר אוטומטית</div>
+            <div className="text-xs text-muted-foreground">
+              {autosaveEnabled ? 'הטקסט נשמר אוטומטית' : 'השינויים לא נשמרים עד שלוחצים שמור'}
+            </div>
           </div>
           <Editor value={contentJson} onChange={setContentJson} />
         </section>
 
-        {/* Actions */}
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <div className="text-xs text-muted-foreground">
-            טיפ: אפשר לצאת מהעמוד ולחזור דרך <span className="font-bold">המחברת</span>.
+            {isEditMode ? (
+              <>
+                טיפ: אם לא בטוח—אפשר ללחוץ <span className="font-bold">ביטול שינויים</span>.
+              </>
+            ) : (
+              <>
+                טיפ: אפשר לצאת מהעמוד ולחזור דרך <span className="font-bold">המחברת</span>.
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => router.push('/notebook')}
-              className="rounded-full border bg-white px-4 py-2 text-sm hover:bg-neutral-50"
-            >
-              למחברת
-            </button>
+            {isEditMode ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (shouldWarnNavigation) {
+                    const ok = confirm('לבטל ולזרוק את השינויים שלא נשמרו?')
+                    if (!ok) return
+                  }
+                  if (safeReturnParam) return router.push(safeReturnParam)
+                  if (typeof window !== 'undefined' && window.history.length > 1) return router.back()
+                  if (draftSlug && draftSlug !== 'undefined' && draftSlug !== 'null') return router.push(`/post/${draftSlug}`)
+                  router.push('/notebook')
+                }}
+                className="rounded-full border bg-white px-4 py-2 text-sm hover:bg-neutral-50"
+              >
+                ביטול שינויים
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  if (shouldWarnNavigation) {
+                    const ok = confirm('יש לך טקסט שלא נשמר עדיין. לצאת בכל זאת?')
+                    if (!ok) return
+                  }
+                  router.push('/notebook')
+                }}
+                className="rounded-full border bg-white px-4 py-2 text-sm hover:bg-neutral-50"
+              >
+                למחברת
+              </button>
+            )}
 
             <button
               type="button"
@@ -758,7 +1081,7 @@ export default function WritePage() {
               disabled={saving}
               className="rounded-full bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800 disabled:opacity-50"
             >
-              {saving ? 'מפרסם…' : 'פרסם'}
+              {saving ? (settingsLocked ? 'שומר…' : 'מפרסם…') : settingsLocked ? 'שמור שינויים' : 'פרסם'}
             </button>
           </div>
         </div>

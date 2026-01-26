@@ -1,6 +1,7 @@
 "use client"
 
 import Link from 'next/link'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import PostCard, { type PostCardPost } from '@/components/PostCard'
 import { supabase } from '@/lib/supabaseClient'
@@ -65,6 +66,13 @@ export default function ProfilePostsClient({
   username: string
   perPage?: number
 }) {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const returnTo = useMemo(() => {
+    const q = searchParams.toString()
+    return q ? `${pathname}?${q}` : pathname
+  }, [pathname, searchParams])
+
   const [viewerId, setViewerId] = useState<string | null>(null)
   const isOwner = viewerId === profileId
 
@@ -80,7 +88,10 @@ export default function ProfilePostsClient({
   const [sortedIdsCache, setSortedIdsCache] = useState<Record<string, string[]>>({})
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setViewerId(data.user?.id ?? null)).catch(() => setViewerId(null))
+    supabase.auth
+      .getUser()
+      .then(({ data }) => setViewerId(data.user?.id ?? null))
+      .catch(() => setViewerId(null))
   }, [])
 
   const totalPages = useMemo(() => {
@@ -95,7 +106,7 @@ export default function ProfilePostsClient({
 
   const refetchHard = () => {
     setSortedIdsCache({})
-    setRefreshKey((k) => k + 1)
+    setRefreshKey(k => k + 1)
   }
 
   const onDelete = async (post: PostCardPost) => {
@@ -105,11 +116,16 @@ export default function ProfilePostsClient({
 
     try {
       const res = await authedFetch(`/api/posts/${post.id}/delete`, { method: 'POST' })
-      const j = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(j?.error?.message ?? j?.error ?? 'שגיאה במחיקה')
+      const j = (await res.json().catch(() => ({}))) as {
+        error?: string | { message?: string }
+      }
+      if (!res.ok) {
+        const msg = typeof j.error === 'string' ? j.error : j.error?.message
+        throw new Error(msg ?? 'שגיאה במחיקה')
+      }
 
       // remove from UI immediately
-      setPosts((prev) => prev.filter((p) => p.id !== post.id))
+      setPosts(prev => prev.filter(p => p.id !== post.id))
       refetchHard()
     } catch (e: unknown) {
       alert(getErrorMessage(e))
@@ -190,7 +206,7 @@ export default function ProfilePostsClient({
 
           if (allPostsRes.error) throw allPostsRes.error
           const allPosts = (allPostsRes.data ?? []) as PostBase[]
-          const ids = allPosts.map((p) => p.id)
+          const ids = allPosts.map(p => p.id)
 
           const counts = new Map<string, number>()
           if (ids.length) {
@@ -202,7 +218,11 @@ export default function ProfilePostsClient({
                 counts.set(pid, (counts.get(pid) ?? 0) + 1)
               }
             } else {
-              const rRes = await supabase.from('post_reaction_votes').select('post_id').in('post_id', ids).limit(5000)
+              const rRes = await supabase
+                .from('post_reaction_votes')
+                .select('post_id')
+                .in('post_id', ids)
+                .limit(5000)
               if (rRes.error) throw rRes.error
               for (const row of rRes.data ?? []) {
                 const pid = (row as { post_id: string }).post_id
@@ -211,7 +231,7 @@ export default function ProfilePostsClient({
             }
           }
 
-          const byId = new Map(allPosts.map((p) => [p.id, p]))
+          const byId = new Map(allPosts.map(p => [p.id, p]))
           sortedIds = [...ids].sort((a, b) => {
             const ca = counts.get(a) ?? 0
             const cb = counts.get(b) ?? 0
@@ -221,7 +241,7 @@ export default function ProfilePostsClient({
             return db - da
           })
 
-          setSortedIdsCache((prev) => ({ ...prev, [cacheKey]: sortedIds! }))
+          setSortedIdsCache(prev => ({ ...prev, [cacheKey]: sortedIds! }))
         }
 
         const sliceIds = sortedIds.slice(from, to + 1)
@@ -241,11 +261,11 @@ export default function ProfilePostsClient({
 
         if (res.error) throw res.error
 
-        const byId = new Map((res.data ?? []).map((p) => [(p as PostRow).id, p as PostRow]))
+        const byId = new Map((res.data ?? []).map(p => [(p as PostRow).id, p as PostRow]))
         const ordered = sliceIds
-          .map((id) => byId.get(id))
+          .map(id => byId.get(id))
           .filter((p): p is PostRow => Boolean(p))
-          .map((p) => ({
+          .map(p => ({
             id: p.id,
             slug: p.slug,
             title: p.title,
@@ -320,12 +340,12 @@ export default function ProfilePostsClient({
         <div className="rounded border bg-white p-6 text-sm text-muted-foreground">טוען…</div>
       ) : posts.length ? (
         <div className="space-y-3">
-          {posts.map((p) => (
+          {posts.map(p => (
             <div key={p.slug} className="group relative">
               {isOwner && p.id ? (
                 <div className="absolute left-2 top-2 z-10 flex gap-1 opacity-0 transition group-hover:opacity-100">
                   <Link
-                    href={`/write?draft=${encodeURIComponent(p.id)}`}
+                    href={`/write?edit=${encodeURIComponent(p.id)}&return=${encodeURIComponent(returnTo)}`}
                     className="rounded border bg-white/95 px-2 py-1 text-xs shadow-sm hover:bg-neutral-50"
                     title="ערוך"
                   >
@@ -355,13 +375,13 @@ export default function ProfilePostsClient({
           <button
             type="button"
             disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
             className="rounded border bg-white px-3 py-1.5 text-sm disabled:opacity-50"
           >
             הקודם
           </button>
 
-          {pages.map((n) => (
+          {pages.map(n => (
             <button
               key={n}
               type="button"
@@ -375,7 +395,7 @@ export default function ProfilePostsClient({
           <button
             type="button"
             disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             className="rounded border bg-white px-3 py-1.5 text-sm disabled:opacity-50"
           >
             הבא
