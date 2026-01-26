@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { adminFetch } from "@/lib/admin/adminFetch"
 
+import { getAdminErrorMessage } from '@/lib/admin/adminUi'
 type ReportRow = {
   id: string
   created_at: string
@@ -25,9 +26,6 @@ type ReportsApiResponse = {
   reports?: ReportRow[]
 }
 
-function getErr(j: any, fallback: string) {
-  return j?.error?.message ?? j?.error ?? fallback
-}
 
 function isReportsApiResponse(v: unknown): v is ReportsApiResponse {
   return typeof v === "object" && v !== null
@@ -57,7 +55,7 @@ export default function ReportsPage() {
 
       const json: unknown = await res.json()
       if (!isReportsApiResponse(json)) throw new Error("תגובה לא צפויה מהשרת")
-      if (!res.ok) throw new Error(getErr(json, `HTTP ${res.status}`))
+      if (!res.ok) throw new Error(getAdminErrorMessage(json, `HTTP ${res.status}`))
 
       setRows(Array.isArray(json.reports) ? json.reports : [])
     } catch (e: unknown) {
@@ -89,7 +87,7 @@ export default function ReportsPage() {
 
       const json: unknown = await res.json()
       if (!isReportsApiResponse(json)) throw new Error("תגובה לא צפויה מהשרת")
-      if (!res.ok) throw new Error(getErr(json, `HTTP ${res.status}`))
+      if (!res.ok) throw new Error(getAdminErrorMessage(json, `HTTP ${res.status}`))
 
       await load()
     } catch (e: unknown) {

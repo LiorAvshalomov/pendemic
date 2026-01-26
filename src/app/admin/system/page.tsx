@@ -3,9 +3,7 @@
 import { useMemo, useState } from 'react'
 import { adminFetch } from '@/lib/admin/adminFetch'
 
-function getErr(j: any, fallback: string) {
-  return j?.error?.message ?? j?.error ?? fallback
-}
+import { getAdminErrorMessage } from '@/lib/admin/adminUi'
 
 export default function AdminSystemPage() {
   const [mode, setMode] = useState<'user' | 'all'>('user')
@@ -33,7 +31,7 @@ export default function AdminSystemPage() {
         body: JSON.stringify({ mode, username: username.trim(), title: title.trim(), message: message.trim() }),
       })
       const j = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(getErr(j, 'שגיאה'))
+      if (!r.ok) throw new Error(getAdminErrorMessage(j, 'שגיאה'))
       alert(`נשלח ✅ (סה״כ: ${j?.sent ?? 1})`)
       setTitle('')
       setMessage('')
