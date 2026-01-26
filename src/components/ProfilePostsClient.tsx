@@ -1,5 +1,6 @@
 "use client"
 
+import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import PostCard, { type PostCardPost } from '@/components/PostCard'
 import { supabase } from '@/lib/supabaseClient'
@@ -31,6 +32,30 @@ function clampPage(n: number) {
   return Math.floor(n)
 }
 
+function getErrorMessage(e: unknown) {
+  if (e && typeof e === 'object' && 'message' in e && typeof (e as { message?: unknown }).message === 'string') {
+    return (e as { message: string }).message
+  }
+  if (e instanceof Error) return e.message
+  return 'שגיאה לא ידועה'
+}
+
+async function authedFetch(input: string, init: RequestInit = {}) {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) throw new Error('Not authenticated')
+
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string> | undefined),
+    Authorization: `Bearer ${token}`,
+  }
+  if (init.body && !headers['Content-Type'] && !(init.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json'
+  }
+
+  return fetch(input, { ...init, headers })
+}
+
 export default function ProfilePostsClient({
   profileId,
   username,
@@ -40,15 +65,23 @@ export default function ProfilePostsClient({
   username: string
   perPage?: number
 }) {
+  const [viewerId, setViewerId] = useState<string | null>(null)
+  const isOwner = viewerId === profileId
+
   const [sort, setSort] = useState<SortKey>('recent')
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [posts, setPosts] = useState<PostCardPost[]>([])
   const [total, setTotal] = useState(0)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // cached sorted ids for non-recent sorts (so changing page doesn't refetch everything)
   const [sortedIdsCache, setSortedIdsCache] = useState<Record<string, string[]>>({})
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setViewerId(data.user?.id ?? null)).catch(() => setViewerId(null))
+  }, [])
 
   const totalPages = useMemo(() => {
     const pages = Math.max(1, Math.ceil(total / perPage))
@@ -59,6 +92,29 @@ export default function ProfilePostsClient({
     // reset pagination when changing sort
     setPage(1)
   }, [sort])
+
+  const refetchHard = () => {
+    setSortedIdsCache({})
+    setRefreshKey((k) => k + 1)
+  }
+
+  const onDelete = async (post: PostCardPost) => {
+    if (!post.id) return
+    const ok = confirm('למחוק את הפוסט? אפשר יהיה לשחזר עד 14 יום, ואז יימחק לצמיתות.')
+    if (!ok) return
+
+    try {
+      const res = await authedFetch(`/api/posts/${post.id}/delete`, { method: 'POST' })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j?.error?.message ?? j?.error ?? 'שגיאה במחיקה')
+
+      // remove from UI immediately
+      setPosts((prev) => prev.filter((p) => p.id !== post.id))
+      refetchHard()
+    } catch (e: unknown) {
+      alert(getErrorMessage(e))
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -72,34 +128,36 @@ export default function ProfilePostsClient({
       const to = from + perPage - 1
 
       try {
-        // Total count (cheap, and needed for pagination)
+        // Total count
         const countRes = await supabase
           .from('posts')
-          .is('deleted_at', null)
           .select('id', { count: 'exact', head: true })
           .eq('author_id', profileId)
           .eq('status', 'published')
+          .is('deleted_at', null)
 
         if (countRes.error) throw countRes.error
         const totalCount = countRes.count ?? 0
         if (!cancelled) setTotal(totalCount)
 
-        // RECENT = simple paginated query
+        // RECENT
         if (sort === 'recent') {
           const res = await supabase
             .from('posts')
-            .is('deleted_at', null)
             .select(
               `id, slug, title, excerpt, created_at, cover_image_url,
-               channel:channels ( name_he )`
+              channel:channels ( name_he )`
             )
             .eq('author_id', profileId)
             .eq('status', 'published')
+            .is('deleted_at', null)
             .order('created_at', { ascending: false })
             .range(from, to)
 
           if (res.error) throw res.error
+
           const mapped = (res.data ?? []).map((p: PostBase) => ({
+            id: p.id,
             slug: p.slug,
             title: p.title,
             excerpt: p.excerpt,
@@ -116,49 +174,44 @@ export default function ProfilePostsClient({
           return
         }
 
-        // REACTIONS / COMMENTS = build sorted ids once, then slice
+        // REACTIONS / COMMENTS
         const cacheKey = `${sort}:${profileId}`
         let sortedIds = sortedIdsCache[cacheKey]
 
         if (!sortedIds) {
-          // fetch all post ids for the user (bounded)
           const allPostsRes = await supabase
             .from('posts')
-            .is('deleted_at', null)
             .select('id, slug, title, excerpt, created_at, cover_image_url, channel:channels ( name_he )')
             .eq('author_id', profileId)
             .eq('status', 'published')
+            .is('deleted_at', null)
             .order('created_at', { ascending: false })
             .limit(500)
 
           if (allPostsRes.error) throw allPostsRes.error
           const allPosts = (allPostsRes.data ?? []) as PostBase[]
-          const ids = allPosts.map(p => p.id)
+          const ids = allPosts.map((p) => p.id)
 
-          // count per post
           const counts = new Map<string, number>()
-          if (sort === 'comments') {
-            const cRes = await supabase.from('comments').select('post_id').in('post_id', ids).limit(5000)
-            if (cRes.error) throw cRes.error
-            for (const row of cRes.data ?? []) {
-              const pid = (row as { post_id: string }).post_id
-              counts.set(pid, (counts.get(pid) ?? 0) + 1)
-            }
-          } else {
-            const rRes = await supabase
-              .from('post_reaction_votes')
-              .select('post_id')
-              .in('post_id', ids)
-              .limit(5000)
-            if (rRes.error) throw rRes.error
-            for (const row of rRes.data ?? []) {
-              const pid = (row as { post_id: string }).post_id
-              counts.set(pid, (counts.get(pid) ?? 0) + 1)
+          if (ids.length) {
+            if (sort === 'comments') {
+              const cRes = await supabase.from('comments').select('post_id').in('post_id', ids).limit(5000)
+              if (cRes.error) throw cRes.error
+              for (const row of cRes.data ?? []) {
+                const pid = (row as { post_id: string }).post_id
+                counts.set(pid, (counts.get(pid) ?? 0) + 1)
+              }
+            } else {
+              const rRes = await supabase.from('post_reaction_votes').select('post_id').in('post_id', ids).limit(5000)
+              if (rRes.error) throw rRes.error
+              for (const row of rRes.data ?? []) {
+                const pid = (row as { post_id: string }).post_id
+                counts.set(pid, (counts.get(pid) ?? 0) + 1)
+              }
             }
           }
 
-          // Sort ids by count desc, tie-breaker: created_at desc
-          const byId = new Map(allPosts.map(p => [p.id, p]))
+          const byId = new Map(allPosts.map((p) => [p.id, p]))
           sortedIds = [...ids].sort((a, b) => {
             const ca = counts.get(a) ?? 0
             const cb = counts.get(b) ?? 0
@@ -168,7 +221,7 @@ export default function ProfilePostsClient({
             return db - da
           })
 
-          setSortedIdsCache(prev => ({ ...prev, [cacheKey]: sortedIds! }))
+          setSortedIdsCache((prev) => ({ ...prev, [cacheKey]: sortedIds! }))
         }
 
         const sliceIds = sortedIds.slice(from, to + 1)
@@ -179,21 +232,21 @@ export default function ProfilePostsClient({
 
         const res = await supabase
           .from('posts')
-          .is('deleted_at', null)
           .select(
             `id, slug, title, excerpt, created_at, cover_image_url,
-             channel:channels ( name_he )`
+            channel:channels ( name_he )`
           )
           .in('id', sliceIds)
+          .is('deleted_at', null)
 
         if (res.error) throw res.error
 
-        // Keep the sorted order
-        const byId = new Map((res.data ?? []).map(p => [(p as PostRow).id, p as PostRow]))
+        const byId = new Map((res.data ?? []).map((p) => [(p as PostRow).id, p as PostRow]))
         const ordered = sliceIds
-          .map(id => byId.get(id))
-          .filter(Boolean)
-          .map(p => ({
+          .map((id) => byId.get(id))
+          .filter((p): p is PostRow => Boolean(p))
+          .map((p) => ({
+            id: p.id,
             slug: p.slug,
             title: p.title,
             excerpt: p.excerpt,
@@ -207,18 +260,18 @@ export default function ProfilePostsClient({
           })) as PostCardPost[]
 
         if (!cancelled) setPosts(ordered)
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? 'שגיאה לא ידועה')
+      } catch (e: unknown) {
+        if (!cancelled) setError(getErrorMessage(e))
       } finally {
         if (!cancelled) setLoading(false)
       }
     }
 
-    run()
+    void run()
     return () => {
       cancelled = true
     }
-  }, [profileId, username, sort, page, perPage, sortedIdsCache])
+  }, [profileId, username, sort, page, perPage, sortedIdsCache, refreshKey])
 
   const pages = useMemo(() => {
     const n = totalPages
@@ -267,8 +320,30 @@ export default function ProfilePostsClient({
         <div className="rounded border bg-white p-6 text-sm text-muted-foreground">טוען…</div>
       ) : posts.length ? (
         <div className="space-y-3">
-          {posts.map(p => (
-            <PostCard key={p.slug} post={p} variant="mypen-row" />
+          {posts.map((p) => (
+            <div key={p.slug} className="group relative">
+              {isOwner && p.id ? (
+                <div className="absolute left-2 top-2 z-10 flex gap-1 opacity-0 transition group-hover:opacity-100">
+                  <Link
+                    href={`/write?draft=${encodeURIComponent(p.id)}`}
+                    className="rounded border bg-white/95 px-2 py-1 text-xs shadow-sm hover:bg-neutral-50"
+                    title="ערוך"
+                  >
+                    ערוך
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => void onDelete(p)}
+                    className="rounded border bg-white/95 px-2 py-1 text-xs text-red-700 shadow-sm hover:bg-red-50"
+                    title="מחק"
+                  >
+                    מחק
+                  </button>
+                </div>
+              ) : null}
+
+              <PostCard post={p} variant="mypen-row" />
+            </div>
           ))}
         </div>
       ) : (
@@ -280,13 +355,13 @@ export default function ProfilePostsClient({
           <button
             type="button"
             disabled={page <= 1}
-            onClick={() => setPage(p => Math.max(1, p - 1))}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
             className="rounded border bg-white px-3 py-1.5 text-sm disabled:opacity-50"
           >
             הקודם
           </button>
 
-          {pages.map(n => (
+          {pages.map((n) => (
             <button
               key={n}
               type="button"
@@ -300,7 +375,7 @@ export default function ProfilePostsClient({
           <button
             type="button"
             disabled={page >= totalPages}
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             className="rounded border bg-white px-3 py-1.5 text-sm disabled:opacity-50"
           >
             הבא

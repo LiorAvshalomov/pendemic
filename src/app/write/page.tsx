@@ -74,6 +74,7 @@ export default function WritePage() {
 
   const [draftId, setDraftId] = useState<string | null>(draftParam)
   const [draftSlug, setDraftSlug] = useState<string | null>(null)
+  const [loadedStatus, setLoadedStatus] = useState<'draft' | 'published' | null>(null)
 
   const [title, setTitle] = useState('')
   const [excerpt, setExcerpt] = useState('')
@@ -249,10 +250,9 @@ export default function WritePage() {
       }
 
       const d = post as DraftRow
-      if (d.status !== 'draft') {
-        setErrorMsg('אפשר לערוך כאן רק טיוטות')
-        return
-      }
+      // We allow editing drafts AND published posts here.
+      // (Owner actions link to /write?draft=<postId> for both.)
+      setLoadedStatus(d.status)
 
       setDraftSlug(d.slug)
       setTitle((d.title ?? '').toString())
@@ -549,12 +549,22 @@ export default function WritePage() {
       <div className="mx-auto max-w-4xl px-4 py-8">
         <header className="mb-6 flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">כתיבה</h1>
-            <div className="mt-2 text-sm text-muted-foreground">מקום לעבוד. אין לחץ לפרסם.</div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {loadedStatus === 'published' && draftId ? 'עריכת פוסט' : 'כתיבה'}
+            </h1>
+            <div className="mt-2 text-sm text-muted-foreground">
+              {loadedStatus === 'published' && draftId
+                ? 'אתה עורך פוסט קיים. אפשר לשמור ולפרסם מחדש.'
+                : 'מקום לעבוד. אין לחץ לפרסם.'}
+            </div>
           </div>
           <div className="text-left">
             <div className="text-xs text-muted-foreground">{savingText}</div>
-            {draftId ? <div className="mt-1 text-xs text-muted-foreground">טיוטה: {draftId.slice(0, 8)}…</div> : null}
+            {draftId ? (
+              <div className="mt-1 text-xs text-muted-foreground">
+                {loadedStatus === 'published' ? 'פוסט:' : 'טיוטה:'} {draftId.slice(0, 8)}…
+              </div>
+            ) : null}
           </div>
         </header>
 

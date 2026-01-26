@@ -6,6 +6,8 @@ import { formatDateTimeHe, formatRelativeHe, isNewPost } from '@/lib/time'
 export type PostCardMedals = { gold: number; silver: number; bronze: number }
 
 export type PostCardPost = {
+  /** Optional: used for owner actions (edit/delete) in some views */
+  id?: string
   slug: string
   title: string
   excerpt?: string | null

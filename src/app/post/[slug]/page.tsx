@@ -3,6 +3,7 @@ import Avatar from '@/components/Avatar'
 import Link from 'next/link'
 import RichText from '@/components/RichText'
 import PostShell from '@/components/PostShell'
+import PostOwnerMenu from '@/components/PostOwnerMenu'
 import { formatDateTimeHe } from '@/lib/time'
 import PostReactions from '@/components/PostReactions'
 import PostComments from '@/components/PostComments'
@@ -83,6 +84,7 @@ export default async function PostPage({ params }: PostPageProps) {
   return (
     <PostShell
       title={post.title}
+      actions={<PostOwnerMenu postId={post.id} authorId={post.author_id} />}
       meta={
         <>
           {channelName && channelHref ? (

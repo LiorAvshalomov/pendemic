@@ -3,19 +3,25 @@ import React from "react"
 type Props = {
   title: string
   meta?: React.ReactNode
+  actions?: React.ReactNode
   children: React.ReactNode
 }
 
-export default function PostShell({ title, meta, children }: Props) {
+export default function PostShell({ title, meta, actions, children }: Props) {
   return (
     <main className="min-h-screen bg-neutral-50" dir="rtl">
       <div className="mx-auto max-w-3xl px-4 py-10">
         <article className="rounded-3xl bg-white shadow-sm ring-1 ring-black/5 p-6 sm:p-10">
           <header className="mb-8">
-            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground text-right">
-              {title}
-            </h1>
-            {meta ? <div className="mt-3 text-sm text-muted-foreground text-right">{meta}</div> : null}
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground text-right break-words">
+                  {title}
+                </h1>
+                {meta ? <div className="mt-3 text-sm text-muted-foreground text-right">{meta}</div> : null}
+              </div>
+              {actions ? <div className="shrink-0">{actions}</div> : null}
+            </div>
           </header>
 
           <section className="text-right">{children}</section>
