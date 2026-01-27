@@ -89,5 +89,5 @@ export function timeAgoHeShort(iso: string | null) {
   if (hr < 24) return `לפני ${hr} ש׳`
   const day = Math.floor(hr / 24)
   if (day < 7) return `לפני ${day} ימים`
-  return formatDateHe(d)
+  return formatDateTimeHe(d)
 }

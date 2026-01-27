@@ -12,6 +12,9 @@ import PostShell from '@/components/PostShell'
 import PostOwnerMenu from '@/components/PostOwnerMenu'
 import PostReactions from '@/components/PostReactions'
 import PostComments from '@/components/PostComments'
+import FollowButton from '@/components/FollowButton'
+import SavePostButton from '@/components/SavePostButton'
+import SharePostButton from '@/components/SharePostButton'
 import { formatDateTimeHe } from '@/lib/time'
 
 type RichNode = ComponentProps<typeof RichText>['content']
@@ -77,16 +80,16 @@ function SidebarSection({
 }) {
   return (
     <div className="rounded-3xl border bg-white shadow-sm">
-      <div className="flex items-center justify-between gap-3 rounded-t-3xl bg-neutral-200 px-5 pb-3 pt-4">
-        <h3 className="text-[16px] font-black tracking-tight text-neutral-950">{title}</h3>
+      <div className="flex items-center justify-between gap-3 rounded-t-3xl bg-neutral-200/90 px-4 py-2.5">
+        <h3 className="text-[15px] font-black tracking-tight text-neutral-950">{title}</h3>
         {action ? <div className="text-[15px]">{action}</div> : null}
       </div>
 
       {/* פס הפרדה כהה */}
-      <div className="mx-5 border-b border-neutral-400" />
+      <div className="mx-4 border-b border-neutral-400" />
 
-      <div className="px-3 pb-4 pt-3">
-        <div className="space-y-2">{children}</div>
+      <div className="px-3 pb-3 pt-2.5">
+        <div className="space-y-1.5">{children}</div>
       </div>
     </div>
   )
@@ -116,7 +119,7 @@ function SidebarPostItem({
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') goPost()
       }}
-      className="group flex items-start justify-between gap-3 rounded-2xl px-3 py-2 transition-colors hover:bg-neutral-200/60 cursor-pointer"
+      className="group flex items-start justify-between gap-3 rounded-2xl px-2.5 py-1.5 transition-colors hover:bg-neutral-100 cursor-pointer"
     >
       {/* טקסט (ימין) */}
       <div className="min-w-0 flex-1 text-right">
@@ -130,7 +133,9 @@ function SidebarPostItem({
           </div>
         ) : null}
 
-        <div className="mt-1.5 flex items-center justify-start gap-2 text-[12px] text-neutral-600 whitespace-nowrap">
+        <div className="mt-1.5 flex items-center justify-end gap-2 text-[12px] text-neutral-600 whitespace-nowrap">
+          <span className="text-neutral-600">{formatDateTimeHe(date)}</span>
+          {showAuthor ? <span className="text-neutral-400">·</span> : null}
           {showAuthor ? (
             authorUsername ? (
               <Link
@@ -144,13 +149,11 @@ function SidebarPostItem({
               <span className="font-extrabold text-neutral-900">{authorName}</span>
             )
           ) : null}
-          {showAuthor ? <span className="text-neutral-400">·</span> : null}
-          <span className="text-neutral-600">{formatDateTimeHe(date)}</span>
         </div>
       </div>
 
       {/* תמונה (שמאל) */}
-      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-neutral-100 ring-1 ring-black/5">
+      <div className="h-12 w-12 shrink-0 overflow-hidden rounded-2xl bg-neutral-100 ring-1 ring-black/5">
         {post.cover_image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={post.cover_image_url} alt="" className="h-full w-full object-cover" loading="lazy" />
@@ -192,6 +195,18 @@ export default function PostPage() {
   const [sidebarLoading, setSidebarLoading] = useState(false)
   const [moreFromAuthor, setMoreFromAuthor] = useState<SidebarPost[]>([])
   const [hotInChannel, setHotInChannel] = useState<SidebarPost[]>([])
+  const [myUserId, setMyUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    supabase.auth.getUser().then(({ data }) => {
+      if (!alive) return
+      setMyUserId(data.user?.id ?? null)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   useEffect(() => {
     if (!slug) return
@@ -384,21 +399,20 @@ export default function PostPage() {
           : null
 
   const header = (
-    <div>
-      {/* כותרת + הקדמה במרכז עם רקע עדין (ללא האווטר) */}
-      <div className="rounded-t-3xl bg-neutral-100/70 border-b border-neutral-200 px-6 py-6 text-center sm:px-10">
-        <h1 className="text-[38px] sm:text-[42px] font-black tracking-tight text-neutral-950 break-words">
+    <div className="-mx-6 sm:-mx-10 rounded-t-3xl border-b border-neutral-200 bg-neutral-100/70">
+      <div className="px-6 py-6 sm:px-10">
+        <h1 className="text-right text-[32px] sm:text-[36px] font-black tracking-tight text-neutral-950 break-words">
           {post.title ?? 'ללא כותרת'}
         </h1>
-        {post.excerpt ? <p className="mt-2 text-[16px] leading-8 text-neutral-700">{post.excerpt}</p> : null}
-      </div>
+        {post.excerpt ? (
+          <p className="mt-2 text-right text-[16px] leading-8 text-neutral-700">{post.excerpt}</p>
+        ) : null}
 
-      {/* כותב/ת + קטגוריה + תאריך/שעה */}
-      <div className="px-6 sm:px-10">
-        <div className="mt-5 flex items-start justify-start gap-3">
-          <div className="shrink-0" >
+        <div className="mt-5 flex flex-row-reverse items-start justify-end gap-3">
+          <div className="shrink-0">
             <Avatar src={author?.avatar_url ?? null} name={authorName} size={52} />
           </div>
+
           <div className="min-w-0 text-right">
             <div className="text-[15px] font-extrabold text-neutral-950">
               {authorUsername ? (
@@ -422,7 +436,6 @@ export default function PostPage() {
               <span className="text-neutral-500">{formatDateTimeHe(publishedAt)}</span>
             </div>
           </div>
-
         </div>
       </div>
     </div>
@@ -479,22 +492,45 @@ export default function PostPage() {
       sidebar={sidebar}
     >
       {/* תוכן – לב האתר */}
-      <div className="mt-6">
+      <div className="mt-6 min-h-[45vh] pb-14">
         <RichText content={post.content_json as RichNode} />
       </div>
 
-      {/* אינטראקציות – מופרד מהתוכן */}
-      <div className="mt-12 rounded-3xl border bg-neutral-50 p-5 sm:p-6">
-        <h2 className="text-base font-semibold text-neutral-900">תגובות ותחושות</h2>
-        <div className="mt-4">
-          <PostReactions postId={post.id} channelId={post.channel_id ?? 0} authorId={post.author_id} />
+      {/* אינטראקציות – מופרד לחלוטין מהטקסט */}
+      <div className="-mx-6 sm:-mx-10 mt-12 space-y-6">
+        <div className="rounded-3xl border bg-white p-5 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <SharePostButton url={typeof window !== 'undefined' ? window.location.href : ''} title={post.title ?? ''} />
+              <SavePostButton postId={post.id} />
+              {author?.id && myUserId && author.id !== myUserId ? <FollowButton targetUserId={author.id} /> : null}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {channelName ? (
+                channelHref ? (
+                  <Link
+                    href={channelHref}
+                    className="inline-flex items-center rounded-full border bg-neutral-50 px-3 py-1 text-xs font-semibold text-neutral-800 hover:bg-neutral-100"
+                  >
+                    {channelName}
+                  </Link>
+                ) : (
+                  <span className="inline-flex items-center rounded-full border bg-neutral-50 px-3 py-1 text-xs font-semibold text-neutral-800">
+                    {channelName}
+                  </span>
+                )
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <PostReactions postId={post.id} channelId={post.channel_id ?? 0} authorId={post.author_id} />
+          </div>
         </div>
 
-        <div className="mt-8 border-t border-neutral-200 pt-6">
-          <h2 className="text-base font-semibold text-neutral-900">תגובות</h2>
-          <div className="mt-4">
-            <PostComments postId={post.id} postSlug={slug} postTitle={post.title ?? ''} />
-          </div>
+        <div className="rounded-3xl border bg-white p-5 sm:p-6">
+          <PostComments postId={post.id} postSlug={slug} postTitle={post.title ?? ''} />
         </div>
       </div>
     </PostShell>

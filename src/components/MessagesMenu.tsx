@@ -4,6 +4,16 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import Avatar from '@/components/Avatar'
+import { MessageCircle } from 'lucide-react'
+
+type MessagesMenuProps = {
+  /** מאפשר ל-SiteHeader להתאים את עיצוב כפתור ההודעות לעיצוב פיגמה */
+  buttonClassName?: string
+  /** מאפשר לשלוט בעיצוב ה-badge */
+  badgeClassName?: string
+  /** מאפשר לשלוט בצבע/גודל האייקון */
+  iconClassName?: string
+}
 
 type ThreadRow = {
   conversation_id: string
@@ -44,7 +54,11 @@ function formatLast(iso: string | null) {
   return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })
 }
 
-export default function MessagesMenu() {
+export default function MessagesMenu({
+  buttonClassName,
+  badgeClassName,
+  iconClassName,
+}: MessagesMenuProps) {
   const [open, setOpen] = useState(false)
   const [rows, setRows] = useState<ThreadRow[]>([])
   const [totalUnread, setTotalUnread] = useState(0)
@@ -109,21 +123,22 @@ export default function MessagesMenu() {
           setOpen(v => !v)
           if (!open) void load()
         }}
-        className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border bg-white hover:bg-neutral-50"
+        className={
+          buttonClassName ??
+          'relative inline-flex h-9 w-9 items-center justify-center rounded-full border bg-white hover:bg-neutral-50'
+        }
         aria-label="הודעות"
         title="הודעות"
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path
-            d="M21 12c0 4.418-4.03 8-9 8a10.2 10.2 0 0 1-3.7-.68L3 20l1.04-3.12A7.47 7.47 0 0 1 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8Z"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinejoin="round"
-          />
-        </svg>
+        <MessageCircle className={iconClassName ?? 'h-5 w-5'} aria-hidden="true" />
 
         {badgeText && (
-          <span className="absolute -left-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-black px-1.5 py-0.5 text-[10px] font-black text-white">
+          <span
+            className={
+              badgeClassName ??
+              'absolute -left-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-black px-1.5 py-0.5 text-[10px] font-black text-white'
+            }
+          >
             {badgeText}
           </span>
         )}

@@ -3,6 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import { Bell } from 'lucide-react'
+
+type NotificationsBellProps = {
+  /** מאפשר ל-SiteHeader להתאים את עיצוב כפתור ההתראות לעיצוב פיגמה */
+  buttonClassName?: string
+  /** מאפשר לשלוט בעיצוב ה-badge */
+  badgeClassName?: string
+  /** מאפשר לשלוט בצבע/גודל האייקון */
+  iconClassName?: string
+}
 
 type NotificationPayload = Record<string, unknown>
 
@@ -90,7 +100,11 @@ function formatActors(names: string[]): string {
 }
 
 
-export default function NotificationsBell() {
+export default function NotificationsBell({
+  buttonClassName,
+  badgeClassName,
+  iconClassName,
+}: NotificationsBellProps) {
   const router = useRouter()
   const boxRef = useRef<HTMLDivElement | null>(null)
 
@@ -115,11 +129,13 @@ export default function NotificationsBell() {
     }
 
     const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', uid)
-      .order('created_at', { ascending: false })
-      .limit(80)
+  .from('inbox_threads')
+  .select(
+    'conversation_id,other_user_id,other_username,other_display_name,other_avatar_url,last_created_at,last_body,unread_count'
+  )
+  .eq('user_id', userId)
+  .order('last_created_at', { ascending: false })
+  .limit(20)
 
     if (!error) setRows((data ?? []) as NotificationRow[])
     setLoading(false)
@@ -337,12 +353,20 @@ export default function NotificationsBell() {
     <div className="relative" ref={boxRef}>
       <button
         onClick={() => setOpen(v => !v)}
-        className="relative rounded-full border bg-white px-3 py-2 text-xs font-semibold hover:bg-neutral-50"
+        className={
+          buttonClassName ??
+          'relative rounded-full border bg-white px-3 py-2 text-xs font-semibold hover:bg-neutral-50'
+        }
         aria-label="התראות"
       >
-        🔔
+        <Bell className={iconClassName ?? 'h-5 w-5'} aria-hidden="true" />
         {unreadCount > 0 && (
-          <span className="absolute -left-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-black px-1 text-[11px] font-bold text-white">
+          <span
+            className={
+              badgeClassName ??
+              'absolute -left-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-black px-1 text-[11px] font-bold text-white'
+            }
+          >
             {unreadCount}
           </span>
         )}

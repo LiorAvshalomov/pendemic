@@ -39,6 +39,13 @@ export default function ProfileOwnerActions({ profileId }: { profileId: string }
       >
         כתיבת פוסט
       </Link>
+
+      <Link
+        href="/saved"
+        className="rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-neutral-50 max-[767px]:flex-1 max-[767px]:text-center max-[767px]:py-3"
+      >
+        פוסטים שמורים
+      </Link>
     </div>
   )
 }

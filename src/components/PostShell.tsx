@@ -45,7 +45,7 @@ export default function PostShell({ header, actions, sidebar, children }: Props)
 
           {/* סיידבר – סטטי (ללא sticky) */}
           {sidebar ? (
-            <aside className="w-full lg:w-[360px] lg:shrink-0">
+            <aside className="w-full lg:w-[320px] lg:shrink-0">
               {sidebar}
             </aside>
           ) : null}
