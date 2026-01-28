@@ -543,7 +543,7 @@ export default function PostPage() {
       <div className="-mx-6 sm:-mx-10 mt-12 space-y-6">
 <div className='bg-neutral-100/70 border ' > 
 <div>
-        <div className="rounded-3xl border border-neutral-300 bg-neutral-100/70 p-5 sm:p-6">
+        <div className="rounded-3xl border border-neutral-300 bg-neutral-200/70 p-5 sm:p-6">
           <PostReactions postId={post.id} channelId={post.channel_id ?? 0} authorId={post.author_id} />
         </div>
         <div className="mt-0.5 "></div>
