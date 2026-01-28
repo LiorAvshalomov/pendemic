@@ -67,7 +67,8 @@ function trunc(s: string, n: number) {
 }
 
 const truncTitle = (s: string) => trunc(s, 25)
-const truncExcerpt = (s: string) => trunc(s, 31)
+// בסיידבר עדיף קצת יותר טקסט כדי שזה לא יראה "חתוך" מדי
+const truncExcerpt = (s: string) => trunc(s, 30)
 
 function SidebarSection({
   title,
@@ -79,10 +80,11 @@ function SidebarSection({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-3xl border bg-white shadow-sm">
+    <div className="rounded-3xl border bg-white shadow-sm" dir="rtl">
+      {/* כותרת: טקסט מימין, לינק פעולה משמאל */}
       <div className="flex items-center justify-between gap-3 rounded-t-3xl bg-neutral-200/90 px-4 py-2.5">
-        <h3 className="text-[15px] font-black tracking-tight text-neutral-950">{title}</h3>
-        {action ? <div className="text-[15px]">{action}</div> : null}
+        <h3 className="text-right text-[15px] font-black tracking-tight text-neutral-950">{title}</h3>
+        {action ? <div className="text-left text-[15px]">{action}</div> : null}
       </div>
 
       {/* פס הפרדה כהה */}
@@ -119,7 +121,8 @@ function SidebarPostItem({
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') goPost()
       }}
-      className="group flex items-start justify-between gap-3 rounded-2xl px-2.5 py-1.5 transition-colors hover:bg-neutral-100 cursor-pointer"
+      dir="rtl"
+      className="group flex items-start justify-between gap-3 rounded-2xl px-2.5 py-2 transition-colors hover:bg-neutral-100 cursor-pointer"
     >
       {/* טקסט (ימין) */}
       <div className="min-w-0 flex-1 text-right">
@@ -133,14 +136,12 @@ function SidebarPostItem({
           </div>
         ) : null}
 
-        <div className="mt-1.5 flex items-center justify-end gap-2 text-[12px] text-neutral-600 whitespace-nowrap">
-          <span className="text-neutral-600">{formatDateTimeHe(date)}</span>
-          {showAuthor ? <span className="text-neutral-400">·</span> : null}
+        <div className="mt-1.5 flex items-center justify-start gap-2 text-[12px] text-neutral-600 whitespace-nowrap">
           {showAuthor ? (
             authorUsername ? (
               <Link
                 href={`/u/${authorUsername}`}
-                className="font-extrabold text-neutral-900 hover:text-neutral-950 hover:underline"
+                className="font-extrabold text-neutral-800 hover:text-neutral-950 hover:underline"
                 onClick={(e) => e.stopPropagation()}
               >
                 {authorName}
@@ -149,11 +150,13 @@ function SidebarPostItem({
               <span className="font-extrabold text-neutral-900">{authorName}</span>
             )
           ) : null}
+          {showAuthor ? <span className="text-neutral-400">·</span> : null}
+          <span className="text-neutral-600">{formatDateTimeHe(date)}</span>
         </div>
       </div>
 
-      {/* תמונה (שמאל) */}
-      <div className="h-12 w-12 shrink-0 overflow-hidden rounded-2xl bg-neutral-100 ring-1 ring-black/5">
+      {/* תמונה (שמאל) – גדולה יותר כדי לצמצם שטח ריק */}
+      <div className="h-18 w-20 shrink-0 overflow-hidden rounded-2xl bg-neutral-100 ring-3 ring-black/5">
         {post.cover_image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={post.cover_image_url} alt="" className="h-full w-full object-cover" loading="lazy" />
@@ -399,8 +402,8 @@ export default function PostPage() {
           : null
 
   const header = (
-    <div className="-mx-6 sm:-mx-10 rounded-t-3xl border-b border-neutral-200 bg-neutral-100/70">
-      <div className="px-6 py-6 sm:px-10">
+    <div>
+
         <h1 className="text-right text-[32px] sm:text-[36px] font-black tracking-tight text-neutral-950 break-words">
           {post.title ?? 'ללא כותרת'}
         </h1>
@@ -408,36 +411,40 @@ export default function PostPage() {
           <p className="mt-2 text-right text-[16px] leading-8 text-neutral-700">{post.excerpt}</p>
         ) : null}
 
-        <div className="mt-5 flex flex-row-reverse items-start justify-end gap-3">
-          <div className="shrink-0">
-            <Avatar src={author?.avatar_url ?? null} name={authorName} size={52} />
-          </div>
-
-          <div className="min-w-0 text-right">
-            <div className="text-[15px] font-extrabold text-neutral-950">
-              {authorUsername ? (
-                <Link href={`/u/${authorUsername}`} className="hover:underline">
-                  {authorName}
-                </Link>
-              ) : (
-                authorName
-              )}
+        {/* מטא פוסט: אווטאר מימין, שם/קטגוריה/תאריך משמאל לאווטאר */}
+        <div className="mt-10 flex items-start justify-start gap-3" dir="rtl">
+          <div className="flex flex-row items-start gap-3">
+            <div className="shrink-0">
+              <Link href={`/u/${authorUsername}`} ><Avatar src={author?.avatar_url ?? null} name={authorName} size={52} /></Link>
+               
             </div>
 
-            <div className="mt-1 text-[13px] text-neutral-600">
-              {channelName && channelHref ? (
-                <Link href={channelHref} className="font-semibold text-blue-700 hover:underline">
-                  {channelName}
-                </Link>
-              ) : channelName ? (
-                <span className="font-semibold text-neutral-700">{channelName}</span>
-              ) : null}
-              {channelName ? <span className="text-neutral-400"> · </span> : null}
-              <span className="text-neutral-500">{formatDateTimeHe(publishedAt)}</span>
+            <div className="min-w-0 text-right">
+              <div className="text-[15px] font-extrabold text-neutral-950">
+                {authorUsername ? (
+                  <Link href={`/u/${authorUsername}`} className="hover:underline">
+                    {authorName}
+                  </Link>
+                ) : (
+                  authorName
+                )}
+              </div>
+
+              <div className="mt-1 text-[13px] text-neutral-600">
+                {channelName && channelHref ? (
+                  <Link href={channelHref} className="font-semibold text-blue-700 hover:underline">
+                    {channelName}
+                  </Link>
+                ) : channelName ? (
+                  <span className="font-semibold text-neutral-700">{channelName}</span>
+                ) : null}
+                {channelName ? <span className="text-neutral-400"> · </span> : null}
+                <span className="text-neutral-500">{formatDateTimeHe(publishedAt)}</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      
     </div>
   )
 
@@ -498,38 +505,26 @@ export default function PostPage() {
 
       {/* אינטראקציות – מופרד לחלוטין מהטקסט */}
       <div className="-mx-6 sm:-mx-10 mt-12 space-y-6">
-        <div className="rounded-3xl border bg-white p-5 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* פעולות – מחוץ לבלוק הדירוגים (אבל ממש מעליו) */}
+        
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 " dir="rtl">
+            <div className="flex items-center gap-2">
+              {author?.id && myUserId && author.id !== myUserId ? <FollowButton targetUserId={author.id} /> : null}
+              <SavePostButton postId={post.id} />
+            </div>
+
             <div className="flex items-center gap-2">
               <SharePostButton url={typeof window !== 'undefined' ? window.location.href : ''} title={post.title ?? ''} />
-              <SavePostButton postId={post.id} />
-              {author?.id && myUserId && author.id !== myUserId ? <FollowButton targetUserId={author.id} /> : null}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {channelName ? (
-                channelHref ? (
-                  <Link
-                    href={channelHref}
-                    className="inline-flex items-center rounded-full border bg-neutral-50 px-3 py-1 text-xs font-semibold text-neutral-800 hover:bg-neutral-100"
-                  >
-                    {channelName}
-                  </Link>
-                ) : (
-                  <span className="inline-flex items-center rounded-full border bg-neutral-50 px-3 py-1 text-xs font-semibold text-neutral-800">
-                    {channelName}
-                  </span>
-                )
-              ) : null}
             </div>
           </div>
+        
 
-          <div className="mt-4">
-            <PostReactions postId={post.id} channelId={post.channel_id ?? 0} authorId={post.author_id} />
-          </div>
+        <div className="rounded-3xl border border-neutral-200 bg-neutral-50/70 p-5 sm:p-6">
+          <PostReactions postId={post.id} channelId={post.channel_id ?? 0} authorId={post.author_id} />
         </div>
 
-        <div className="rounded-3xl border bg-white p-5 sm:p-6">
+        {/* תגובות – קצת כהות עדינה יותר */}
+        <div className="rounded-3xl border border-neutral-200 bg-neutral-100/70 p-5 sm:p-6">
           <PostComments postId={post.id} postSlug={slug} postTitle={post.title ?? ''} />
         </div>
       </div>

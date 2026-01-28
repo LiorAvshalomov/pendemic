@@ -175,7 +175,7 @@ export default function PostReactions({ postId, channelId, authorId }: Props) {
       setLoading(false)
     }
 
-    loadAll()
+    void loadAll()
 
     return () => {
       cancelled = true
@@ -207,7 +207,6 @@ export default function PostReactions({ postId, channelId, authorId }: Props) {
           // ignore events from myself (I already do optimistic UI)
           if (userIdRef.current && row.voter_id === userIdRef.current) return
 
-          // just sync truth
           scheduleSync()
         }
       )
@@ -276,8 +275,7 @@ export default function PostReactions({ postId, channelId, authorId }: Props) {
         return
       }
 
-      // sync truth (covers edge cases)
-      fetchSummaryOnly()
+      void fetchSummaryOnly()
       return
     }
 
@@ -311,100 +309,91 @@ export default function PostReactions({ postId, channelId, authorId }: Props) {
       return
     }
 
-    // sync truth (covers edge cases)
-    fetchSummaryOnly()
+    void fetchSummaryOnly()
   }
 
   if (loading) {
     return (
-      <div style={{ direction: 'rtl', marginTop: 18, color: '#666' }}>
+      <div className="mt-4 text-right text-sm text-neutral-600" dir="rtl">
         טוען דירוגים…
       </div>
     )
   }
 
   return (
-    <section
-      style={{
-        direction: 'rtl',
-        marginTop: 22,
-        border: '1px solid #eee',
-        background: '#fafafa',
-        borderRadius: 16,
-        padding: 14,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>דירוגים:</h3>
-          <span style={{ fontSize: 12, color: '#777' }}>עד 3</span>
-          <span style={{ fontSize: 12, color: '#666' }}>נבחרו: {myVotesCount}/3</span>
+    <section className="text-right" dir="rtl">
+      <div className="flex flex-col items-stretch">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-[15px] font-black text-neutral-950">דירוגים:</div>
+          <div className="whitespace-nowrap text-[12px] text-neutral-600">
+            {myVotesCount}/3 נבחרו
+          </div>
         </div>
 
         {(totals.gold > 0 || totals.silver > 0 || totals.bronze > 0) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 }}>
+          <div className="mt-2 flex items-center justify-center gap-4 text-sm">
             {totals.gold > 0 && <span>🥇 {totals.gold}</span>}
             {totals.silver > 0 && <span>🥈 {totals.silver}</span>}
             {totals.bronze > 0 && <span>🥉 {totals.bronze}</span>}
           </div>
         )}
-      </div>
 
-      {errorMsg ? (
-        <div
-          style={{
-            marginTop: 10,
-            padding: '10px 12px',
-            border: '1px solid #f2c2c2',
-            background: '#fff5f5',
-            borderRadius: 12,
-            color: '#8a1f1f',
-            fontSize: 13,
-          }}
-        >
-          {errorMsg}
+        {errorMsg ? (
+          <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-800">
+            {errorMsg}
+          </div>
+        ) : null}
+
+        {/*
+          מובייל: שורה אחת (scroll אופקי עדין אם אין מקום)
+          דסקטופ: wrap רגיל במרכז
+        */}
+        <div className="mt-4 flex flex-nowrap justify-center gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible">
+          {sortedReactions.map(r => {
+            const votes = summary[r.key]?.votes ?? 0
+            const mine = myVotes.has(r.key)
+            const isAnimating = animatingKey === r.key
+
+            return (
+              <button
+                key={r.key}
+                type="button"
+                onClick={() => toggle(r.key)}
+                className={[
+                  'group inline-flex min-w-[62px] max-w-[120px] flex-col items-center justify-center rounded-2xl border px-2.5 py-1.5 text-center transition md:min-w-[74px] md:px-3 md:py-2',
+                  mine
+                    ? 'border-neutral-900 bg-neutral-900 text-white'
+                    : 'border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50',
+                ].join(' ')}
+                style={{
+                  transform: isAnimating ? 'scale(1.06)' : mine ? 'scale(1.02)' : 'scale(1)',
+                }}
+              >
+                <div className="flex items-center justify-center gap-1.5 text-[16px] leading-none md:text-[18px]">
+                  <span className="drop-shadow-sm">{REACTION_EMOJI[r.key] ?? '⭐'}</span>
+                  {votes > 0 ? (
+                    <span className={mine ? 'text-[11px] text-white/80 md:text-[12px]' : 'text-[11px] text-neutral-600 md:text-[12px]'}>
+                      {votes}
+                    </span>
+                  ) : null}
+                </div>
+                <div
+                  className={
+                    mine
+                      ? 'mt-1 text-[11px] font-semibold text-white md:text-[12px]'
+                      : 'mt-1 text-[11px] font-semibold text-neutral-800 md:text-[12px]'
+                  }
+                >
+                  {r.label_he}
+                </div>
+              </button>
+            )
+          })}
         </div>
-      ) : null}
 
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'nowrap', overflowX: 'auto', marginTop: 12, paddingBottom: 4 }}>
-        {sortedReactions.map(r => {
-          const mine = myVotes.has(r.key)
-          const votes = summary[r.key]?.votes ?? 0
-          const isAnimating = animatingKey === r.key
-
-          return (
-            <button
-              key={r.key}
-              type="button"
-              onClick={() => toggle(r.key)}
-              style={{
-                border: '1px solid #e5e5e5',
-                borderRadius: 14,
-                padding: '10px 12px',
-                background: mine ? '#111' : '#fff',
-                color: mine ? '#fff' : '#111',
-                cursor: 'pointer',
-                textAlign: 'center',
-                whiteSpace: 'nowrap',
-                minWidth: 88,
-                maxWidth: 140,
-                flexShrink: 0,
-                transform: isAnimating ? 'scale(1.06)' : mine ? 'scale(1.02)' : 'scale(1)',
-                transition: 'transform 120ms ease, background-color 120ms ease, color 120ms ease',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 18, lineHeight: 1 }}>
-                <span>{REACTION_EMOJI[r.key] ?? '⭐'}</span>
-                {votes > 0 && <span style={{ fontSize: 12, opacity: 0.8 }}>{votes}</span>}
-              </div>
-              <div style={{ marginTop: 6, fontSize: 12, fontWeight: 600 }}>{r.label_he}</div>
-            </button>
-          )
-        })}
-      </div>
-
-      <div style={{ marginTop: 10, fontSize: 12, color: '#777', lineHeight: 1.5 }}>
-        בחר עד 3 דירוגים לפוסט, אפשר לבטל בלחיצה נוספת.
+        <div className="mt-3 text-center text-[12px] leading-5 text-neutral-600">
+          בחר עד 3 דירוגים לפוסט, אפשר לבטל בלחיצה נוספת.
+        </div>
       </div>
     </section>
   )

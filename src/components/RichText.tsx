@@ -88,7 +88,7 @@ return (
   <div
     dir="rtl"
     className="
-  w-full text-right break-words
+  w-full max-w-[72ch] ml-auto text-right break-words
   text-base leading-8 text-foreground
   [&_p]:my-4
   [&_h2]:text-3xl [&_h2]:font-bold [&_h2]:mt-10 [&_h2]:mb-4
