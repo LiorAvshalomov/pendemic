@@ -58,6 +58,7 @@ export default function PostReactions({ postId, channelId, authorId }: Props) {
   const [summary, setSummary] = useState<Record<string, SummaryRow>>({})
   const [myVotes, setMyVotes] = useState<Set<string>>(new Set())
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const errTimerRef = useRef<number | null>(null)
 
   const [animatingKey, setAnimatingKey] = useState<string | null>(null)
 
@@ -79,6 +80,21 @@ export default function PostReactions({ postId, channelId, authorId }: Props) {
     }
     return { bronze, silver, gold }
   }, [summary])
+
+  useEffect(() => {
+  if (!errorMsg) return
+
+  if (errTimerRef.current) window.clearTimeout(errTimerRef.current)
+
+  errTimerRef.current = window.setTimeout(() => {
+    setErrorMsg(null)
+  }, 2000)
+
+  return () => {
+    if (errTimerRef.current) window.clearTimeout(errTimerRef.current)
+  }
+}, [errorMsg])
+
 
   // keep latest userId without re-subscribing
   const userIdRef = useRef<string | null>(null)
@@ -360,7 +376,7 @@ export default function PostReactions({ postId, channelId, authorId }: Props) {
                 type="button"
                 onClick={() => toggle(r.key)}
                 className={[
-                  'group inline-flex min-w-[62px] max-w-[120px] flex-col items-center justify-center rounded-2xl border px-2.5 py-1.5 text-center transition md:min-w-[74px] md:px-3 md:py-2',
+                  'group inline-flex min-w-[58px] max-w-[120px] flex-col items-center justify-center rounded-2xl border px-2 py-1 text-center transition md:min-w-[74px] md:px-3 md:py-2',
                   mine
                     ? 'border-neutral-900 bg-neutral-900 text-white'
                     : 'border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50',
@@ -369,7 +385,7 @@ export default function PostReactions({ postId, channelId, authorId }: Props) {
                   transform: isAnimating ? 'scale(1.06)' : mine ? 'scale(1.02)' : 'scale(1)',
                 }}
               >
-                <div className="flex items-center justify-center gap-1.5 text-[16px] leading-none md:text-[18px]">
+                <div className="flex items-center justify-center gap-1.5 text-[15px] leading-none md:text-[18px]">
                   <span className="drop-shadow-sm">{REACTION_EMOJI[r.key] ?? '⭐'}</span>
                   {votes > 0 ? (
                     <span className={mine ? 'text-[11px] text-white/80 md:text-[12px]' : 'text-[11px] text-neutral-600 md:text-[12px]'}>
@@ -380,8 +396,8 @@ export default function PostReactions({ postId, channelId, authorId }: Props) {
                 <div
                   className={
                     mine
-                      ? 'mt-1 text-[11px] font-semibold text-white md:text-[12px]'
-                      : 'mt-1 text-[11px] font-semibold text-neutral-800 md:text-[12px]'
+                      ? 'mt-1 text-[10px] font-semibold text-white md:text-[12px]'
+                      : 'mt-1 text-[10px] font-semibold text-neutral-800 md:text-[12px]'
                   }
                 >
                   {r.label_he}

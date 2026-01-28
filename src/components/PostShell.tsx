@@ -29,7 +29,7 @@ export default function PostShell({ header, actions, sidebar, children, below }:
         <div dir="ltr" className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
           {/* סיידבר – משמאל (בדסקטופ) */}
           {sidebar ? (
-            <aside className="w-full lg:col-start-1 lg:row-start-1 lg:w-[360px] lg:shrink-0">
+            <aside className="order-last w-full lg:order-none lg:col-start-1 lg:row-start-1 lg:w-[360px] lg:shrink-0">
               {/* Sticky רגיל (בלי גלילה פנימית) */}
               <div className="lg:sticky lg:top-14" dir="rtl">
                 {sidebar}
@@ -38,7 +38,7 @@ export default function PostShell({ header, actions, sidebar, children, below }:
           ) : null}
 
           {/* תוכן – מימין */}
-          <article className="min-w-0 rounded-3xl bg-white shadow-sm ring-1 ring-black/5 lg:col-start-2 lg:row-start-1" dir="rtl">
+          <article className="order-first min-w-0 rounded-3xl bg-white shadow-sm ring-1 ring-black/5 lg:order-none lg:col-start-2 lg:row-start-1" dir="rtl">
             {(header || actions) ? (
               <header className="rounded-t-3xl bg-neutral-100/90 px-6 py-6 sm:px-10 border-b border-neutral-200">
                 <div className="flex items-start justify-between gap-4">
@@ -55,7 +55,7 @@ export default function PostShell({ header, actions, sidebar, children, below }:
 
           {/* בלוקים מתחת לתוכן (באותו רוחב/עמודה של התוכן) */}
           {below ? (
-            <div className="min-w-0 lg:col-start-2 lg:row-start-2" dir="rtl">
+            <div className="order-2 min-w-0 lg:order-none lg:col-start-2 lg:row-start-2" dir="rtl">
               {below}
             </div>
           ) : null}

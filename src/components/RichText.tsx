@@ -24,7 +24,18 @@ function renderText(node: RichNode, key: string) {
   const text = node.text ?? ''
   const marks = node.marks ?? []
 
-  let out: React.ReactNode = text
+  // TipTap may include "\n" inside text nodes (e.g. pasted content).
+  // Convert them to <br/> so line breaks are preserved.
+  const parts = text.split(/\n/)
+  let out: React.ReactNode =
+    parts.length <= 1
+      ? text
+      : parts.map((p, i) => (
+          <React.Fragment key={`${key}-nl-${i}`}>
+            {p}
+            {i < parts.length - 1 ? <br /> : null}
+          </React.Fragment>
+        ))
 
   for (const mark of marks) {
     if (mark.type === 'bold') out = <strong key={`${key}-b`}>{out}</strong>
@@ -48,8 +59,10 @@ function renderNode(node: RichNode, key: string): React.ReactNode {
     case 'doc':
       return <div key={key}>{children}</div>
 
-    case 'paragraph':
-      return <p key={key}>{children}</p>
+    case 'paragraph': {
+      const hasContent = Array.isArray(node.content) && node.content.length > 0
+      return <p key={key}>{hasContent ? children : <br />}</p>
+    }
 
     case 'heading': {
       const lvl = node.attrs?.level ?? 2
@@ -87,19 +100,7 @@ export default function RichText({ content }: Props) {
 return (
   <div
     dir="rtl"
-    className="
-  w-full max-w-[72ch] ml-auto text-right break-words
-  text-base leading-8 text-foreground
-  [&_p]:my-4
-  [&_h2]:text-3xl [&_h2]:font-bold [&_h2]:mt-10 [&_h2]:mb-4
-  [&_h3]:text-2xl [&_h3]:font-semibold [&_h3]:mt-8 [&_h3]:mb-3
-  [&_ul]:my-4 [&_ul]:pr-6 [&_ul]:list-disc
-  [&_ol]:my-4 [&_ol]:pr-6 [&_ol]:list-decimal
-  [&_li]:my-1
-  [&_hr]:my-10 [&_hr]:border-border
-  [&_blockquote]:my-6 [&_blockquote]:border-r-2 [&_blockquote]:pr-4
-  [&_blockquote]:text-muted-foreground [&_blockquote]:italic
-"
+    className="w-full max-w-[72ch] ml-auto text-right break-words text-[16px] leading-8 text-neutral-900 [&_p]:my-2 [&_p]:leading-5 [&_h2]:text-3xl [&_h2]:font-black [&_h2]:mt-10 [&_h2]:mb-4 [&_h3]:text-2xl [&_h3]:font-bold [&_h3]:mt-8 [&_h3]:mb-3 [&_h4]:text-xl [&_h4]:font-bold [&_h4]:mt-7 [&_h4]:mb-2 [&_ul]:my-4 [&_ul]:pr-6 [&_ul]:list-disc [&_ol]:my-4 [&_ol]:pr-6 [&_ol]:list-decimal [&_li]:my-1 [&_li]:leading-7 [&_a]:text-blue-700 [&_a]:underline-offset-4 hover:[&_a]:underline [&_blockquote]:my-6 [&_blockquote]:border-r-4 [&_blockquote]:border-neutral-300 [&_blockquote]:pr-4 [&_blockquote]:text-neutral-700 [&_img]:my-4 [&_img]:max-w-full [&_img]:rounded-2xl"
   >
     {renderNode(normalized, 'root')}
   </div>

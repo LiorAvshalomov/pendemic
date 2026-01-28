@@ -188,7 +188,7 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
       attributes: {
         dir: 'rtl',
         style:
-          'min-height: 320px; padding: 16px; border: 1px solid #ddd; border-radius: 16px; outline: none; line-height: 1.95; background: #fff; font-size: 16px;',
+          'min-height: 320px; padding: 16px; border: 1px solid #ddd; border-radius: 16px; outline: none; line-height: 1.8; background: #fff; font-size: 16px;',
       },
     },
     onUpdate({ editor }) {

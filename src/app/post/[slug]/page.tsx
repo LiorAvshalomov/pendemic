@@ -66,9 +66,6 @@ function trunc(s: string, n: number) {
   return v.length > n ? `${v.slice(0, n)}…` : v
 }
 
-const truncTitle = (s: string) => trunc(s, 25)
-// בסיידבר עדיף קצת יותר טקסט כדי שזה לא יראה "חתוך" מדי
-const truncExcerpt = (s: string) => trunc(s, 30)
 
 function SidebarSection({
   title,
@@ -80,11 +77,10 @@ function SidebarSection({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-3xl border bg-white shadow-sm" dir="rtl">
-      {/* כותרת: טקסט מימין, לינק פעולה משמאל */}
-      <div className="flex items-center justify-between gap-3 rounded-t-3xl bg-neutral-200/90 px-4 py-2.5">
-        <h3 className="text-right text-[15px] font-black tracking-tight text-neutral-950">{title}</h3>
-        {action ? <div className="text-left text-[15px]">{action}</div> : null}
+    <div className="rounded-3xl border bg-white shadow-sm">
+      <div className="flex flex-row-reverse items-center justify-between gap-3 rounded-t-3xl bg-neutral-200/90 px-4 py-2.5">
+        <h3 className="text-[15px] font-black tracking-tight text-neutral-950 text-right">{title}</h3>
+        {action ? <div className="text-[15px] text-left">{action}</div> : null}
       </div>
 
       {/* פס הפרדה כהה */}
@@ -100,9 +96,11 @@ function SidebarSection({
 function SidebarPostItem({
   post,
   showAuthor,
+  isMobile,
 }: {
   post: SidebarPost
   showAuthor?: boolean
+  isMobile?: boolean
 }) {
   const router = useRouter()
 
@@ -121,18 +119,17 @@ function SidebarPostItem({
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') goPost()
       }}
-      dir="rtl"
       className="group flex items-start justify-between gap-3 rounded-2xl px-2.5 py-2 transition-colors hover:bg-neutral-100 cursor-pointer"
     >
       {/* טקסט (ימין) */}
       <div className="min-w-0 flex-1 text-right">
         <div className="text-[16px] font-black leading-6 text-neutral-950 group-hover:text-neutral-950">
-          {truncTitle(post.title ?? 'ללא כותרת')}
+          {trunc(post.title ?? 'ללא כותרת', isMobile ? 35 : 25)}
         </div>
 
         {post.excerpt ? (
           <div className="mt-0.5 text-[14px] leading-6 text-neutral-700">
-            {truncExcerpt(post.excerpt)}
+            {trunc(post.excerpt, isMobile ? 50 : 30)}
           </div>
         ) : null}
 
@@ -141,7 +138,7 @@ function SidebarPostItem({
             authorUsername ? (
               <Link
                 href={`/u/${authorUsername}`}
-                className="font-extrabold text-neutral-800 hover:text-neutral-950 hover:underline"
+                className="font-extrabold text-neutral-900 hover:text-neutral-950 hover:underline"
                 onClick={(e) => e.stopPropagation()}
               >
                 {authorName}
@@ -155,8 +152,8 @@ function SidebarPostItem({
         </div>
       </div>
 
-      {/* תמונה (שמאל) – גדולה יותר כדי לצמצם שטח ריק */}
-      <div className="h-18 w-20 shrink-0 overflow-hidden rounded-2xl bg-neutral-100 ring-3 ring-black/5">
+      {/* תמונה (שמאל) */}
+      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-neutral-100 ring-1 ring-black/5">
         {post.cover_image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={post.cover_image_url} alt="" className="h-full w-full object-cover" loading="lazy" />
@@ -199,6 +196,18 @@ export default function PostPage() {
   const [moreFromAuthor, setMoreFromAuthor] = useState<SidebarPost[]>([])
   const [hotInChannel, setHotInChannel] = useState<SidebarPost[]>([])
   const [myUserId, setMyUserId] = useState<string | null>(null)
+  
+
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    // Tailwind breakpoint md=768
+    const mq = window.matchMedia('(max-width: 767px)')
+    const apply = () => setIsMobile(mq.matches)
+    apply()
+    mq.addEventListener?.('change', apply)
+    return () => mq.removeEventListener?.('change', apply)
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -301,10 +310,24 @@ export default function PostPage() {
 
       if (cancelled) return
 
-      if (!authorRes.error && Array.isArray(authorRes.data)) {
-        setMoreFromAuthor(authorRes.data as SidebarPost[])
+      const uniqById = <T extends { id: string }>(arr: T[]) => {
+        const seen = new Set<string>()
+        const out: T[] = []
+        for (const x of arr) {
+          if (!x?.id) continue
+          if (seen.has(x.id)) continue
+          seen.add(x.id)
+          out.push(x)
+        }
+        return out
       }
 
+      const authorListRaw = (!authorRes.error && Array.isArray(authorRes.data))
+        ? (authorRes.data as SidebarPost[])
+        : []
+
+      const authorList = uniqById(authorListRaw)
+      setMoreFromAuthor(authorList)
 
       // פוסטים חמים בקטגוריה (מעדיף דירוג לפי post_reaction_summary; אם אין/אין הרשאות → נופל ל"חדשים" כדי שלא יהיה ריק)
       let didSetHot = false
@@ -331,11 +354,13 @@ export default function PostPage() {
 
         const cleaned = picked.map((x) => {
           const r = x.row as Record<string, unknown>
-          const { post_reaction_summary, ...rest } = r as { post_reaction_summary?: unknown }
+          const { post_reaction_summary: _post_reaction_summary, ...rest } = r as { post_reaction_summary?: unknown }
           return rest
         })
 
-        const hot = cleaned as SidebarPost[]
+        const hotRaw = uniqById(cleaned as SidebarPost[])
+        const authorIds = new Set(authorList.map(x => x.id))
+        const hot = hotRaw.filter(x => !authorIds.has(x.id))
         setHotInChannel(hot)
         didSetHot = hot.length > 0
       }
@@ -353,7 +378,7 @@ export default function PostPage() {
           .limit(5)
 
         if (!fb.error && Array.isArray(fb.data)) {
-          setHotInChannel(fb.data as SidebarPost[])
+          setHotInChannel(uniqById((fb.data as SidebarPost[])).filter(x => !new Set(authorList.map(y => y.id)).has(x.id)))
         }
       }
 
@@ -411,40 +436,37 @@ export default function PostPage() {
           <p className="mt-2 text-right text-[16px] leading-8 text-neutral-700">{post.excerpt}</p>
         ) : null}
 
-        {/* מטא פוסט: אווטאר מימין, שם/קטגוריה/תאריך משמאל לאווטאר */}
         <div className="mt-10 flex items-start justify-start gap-3" dir="rtl">
-          <div className="flex flex-row items-start gap-3">
-            <div className="shrink-0">
-              <Link href={`/u/${authorUsername}`} ><Avatar src={author?.avatar_url ?? null} name={authorName} size={52} /></Link>
-               
+          <Link href={`/u/${authorUsername}`} >
+          <div className="shrink-0">
+            <Avatar src={author?.avatar_url ?? null} name={authorName} size={52} />
+          </div>
+          </Link>
+
+          <div className="min-w-0 text-right">
+            <div className="text-[15px] font-extrabold text-neutral-950">
+              {authorUsername ? (
+                <Link href={`/u/${authorUsername}`} className="hover:underline">
+                  {authorName}
+                </Link>
+              ) : (
+                authorName
+              )}
             </div>
 
-            <div className="min-w-0 text-right">
-              <div className="text-[15px] font-extrabold text-neutral-950">
-                {authorUsername ? (
-                  <Link href={`/u/${authorUsername}`} className="hover:underline">
-                    {authorName}
-                  </Link>
-                ) : (
-                  authorName
-                )}
-              </div>
-
-              <div className="mt-1 text-[13px] text-neutral-600">
-                {channelName && channelHref ? (
-                  <Link href={channelHref} className="font-semibold text-blue-700 hover:underline">
-                    {channelName}
-                  </Link>
-                ) : channelName ? (
-                  <span className="font-semibold text-neutral-700">{channelName}</span>
-                ) : null}
-                {channelName ? <span className="text-neutral-400"> · </span> : null}
-                <span className="text-neutral-500">{formatDateTimeHe(publishedAt)}</span>
-              </div>
+            <div className="mt-1 text-[13px] text-neutral-600">
+              {channelName && channelHref ? (
+                <Link href={channelHref} className="font-semibold text-blue-700 hover:underline">
+                  {channelName}
+                </Link>
+              ) : channelName ? (
+                <span className="font-semibold text-neutral-700">{channelName}</span>
+              ) : null}
+              {channelName ? <span className="text-neutral-400"> · </span> : null}
+              <span className="text-neutral-500">{formatDateTimeHe(publishedAt)}</span>
             </div>
           </div>
         </div>
-      
     </div>
   )
 
@@ -465,7 +487,7 @@ export default function PostPage() {
         ) : moreFromAuthor.length === 0 ? (
           <div className="text-sm text-muted-foreground">אין עוד פוסטים.</div>
         ) : (
-          moreFromAuthor.map((p) => <SidebarPostItem key={p.id} post={p} />)
+          moreFromAuthor.map((p) => <SidebarPostItem key={p.id} post={p} isMobile={isMobile} />)
         )}
       </SidebarSection>
 
@@ -485,7 +507,7 @@ export default function PostPage() {
           ) : hotInChannel.length === 0 ? (
             <div className="text-sm text-muted-foreground">אין עדיין פוסטים חמים.</div>
           ) : (
-            hotInChannel.map((p) => <SidebarPostItem key={p.id} post={p} showAuthor />)
+            hotInChannel.map((p) => <SidebarPostItem key={p.id} post={p} showAuthor isMobile={isMobile} />)
           )}
         </SidebarSection>
       ) : null}
@@ -503,28 +525,29 @@ export default function PostPage() {
         <RichText content={post.content_json as RichNode} />
       </div>
 
-      {/* אינטראקציות – מופרד לחלוטין מהטקסט */}
-      <div className="-mx-6 sm:-mx-10 mt-12 space-y-6">
-        {/* פעולות – מחוץ לבלוק הדירוגים (אבל ממש מעליו) */}
-        
-          <div className="flex flex-wrap items-center justify-between gap-3 px-5 " dir="rtl">
-            <div className="flex items-center gap-2">
-              {author?.id && myUserId && author.id !== myUserId ? <FollowButton targetUserId={author.id} /> : null}
+          <div  className=" flex flex-wrap items-center justify-between  -mx-6   mt-3" >
+            <div className="flex items-center gap-2  ">
               <SavePostButton postId={post.id} />
+              {author?.id && myUserId && author.id !== myUserId && authorUsername ? (
+                <FollowButton targetUserId={author.id} targetUsername={authorUsername} />
+              ) : null}
             </div>
 
             <div className="flex items-center gap-2">
               <SharePostButton url={typeof window !== 'undefined' ? window.location.href : ''} title={post.title ?? ''} />
             </div>
           </div>
-        
 
+      {/* אינטראקציות – מופרד לחלוטין מהטקסט */}
+      
+      <div className="-mx-6 sm:-mx-10 mt-12 space-y-6">
 <div className='bg-neutral-100/70 border ' > 
+<div>
         <div className="rounded-3xl border border-neutral-300 bg-neutral-100/70 p-5 sm:p-6">
           <PostReactions postId={post.id} channelId={post.channel_id ?? 0} authorId={post.author_id} />
         </div>
-
-        {/* תגובות – קצת כהות עדינה יותר */}
+        <div className="mt-0.5 "></div>
+        </div>
         <div className="rounded-3xl border border-neutral-200 bg-neutral-100/70 p-1 sm:p-2">
           <PostComments postId={post.id} postSlug={slug} postTitle={post.title ?? ''} />
         </div>
