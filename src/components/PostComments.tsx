@@ -58,7 +58,7 @@ function makeTempId() {
   return `temp-${uuid}`
 }
 
-export default function PostComments({ postId, postSlug: _postSlug, postTitle: _postTitle }: Props) {
+export default function PostComments({ postId, postSlug, postTitle }: Props) {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
 
@@ -69,13 +69,71 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
   const [items, setItems] = useState<CommentRow[]>([])
   const [err, setErr] = useState<string | null>(null)
 
-  const errTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const setErrFor = (message: string, ms = 3000) => {
-    setErr(message)
-    if (errTimerRef.current) clearTimeout(errTimerRef.current)
-    errTimerRef.current = setTimeout(() => setErr(null), ms)
+// auto-hide errors (3s)
+const errTimerRef = useRef<number | null>(null)
+const setErrFor = (msg: string | null) => {
+  setErr(msg)
+  if (errTimerRef.current) {
+    window.clearTimeout(errTimerRef.current)
+    errTimerRef.current = null
   }
+  if (msg) {
+    errTimerRef.current = window.setTimeout(() => setErr(null), 3000)
+  }
+}
+
+// report (same flow as ChatClient)
+const [reportOpen, setReportOpen] = useState(false)
+const [reportCategory, setReportCategory] = useState<'abuse' | 'spam' | 'hate' | 'privacy' | 'other'>('abuse')
+const [reportDetails, setReportDetails] = useState('')
+const [reportSending, setReportSending] = useState(false)
+const [reportOk, setReportOk] = useState<string | null>(null)
+const [reportErr, setReportErr] = useState<string | null>(null)
+const [reportedComment, setReportedComment] = useState<CommentRow | null>(null)
+
+const canReportComment = !!userId && !!reportedComment?.author_id && reportedComment.author_id !== userId
+
+async function submitReport() {
+  if (!canReportComment || !userId || !reportedComment) return
+  setReportOk(null)
+  setReportErr(null)
+  try {
+    setReportSending(true)
+    const details = [
+      reportDetails.trim() || null,
+      `post: ${postSlug}`,
+      `title: ${String(postTitle || '').slice(0, 120)}`,
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    const { error } = await supabase.from('user_reports').insert({
+      reporter_id: userId,
+      reported_user_id: reportedComment.author_id,
+      conversation_id: null,
+      category: reportCategory,
+      details: details || null,
+      message_id: reportedComment.id,
+      message_created_at: reportedComment.created_at,
+      message_excerpt: String(reportedComment.content).slice(0, 280),
+    })
+
+    if (error) throw error
+    setReportOk('תודה על הדיווח ועל התרומה לקהילה 🙏\nנבדוק את זה בהקדם.')
+    setReportDetails('')
+    // נסגור את המודאל אוטומטית אחרי רגע (כדי שלא ייתקע על "לא ניתן לדווח על עצמך")
+    window.setTimeout(() => {
+      setReportOpen(false)
+      setReportedComment(null)
+      setReportErr(null)
+      setReportOk(null)
+    }, 2200)
+  } catch (e: any) {
+    setReportErr(e?.message ?? 'לא הצלחנו לשלוח דיווח')
+  } finally {
+    setReportSending(false)
+  }
+}
 
 
   // likes
@@ -129,9 +187,8 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
       .in('comment_id', commentIds)
 
     const counts: Record<string, number> = {}
-    const countRows = (countsData ?? []) as LikeSummaryRow[]
-    countRows.forEach((r) => {
-      counts[r.comment_id] = Number(r.likes_count ?? 0)
+    ;(countsData as LikeSummaryRow[] | null | undefined)?.forEach((r) => {
+      counts[r.comment_id] = Number((r as any).likes_count ?? 0)
     })
     setLikeCounts(counts)
 
@@ -147,15 +204,14 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
       .in('comment_id', commentIds)
 
     const mine = new Set<string>()
-    const myRows = (myData ?? []) as Array<{ comment_id: string }>
-    myRows.forEach((r) => {
+    ;(myData as any[] | null | undefined)?.forEach((r) => {
       if (r?.comment_id) mine.add(String(r.comment_id))
     })
     setMyLiked(mine)
   }
 
   const load = async () => {
-    setErr(null)
+    setErrFor(null)
     setLoading(true)
 
     const { data: auth } = await supabase.auth.getUser()
@@ -209,7 +265,7 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
         id: rr.id,
         post_id: rr.post_id,
         author_id: rr.author_id,
-        parent_comment_id: rr.parent_comment_id ?? null,
+        parent_comment_id: (rr as any).parent_comment_id ?? null,
         content: rr.content,
         created_at: rr.created_at,
         updated_at: rr.updated_at ?? null,
@@ -248,7 +304,7 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
               .from('comments')
               .select(
                 `
-                id, post_id, author_id, parent_comment_id, content, created_at, updated_at,
+                id, post_id, author_id, content, created_at, updated_at,
                 author:profiles!fk_comments_author_id_profiles ( username, display_name, avatar_url )
               `
               )
@@ -262,7 +318,6 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
               id: d.id,
               post_id: d.post_id,
               author_id: d.author_id,
-              parent_comment_id: (d as unknown as { parent_comment_id?: string | null }).parent_comment_id ?? null,
               content: d.content,
               created_at: d.created_at,
               updated_at: d.updated_at ?? null,
@@ -305,7 +360,7 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
   }, [postId])
 
   const send = async () => {
-    setErr(null)
+    setErrFor(null)
 
     const value = text.trim()
     if (value.length < 2) {
@@ -365,7 +420,7 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
   }
 
   const startReply = (c: CommentRow) => {
-    setErr(null)
+    setErrFor(null)
     setReplyToId(c.id)
     setReplyToName(c.author?.display_name ?? 'אנונימי')
     setText('')
@@ -377,7 +432,7 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
   }
 
   const toggleLike = async (commentId: string) => {
-    setErr(null)
+    setErrFor(null)
     if (!userId) {
       setErrFor('צריך להתחבר כדי לתת לייק')
       return
@@ -430,7 +485,7 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
   }
 
   const startEdit = (c: CommentRow) => {
-    setErr(null)
+    setErrFor(null)
     setEditingId(c.id)
     setEditText(c.content)
   }
@@ -441,7 +496,7 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
   }
 
   const saveEdit = async (commentId: string) => {
-    setErr(null)
+    setErrFor(null)
     const value = editText.trim()
     if (value.length < 2) {
       setErrFor('התגובה קצרה מדי')
@@ -470,7 +525,7 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
   }
 
   const remove = async (commentId: string) => {
-    setErr(null)
+    setErrFor(null)
     if (!confirm('למחוק את התגובה?')) return
 
     // optimistic remove
@@ -486,6 +541,122 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
   }
 
   return (
+
+<>
+  {/* Report modal */}
+  {reportOpen && (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+      dir="rtl"
+      onMouseDown={(e) => {
+        // סגירה בלחיצה מחוץ לתיבה
+        if (e.target === e.currentTarget) {
+          setReportOpen(false)
+          setReportedComment(null)
+          setReportErr(null)
+          setReportOk(null)
+        }
+      }}
+    >
+      <div className="w-full max-w-lg rounded-3xl border bg-white p-5 shadow-xl">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-black">דיווח על תגובה בפוסט</div>
+            <div className="mt-1 text-xs text-neutral-600">
+              הדיווח יישלח לצוות האתר. אנחנו מתייחסים לדיווחים ברצינות ומטפלים בהם בהקדם.
+            </div>
+
+            {reportedComment && (
+              <div className="mt-3 rounded-2xl border bg-black/5 p-3 text-xs text-neutral-700">
+                <div className="font-bold">תגובה שדווחה</div>
+                <div className="mt-1 whitespace-pre-wrap">
+                  {String(reportedComment.content).slice(0, 280)}
+                  {String(reportedComment.content).length > 280 ? '…' : ''}
+                </div>
+                <div className="mt-1 text-[11px] text-neutral-500">{formatHe(reportedComment.created_at)}</div>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className="mr-auto rounded-full border px-3 py-1 text-xs font-bold hover:bg-black/5"
+            onClick={() => {
+              setReportOpen(false)
+              setReportedComment(null)
+              setReportErr(null)
+              setReportOk(null)
+            }}
+          >
+            סגור
+          </button>
+        </div>
+
+        {!canReportComment ? (
+          <div className="mt-4 rounded-2xl border bg-black/5 p-3 text-sm">לא ניתן לדווח על עצמך.</div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <label className="block">
+              <div className="mb-1 text-xs font-bold text-neutral-700">סוג דיווח</div>
+              <select
+                value={reportCategory}
+                onChange={(e) => setReportCategory(e.target.value as typeof reportCategory)}
+                className="w-full rounded-2xl border bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black/10"
+              >
+                <option value="abuse">שפה פוגענית / הקנטה</option>
+                <option value="spam">ספאם / פרסום</option>
+                <option value="hate">שנאה / הסתה</option>
+                <option value="privacy">חשיפת מידע אישי</option>
+                <option value="other">אחר</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <div className="mb-1 text-xs font-bold text-neutral-700">פרטים (אופציונלי)</div>
+              <textarea
+                value={reportDetails}
+                onChange={(e) => setReportDetails(e.target.value)}
+                rows={4}
+                maxLength={2000}
+                className="w-full resize-none rounded-2xl border bg-white px-4 py-3 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-black/10 whitespace-pre-wrap"
+                placeholder="תיאור קצר שיעזור לנו לטפל…"
+              />
+              <div className="mt-1 text-xs text-neutral-500">{reportDetails.length}/2000</div>
+            </label>
+
+            {reportErr && (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{reportErr}</div>
+            )}
+            {reportOk && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{reportOk}</div>
+            )}
+
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                className="rounded-full border px-4 py-2 text-sm font-bold hover:bg-black/5"
+                onClick={() => setReportOpen(false)}
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                disabled={reportSending}
+                onClick={submitReport}
+                className={[
+                  "rounded-full px-5 py-2 text-sm font-black text-white",
+                  reportSending ? "bg-black/30" : "bg-black hover:bg-black/90",
+                ].join(" ")}
+              >
+                {reportSending ? "שולח…" : "שלח/י דיווח"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )}
+
     <section className="mt-6 rounded-2xl border bg-white p-4" dir="rtl">
       <div className="flex items-center justify-between gap-3">
         <h3 className="m-0 text-sm font-bold">תגובות</h3>
@@ -608,6 +779,21 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
                       </button>
                     </>
                   ) : null}
+{!isMine && !isTemp && userId ? (
+  <button
+    type="button"
+    onClick={() => {
+      setReportedComment(c)
+      setReportOpen(true)
+      setReportErr(null)
+      setReportOk(null)
+    }}
+    className="text-xs font-semibold text-neutral-500 hover:underline"
+  >
+    דווח
+  </button>
+) : null}
+
                 </div>
               </div>
             )
@@ -648,16 +834,7 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
             )
 
             return (
-              <div key={c.id} className="relative rounded-2xl border p-3">
-                {!isMine && !isTemp ? (
-                  <button
-                    type="button"
-                    onClick={() => setErrFor('תודה, הדיווח נקלט.')}
-                    className="absolute left-3 top-3 text-[11px] font-semibold text-neutral-500 hover:text-neutral-700 hover:underline"
-                  >
-                    דווח
-                  </button>
-                ) : null}
+              <div key={c.id} className="rounded-2xl border p-3">
                 {headerRow}
 
                 {body}
@@ -699,16 +876,7 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
                       const rLikes = Number(likeCounts[r.id] ?? 0)
 
                       return (
-                        <div key={r.id} className="relative rounded-2xl border bg-white p-3">
-                          {!rMine && !rTemp ? (
-                            <button
-                              type="button"
-                              onClick={() => setErrFor('תודה, הדיווח נקלט.')}
-                              className="absolute left-3 top-3 text-[11px] font-semibold text-neutral-500 hover:text-neutral-700 hover:underline"
-                            >
-                              דווח
-                            </button>
-                          ) : null}
+                        <div key={r.id} className="rounded-2xl border bg-white p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex items-center gap-3">
                               <Avatar src={rAvatar} name={rName} />
@@ -808,5 +976,6 @@ export default function PostComments({ postId, postSlug: _postSlug, postTitle: _
         )}
       </div>
     </section>
+    </>
   )
 }

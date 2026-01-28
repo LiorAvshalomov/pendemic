@@ -2,18 +2,9 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import Avatar from '@/components/Avatar'
-import { MessageCircle } from 'lucide-react'
-
-type MessagesMenuProps = {
-  /** מאפשר ל-SiteHeader להתאים את עיצוב כפתור ההודעות לעיצוב פיגמה */
-  buttonClassName?: string
-  /** מאפשר לשלוט בעיצוב ה-badge */
-  badgeClassName?: string
-  /** מאפשר לשלוט בצבע/גודל האייקון */
-  iconClassName?: string
-}
 
 type ThreadRow = {
   conversation_id: string
@@ -54,17 +45,23 @@ function formatLast(iso: string | null) {
   return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })
 }
 
-export default function MessagesMenu({
-  buttonClassName,
-  badgeClassName,
-  iconClassName,
-}: MessagesMenuProps) {
+export default function MessagesMenu() {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [rows, setRows] = useState<ThreadRow[]>([])
   const [totalUnread, setTotalUnread] = useState(0)
+  const [isMobile, setIsMobile] = useState(false)
 
   const wrapRef = useRef<HTMLDivElement | null>(null)
-  useClickOutside(wrapRef, () => setOpen(false), open)
+  useClickOutside(wrapRef, () => setOpen(false), open && !isMobile)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)')
+    const apply = () => setIsMobile(mq.matches)
+    apply()
+    mq.addEventListener?.('change', apply)
+    return () => mq.removeEventListener?.('change', apply)
+  }, [])
 
   const load = useCallback(async () => {
     const { data: me } = await supabase.auth.getUser()
@@ -97,15 +94,19 @@ export default function MessagesMenu({
   }, [])
 
   useEffect(() => {
-    void load()
+    const t = window.setTimeout(() => {
+      void load()
+    }, 0)
 
     const ch = supabase
       .channel('messages-menu-refresh')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => void load())
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, () => void load())
+      .on('broadcast', { event: 'thread-read' }, () => void load())
       .subscribe()
 
     return () => {
+      window.clearTimeout(t)
       supabase.removeChannel(ch)
     }
   }, [load])
@@ -120,25 +121,29 @@ export default function MessagesMenu({
     <div className="relative" ref={wrapRef}>
       <button
         onClick={() => {
+          if (isMobile) {
+            router.push('/inbox')
+            return
+          }
+
           setOpen(v => !v)
           if (!open) void load()
         }}
-        className={
-          buttonClassName ??
-          'relative inline-flex h-9 w-9 items-center justify-center rounded-full border bg-white hover:bg-neutral-50'
-        }
+        className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border bg-white hover:bg-neutral-50"
         aria-label="הודעות"
         title="הודעות"
       >
-        <MessageCircle className={iconClassName ?? 'h-5 w-5'} aria-hidden="true" />
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M21 12c0 4.418-4.03 8-9 8a10.2 10.2 0 0 1-3.7-.68L3 20l1.04-3.12A7.47 7.47 0 0 1 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8Z"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+        </svg>
 
         {badgeText && (
-          <span
-            className={
-              badgeClassName ??
-              'absolute -left-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-black px-1.5 py-0.5 text-[10px] font-black text-white'
-            }
-          >
+          <span className="absolute -left-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-black px-1.5 py-0.5 text-[10px] font-black text-white">
             {badgeText}
           </span>
         )}

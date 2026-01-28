@@ -3,16 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
-import { Bell } from 'lucide-react'
-
-type NotificationsBellProps = {
-  /** מאפשר ל-SiteHeader להתאים את עיצוב כפתור ההתראות לעיצוב פיגמה */
-  buttonClassName?: string
-  /** מאפשר לשלוט בעיצוב ה-badge */
-  badgeClassName?: string
-  /** מאפשר לשלוט בצבע/גודל האייקון */
-  iconClassName?: string
-}
 
 type NotificationPayload = Record<string, unknown>
 
@@ -24,10 +14,16 @@ type NotificationRow = {
   entity_type: string | null
   entity_id: string | null
   payload: NotificationPayload | null
-  is_read: boolean
   created_at: string
   read_at: string | null
+  actor?: {
+    username: string | null
+    display_name: string | null
+    avatar_url: string | null
+  } | null
 }
+
+type ViewMode = 'desktop' | 'mobile'
 
 function asString(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v : null
@@ -100,21 +96,27 @@ function formatActors(names: string[]): string {
 }
 
 
-export default function NotificationsBell({
-  buttonClassName,
-  badgeClassName,
-  iconClassName,
-}: NotificationsBellProps) {
+export default function NotificationsBell() {
   const router = useRouter()
   const boxRef = useRef<HTMLDivElement | null>(null)
 
   const [open, setOpen] = useState(false)
   const [rows, setRows] = useState<NotificationRow[]>([])
   const [loading, setLoading] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('desktop')
 
-  useClickOutside(boxRef, () => setOpen(false), open)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)')
+    const apply = () => setViewMode(mq.matches ? 'mobile' : 'desktop')
+    apply()
+    mq.addEventListener?.('change', apply)
+    return () => mq.removeEventListener?.('change', apply)
+  }, [])
 
-  const unreadCount = useMemo(() => rows.filter(r => !r.is_read).length, [rows])
+  // In mobile we render a full-screen panel; click-outside would close it on any tap.
+  useClickOutside(boxRef, () => setOpen(false), open && viewMode === 'desktop')
+
+  const unreadCount = useMemo(() => rows.filter(r => !r.read_at).length, [rows])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -129,13 +131,13 @@ export default function NotificationsBell({
     }
 
     const { data, error } = await supabase
-  .from('inbox_threads')
-  .select(
-    'conversation_id,other_user_id,other_username,other_display_name,other_avatar_url,last_created_at,last_body,unread_count'
-  )
-  .eq('user_id', userId)
-  .order('last_created_at', { ascending: false })
-  .limit(20)
+      .from('notifications')
+      .select(
+        'id,user_id,actor_id,type,entity_type,entity_id,payload,created_at,read_at,actor:profiles!notifications_actor_id_fkey(username,display_name,avatar_url)'
+      )
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false })
+      .limit(80)
 
     if (!error) setRows((data ?? []) as NotificationRow[])
     setLoading(false)
@@ -146,31 +148,48 @@ export default function NotificationsBell({
     const uid = sessionData.session?.user?.id
     if (!uid) return
 
+    const ts = new Date().toISOString()
+    // mark unread only (read_at is the source of truth)
     await supabase
       .from('notifications')
-      .update({ is_read: true, read_at: new Date().toISOString() })
+      .update({ read_at: ts })
       .eq('user_id', uid)
-      .eq('is_read', false)
+      .is('read_at', null)
 
-    setRows(prev =>
-      prev.map(r => (r.is_read ? r : { ...r, is_read: true, read_at: new Date().toISOString() }))
-    )
+    setRows(prev => prev.map(r => (r.read_at ? r : { ...r, read_at: ts })))
   }, [])
 
+  useEffect(() => {
+    if (!open) return
+    // Mark unread as read as soon as the panel is opened so counters reset immediately.
+    void markAllRead()
+  }, [open, markAllRead])
+
+  // "נקה הכל" = מסמן הכל כנקרא (לא מוחק מה-DB)
   const clearAll = useCallback(async () => {
-    const { data: sessionData } = await supabase.auth.getSession()
-    const uid = sessionData.session?.user?.id
-    if (!uid) return
-
-    const ok = confirm('לנקות את כל ההתראות?')
-    if (!ok) return
-
-    const { error } = await supabase.from('notifications').delete().eq('user_id', uid)
-    if (!error) setRows([])
-  }, [])
+    await markAllRead()
+  }, [markAllRead])
 
   const goToNotification = useCallback(
     async (g: GroupedNotif) => {
+      setOpen(false)
+
+      // Mark this notification group as read (best effort) so counters update immediately.
+      if (userId) {
+        const ids = g.rows.filter(r => !r.read_at).map(r => r.id)
+        if (ids.length > 0) {
+          const now = new Date().toISOString()
+          void supabase
+            .from('notifications')
+            .update({ read_at: now })
+            .eq('user_id', userId)
+            .in('id', ids)
+            .then(() => {
+              setRows(prev => prev.map(r => (ids.includes(r.id) ? { ...r, read_at: now } : r)))
+            })
+        }
+      }
+
       // system-style notifications don't navigate
       if (g.type === 'system_message' || g.type === 'post_deleted') {
         return
@@ -353,26 +372,18 @@ export default function NotificationsBell({
     <div className="relative" ref={boxRef}>
       <button
         onClick={() => setOpen(v => !v)}
-        className={
-          buttonClassName ??
-          'relative rounded-full border bg-white px-3 py-2 text-xs font-semibold hover:bg-neutral-50'
-        }
+        className="relative rounded-full border bg-white px-3 py-2 text-xs font-semibold hover:bg-neutral-50"
         aria-label="התראות"
       >
-        <Bell className={iconClassName ?? 'h-5 w-5'} aria-hidden="true" />
+        🔔
         {unreadCount > 0 && (
-          <span
-            className={
-              badgeClassName ??
-              'absolute -left-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-black px-1 text-[11px] font-bold text-white'
-            }
-          >
+          <span className="absolute -left-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-black px-1 text-[11px] font-bold text-white">
             {unreadCount}
           </span>
         )}
       </button>
 
-      {open && (
+      {open && viewMode === 'desktop' && (
         <div className="absolute left-0 z-50 mt-2 w-[360px] rounded-2xl border bg-white shadow-lg">
           <div className="flex items-center justify-between border-b px-3 py-2">
             <div className="text-sm font-bold">התראות</div>
@@ -388,7 +399,9 @@ export default function NotificationsBell({
             {loading ? (
               <div className="p-3 text-sm text-muted-foreground">טוען…</div>
             ) : grouped.length === 0 ? (
-              <div className="p-3 text-sm text-muted-foreground">אין התראות.</div>
+              <div className="flex min-h-[260px] items-end p-3 text-sm text-muted-foreground">
+                <div className="pb-4">אין התראות.</div>
+              </div>
             ) : (
               <div className="space-y-1">
                 {grouped.map(g => (
@@ -401,7 +414,7 @@ export default function NotificationsBell({
                     className={[
                       'w-full rounded-xl px-3 py-2 text-right text-sm',
                       'hover:bg-neutral-50',
-                      g.is_read ? 'text-neutral-700' : 'font-bold',
+                      g.read_at ? 'text-neutral-700' : 'font-bold',
                     ].join(' ')}
                   >
                     {renderText(g)}
@@ -412,6 +425,64 @@ export default function NotificationsBell({
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {open && viewMode === 'mobile' && (
+        <div className="fixed inset-0 z-50" dir="rtl">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+          <div className="absolute inset-x-0 top-0 max-h-[100dvh] overflow-hidden rounded-b-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b px-4 py-4">
+              <div className="text-base font-extrabold">התראות</div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={clearAll}
+                  className="rounded-full border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-neutral-50"
+                >
+                  נקה הכל
+                </button>
+                <button
+                  onClick={() => setOpen(false)}
+                  className="rounded-full border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-neutral-50"
+                  aria-label="סגור"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[calc(100dvh-64px)] overflow-y-auto p-3">
+              {loading ? (
+                <div className="p-3 text-sm text-muted-foreground">טוען…</div>
+              ) : grouped.length === 0 ? (
+                <div className="flex min-h-[60dvh] items-end p-3 text-sm text-muted-foreground">
+                  <div className="pb-6">אין התראות.</div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {grouped.map(g => (
+                    <button
+                      key={g.key}
+                      onClick={() => {
+                        setOpen(false)
+                        void goToNotification(g)
+                      }}
+                      className={[
+                        'w-full rounded-2xl border px-4 py-3 text-right text-sm',
+                        'hover:bg-neutral-50',
+                        g.read_at ? 'text-neutral-700' : 'font-bold',
+                      ].join(' ')}
+                    >
+                      {renderText(g)}
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {new Date(g.newest_created_at).toLocaleString('he-IL')}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
