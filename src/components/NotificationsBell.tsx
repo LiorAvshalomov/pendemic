@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -173,16 +174,10 @@ export default function NotificationsBell() {
 
     setRows(prev => prev.map(r => (r.read_at ? r : { ...r, read_at: ts })))
   }, [])
-  // "נקה הכל" = מוחק את כל ההתראות של המשתמש הנוכחי
+  // "נקה הכל" = מסמן הכל כנקרא (לא מוחק מה-DB)
   const clearAll = useCallback(async () => {
-    const { data: sessionData } = await supabase.auth.getSession()
-    const uid = sessionData.session?.user?.id
-    if (!uid) return
-
-    await supabase.from('notifications').delete().eq('user_id', uid)
-
-    setRows([])
-  }, [])
+    await markAllRead()
+  }, [markAllRead])
 
   const goToNotification = useCallback(
     async (g: GroupedNotif) => {
@@ -263,14 +258,24 @@ export default function NotificationsBell() {
 
     for (const n of rows) {
       const payload = n.payload ?? {}
+      const actorProfile = pickActor(n.actor)
       const postId = asString(payload['post_id']) ?? n.entity_id
       const postSlug = asString(payload['post_slug'])
       const postTitle = asString(payload['post_title'])
       const actorDisplay =
         n.type === 'system_message' || n.type === 'post_deleted'
           ? 'מערכת האתר'
-          : asString(payload['from_user_name']) ?? asString(payload['actor_display_name']) ?? asString(payload['actor_username']) ?? pickActor(n.actor)?.display_name ?? pickActor(n.actor)?.username ?? 'מישהו'
-      const actorUsername = asString(payload['actor_username']) ?? ''
+          : asString(payload['from_user_name']) ??
+            asString(payload['actor_display_name']) ??
+            asString(payload['actor_username']) ??
+            actorProfile?.display_name ??
+            actorProfile?.username ??
+            'מישהו'
+      const actorUsername =
+        asString(payload['from_user_username']) ??
+        asString(payload['actor_username']) ??
+        actorProfile?.username ??
+        ''
 
       const key =
         n.type === 'follow'
@@ -327,12 +332,20 @@ export default function NotificationsBell() {
     )
   }, [rows])
 
-  const renderText = useCallback((g: GroupedNotif) => {
+  const renderText = useCallback((g: GroupedNotif): ReactNode => {
     const firstPayload = (g.rows?.[0]?.payload ?? {}) as NotificationPayload
 
     if (g.type === 'system_message') {
-      const t = typeof firstPayload.title === 'string' ? firstPayload.title : ''
-      return t ? `מערכת האתר: ${t}` : 'מערכת האתר: הודעה'
+      const title = typeof firstPayload.title === 'string' ? firstPayload.title : ''
+      const message = typeof firstPayload.message === 'string' ? firstPayload.message : ''
+
+      // שתי שורות: כותרת ואז הודעה. אם אין message – מציגים רק title.
+      return (
+        <div className="leading-5">
+          <div className="font-semibold">הודעה מהמערכת: {title || 'הודעה'}</div>
+          {message ? <div className="mt-0.5 text-sm text-neutral-700">{message}</div> : null}
+        </div>
+      )
     }
 
     if (g.type === 'post_deleted') {
@@ -345,6 +358,11 @@ export default function NotificationsBell() {
     const actorsText = formatActors(g.actor_display_names)
     const verb = verbFor(g.type, g.actor_display_names.length || g.count)
     const phrase = actionPhraseFor(g.type)
+
+    if (g.type === 'new_post') {
+      const t = g.post_title ? `: "${g.post_title}"` : ''
+      return `${actorsText} ${verb} העלה/תה פוסט חדש${t}`
+    }
 
     // שם פוסט בסוף (רק לתגובות/ריאקשנים)
     const postSuffix =
