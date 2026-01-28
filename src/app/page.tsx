@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { formatDateTimeHe, formatRelativeHe } from '@/lib/time'
+import StickySidebar from '@/components/StickySidebar'
 
 type PostRow = {
   id: string
@@ -577,7 +578,7 @@ export default async function HomePage() {
 
 
         {/* C+D+E) MAIN CONTENT + SIDEBAR (כמו MyPen) */}
-        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]" dir="rtl">
+        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px] lg:items-start" dir="rtl">
           {/* RIGHT (תוכן ראשי) */}
           <div className="space-y-8">
             {/* סיפורים */}
@@ -623,9 +624,9 @@ export default async function HomePage() {
             </section>
           </div>
 
-          {/* LEFT (Sidebar קבוע) */}
-          <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
-            {/* פוסטים אחרונים */}
+          {/* LEFT (Sidebar) */}
+          <StickySidebar className="space-y-6">
+{/* פוסטים אחרונים */}
             <section>
               <SectionTitle title="פוסטים אחרונים" href="/search?sort=recent" />
               <div className="space-y-2">
@@ -665,8 +666,10 @@ export default async function HomePage() {
                 )}
               </div>
             </section>
-          </aside>
+          </StickySidebar>
         </div>
+
+
 
 
         {/* C) Stories + Recent */}

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { formatDateTimeHe, formatRelativeHe } from '@/lib/time'
+import StickySidebar from '@/components/StickySidebar'
 
 type PostRow = {
   id: string
@@ -558,7 +559,7 @@ export default async function ChannelFeedPage({
         </div>
 
         {/* MAIN + SIDEBAR */}
-        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]" dir="rtl">
+        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px] lg:items-start" dir="rtl">
           <div className="space-y-8">
             <section>
               {subcategories?.length ? (
@@ -593,7 +594,7 @@ export default async function ChannelFeedPage({
             </section>
           </div>
 
-          <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
+          <StickySidebar className="space-y-6">
             <section>
               <SectionTitle title="פוסטים אחרונים" href={`/search?sort=recent&channel=${encodeURIComponent(channelSlug)}`} />
               <div className="space-y-2">
@@ -630,7 +631,7 @@ export default async function ChannelFeedPage({
                 )}
               </div>
             </section>
-          </aside>
+          </StickySidebar>
         </div>
       </div>
     </main>

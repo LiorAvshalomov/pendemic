@@ -27,7 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="he" dir="rtl">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground overflow-x-hidden`}
       >
         <AppBackground />
         <div className="min-h-screen flex flex-col">
