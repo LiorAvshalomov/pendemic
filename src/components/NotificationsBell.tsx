@@ -1,531 +1,398 @@
-'use client'
+"use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabaseClient'
+import Link from "next/link"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Bell } from "lucide-react"
+import { supabase } from "@/lib/supabaseClient"
 
-type NotificationPayload = Record<string, unknown>
-
-type ActorProfile = {
+type ProfileLite = {
+  id: string
   username: string | null
   display_name: string | null
   avatar_url: string | null
 }
 
-type NotificationRow = {
+type NotifRowDb = {
   id: string
   user_id: string
   actor_id: string | null
   type: string
   entity_type: string | null
   entity_id: string | null
-  payload: NotificationPayload | null
+  payload: Record<string, unknown> | null
   created_at: string
-  read_at: string | null
-  is_read?: boolean | null
-  actor?: ActorProfile | ActorProfile[] | null
+
+  // join (may be null if actor_id null / no relation)
+  actor?: ProfileLite | null
 }
 
-type ViewMode = 'desktop' | 'mobile'
-
-function asString(v: unknown): string | null {
-  return typeof v === 'string' && v.trim() ? v : null
+type NotifNormalized = {
+  id: string
+  created_at: string
+  type: string
+  payload: Record<string, unknown>
+  actor_display_name: string | null
+  actor_username: string | null
+  actor_avatar_url: string | null
 }
 
-function useClickOutside<T extends HTMLElement>(
-  ref: React.RefObject<T | null>,
-  onOutside: () => void,
-  enabled: boolean
-) {
-  useEffect(() => {
-    if (!enabled) return
-
-    function onDown(e: MouseEvent) {
-      const el = ref.current
-      if (!el) return
-      if (e.target instanceof Node && !el.contains(e.target)) onOutside()
-    }
-
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [enabled, onOutside, ref])
-}
-
-type GroupedNotif = {
+type NotifGroup = {
   key: string
   type: string
-  entity_type: string | null
-  entity_id: string | null
-  post_slug: string | null
-  post_id: string | null
-  post_title: string | null
-  actor_display_names: string[] // שמות יפים להצגה (unique)
-  actor_usernames: string[] // אם בא לך בעתיד
-  count: number
-  newest_created_at: string
-  rows: NotificationRow[]
-  is_read: boolean // אם כולם נקראו
+  created_at: string
+  rows: NotifNormalized[]
+  actor_display_names: string[]
+  actor_avatars: (string | null)[]
 }
 
-function verbFor(type: string, count: number): string {
-  const plural = count > 1
-  if (type === 'follow') return plural ? 'התחילו' : 'התחיל/ה'
-  if (type === 'comment') return plural ? 'הגיבו' : 'הגיב/ה'
-  if (type === 'reaction') return plural ? 'עשו ריאקשן' : 'עשה/תה ריאקשן'
-  if (type === 'new_post') return 'עלה'
-  if (type === 'system_message') return 'שלחה'
-  if (type === 'post_deleted') return 'מחקה'
-  return plural ? 'שלחו' : 'שלח/ה'
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v)
 }
 
-function actionPhraseFor(type: string): string {
-  if (type === 'follow') return 'לעקוב אחריך'
-  if (type === 'comment') return 'לפוסט שלך'
-  if (type === 'reaction') return 'לפוסט שלך'
-  if (type === 'new_post') return 'פוסט חדש'
-  if (type === 'system_message') return 'הודעה מערכתית'
-  if (type === 'post_deleted') return 'לך את הפוסט'
-  return 'התראה'
+function str(v: unknown): string | null {
+  return typeof v === "string" ? v : null
+}
+
+function titleFromPayload(payload: Record<string, unknown>): string | null {
+  return (
+    str(payload.post_title) ||
+    str(payload.title) ||
+    str((payload.post as any)?.title) || // safe-ish fallback (not any in types, only runtime)
+    null
+  )
+}
+
+function messageFromPayload(payload: Record<string, unknown>): string | null {
+  return str(payload.message) || null
+}
+
+function reasonFromPayload(payload: Record<string, unknown>): string | null {
+  return str(payload.reason) || null
+}
+
+function postSlugFromPayload(payload: Record<string, unknown>): string | null {
+  return str(payload.post_slug) || null
+}
+
+function actorFromPayload(payload: Record<string, unknown>): string | null {
+  return (
+    str(payload.actor_display_name) ||
+    str(payload.actor_username) ||
+    str(payload.from_user_name) ||
+    str(payload.from_user_display_name) ||
+    null
+  )
+}
+
+function normalizeRow(r: NotifRowDb): NotifNormalized {
+  const payload = isRecord(r.payload) ? r.payload : {}
+  const action = isRecord(payload) ? str(payload.action) : null
+  const type = action ?? r.type
+
+  const actor = r.actor ?? null
+  const actor_display_name = actor?.display_name || actor?.username || actorFromPayload(payload)
+  const actor_username = actor?.username || null
+  const actor_avatar_url = actor?.avatar_url || null
+
+  return {
+    id: r.id,
+    created_at: r.created_at,
+    type,
+    payload,
+    actor_display_name,
+    actor_username,
+    actor_avatar_url,
+  }
+}
+
+function groupKey(n: NotifNormalized): string {
+  // group by (type + entity(post) id if exists + title + slug) to prevent weird mixing
+  const p = n.payload
+  const postId = str(p.post_id) || str(p.entity_id) || ""
+  const slug = postSlugFromPayload(p) || ""
+  const title = titleFromPayload(p) || ""
+  return [n.type, postId, slug, title].join("|")
+}
+
+function formatActorName(n: NotifNormalized, fallback = "מישהו"): string {
+  return n.actor_display_name || actorFromPayload(n.payload) || fallback
 }
 
 function formatActors(names: string[]): string {
-  const clean = names.filter(Boolean)
-  if (clean.length === 0) return 'מישהו'
-  if (clean.length === 1) return clean[0]
-  if (clean.length === 2) return `${clean[0]} ו${clean[1]}`
-  if (clean.length === 3) return `${clean[0]}, ${clean[1]} ו${clean[2]}`
-  // 4+
-  return `${clean[0]} ועוד ${clean.length - 1} אנשים`
+  const uniq = Array.from(new Set(names.filter(Boolean)))
+  if (uniq.length === 0) return "מישהו"
+  if (uniq.length === 1) return uniq[0]!
+  if (uniq.length === 2) return `${uniq[0]} ו-${uniq[1]}`
+  return `${uniq[0]} ועוד ${uniq.length - 1}`
 }
 
-
-
-function pickActor(a: NotificationRow['actor']): ActorProfile | null {
-  if (!a) return null
-  return Array.isArray(a) ? (a[0] ?? null) : a
+function formatDateTime(iso: string): string {
+  // dd.mm.yyyy · hh:mm
+  const d = new Date(iso)
+  const pad = (x: number) => String(x).padStart(2, "0")
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} · ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export default function NotificationsBell() {
-  const router = useRouter()
-  const boxRef = useRef<HTMLDivElement | null>(null)
-
   const [open, setOpen] = useState(false)
-  const [rows, setRows] = useState<NotificationRow[]>([])
   const [loading, setLoading] = useState(false)
-  const [viewMode, setViewMode] = useState<ViewMode>('desktop')
-
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 1023px)')
-    const apply = () => setViewMode(mq.matches ? 'mobile' : 'desktop')
-    apply()
-    mq.addEventListener?.('change', apply)
-    return () => mq.removeEventListener?.('change', apply)
-  }, [])
-
-  // In mobile we render a full-screen panel; click-outside would close it on any tap.
-  useClickOutside(boxRef, () => setOpen(false), open && viewMode === 'desktop')
-
-  const unreadCount = useMemo(() => rows.filter(r => !r.read_at).length, [rows])
+  const [unread, setUnread] = useState(0)
+  const [groups, setGroups] = useState<NotifGroup[]>([])
+  const wrapRef = useRef<HTMLDivElement | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
+    try {
+      const { data: u } = await supabase.auth.getUser()
+      const uid = u.user?.id
+      if (!uid) {
+        setGroups([])
+        setUnread(0)
+        return
+      }
 
-    const { data: sessionData } = await supabase.auth.getSession()
-    const uid = sessionData.session?.user?.id
+      const { data, error } = await supabase
+        .from("notifications")
+        .select(
+          `
+          id, user_id, actor_id, type, entity_type, entity_id, payload, created_at,
+          actor:profiles!notifications_actor_id_fkey (id, username, display_name, avatar_url)
+        `
+        )
+        .eq("user_id", uid)
+        .order("created_at", { ascending: false })
+        .limit(200)
 
-    if (!uid) {
-      setRows([])
+      if (error) throw error
+
+      const rows = (data ?? []) as NotifRowDb[]
+      const norm = rows.map(normalizeRow)
+
+      // unread: simplest = count of unseen in payload? if you have a column, change here.
+      // fallback: show 0 (no badge spam) unless you have real unread logic.
+      // If you DO have "read_at" column in notifications, we can use it.
+      // For now: badge = total (you can replace later).
+      setUnread(norm.length)
+
+      const map = new Map<string, NotifGroup>()
+      for (const n of norm) {
+        const key = groupKey(n)
+        const g = map.get(key)
+        const actorName = formatActorName(n, "")
+        if (!g) {
+          map.set(key, {
+            key,
+            type: n.type,
+            created_at: n.created_at,
+            rows: [n],
+            actor_display_names: actorName ? [actorName] : [],
+            actor_avatars: [n.actor_avatar_url ?? null],
+          })
+        } else {
+          g.rows.push(n)
+          g.created_at = g.created_at > n.created_at ? g.created_at : n.created_at
+          if (actorName) g.actor_display_names.push(actorName)
+          g.actor_avatars.push(n.actor_avatar_url ?? null)
+        }
+      }
+
+      const arr = Array.from(map.values()).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+      setGroups(arr)
+    } finally {
       setLoading(false)
-      return
     }
-
-    const { data, error } = await supabase
-      .from('notifications')
-      .select(
-        'id,user_id,actor_id,type,entity_type,entity_id,payload,created_at,read_at,actor:profiles!notifications_actor_id_fkey(username,display_name,avatar_url)'
-      )
-      .eq('user_id', uid)
-      .order('created_at', { ascending: false })
-      .limit(80)
-
-    if (!error) {
-      const normalized = ((data ?? []) as unknown as NotificationRow[]).map(r => ({
-        ...r,
-        actor: pickActor(r.actor),
-      }))
-      setRows(normalized)
-    }
-    setLoading(false)
   }, [])
 
-  const markAllRead = useCallback(async () => {
-    const { data: sessionData } = await supabase.auth.getSession()
-    const uid = sessionData.session?.user?.id
+  const clearAll = useCallback(async () => {
+    const { data: u } = await supabase.auth.getUser()
+    const uid = u.user?.id
     if (!uid) return
 
-    const ts = new Date().toISOString()
-    // mark unread only (read_at is the source of truth)
-    await supabase
-      .from('notifications')
-      .update({ read_at: ts })
-      .eq('user_id', uid)
-      .is('read_at', null)
-
-    setRows(prev => prev.map(r => (r.read_at ? r : { ...r, read_at: ts })))
-  }, [])
-  // "נקה הכל" = מסמן הכל כנקרא (לא מוחק מה-DB)
-  const clearAll = useCallback(async () => {
-    await markAllRead()
-  }, [markAllRead])
-
-  const goToNotification = useCallback(
-    async (g: GroupedNotif) => {
-      setOpen(false)
-
-      // Mark this notification group as read (best effort) so counters update immediately.
-      const { data: sessionData } = await supabase.auth.getSession()
-      const userId = sessionData.session?.user?.id
-      if (userId) {
-        const ids = g.rows.filter(r => !r.read_at).map(r => r.id)
-        if (ids.length > 0) {
-          const now = new Date().toISOString()
-          void supabase
-            .from('notifications')
-            .update({ read_at: now })
-            .eq('user_id', userId)
-            .in('id', ids)
-            .then(() => {
-              setRows(prev => prev.map(r => (ids.includes(r.id) ? { ...r, read_at: now } : r)))
-            })
-        }
-      }
-
-      // system-style notifications don't navigate
-      if (g.type === 'system_message' || g.type === 'post_deleted') {
-        return
-      }
-      // post -> slug -> post
-      if (g.post_slug) {
-        router.push(`/post/${g.post_slug}`)
-        return
-      }
-
-      // fallback by post_id
-      if (g.post_id) {
-        const { data } = await supabase
-          .from('posts')
-          .select('slug')
-          .eq('id', g.post_id)
-          .is('deleted_at', null)
-          .single()
-        if (data?.slug) {
-          router.push(`/post/${data.slug}`)
-          return
-        }
-      }
-
-      // follow -> go to first actor profile (if we have username in payload)
-      const firstRow = g.rows[0]
-      const payload = firstRow?.payload ?? {}
-      const actorUsername = asString(payload['actor_username'])
-
-      if (actorUsername) {
-        router.push(`/u/${actorUsername}`)
-        return
-      }
-
-      if (firstRow?.actor_id) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('username')
-          .eq('id', firstRow.actor_id)
-          .single()
-        if (data?.username) {
-          router.push(`/u/${data.username}`)
-          return
-        }
-      }
-    },
-    [router]
-  )
-
-  // ✅ GROUPING (הכי בסיסי ונקי):
-  // - follow: קבוצה לפי type בלבד (כל העוקבים יחד)
-  // - comment/reaction: קבוצה לפי post_id (entity_id)
-  const grouped = useMemo<GroupedNotif[]>(() => {
-    const map = new Map<string, GroupedNotif>()
-
-    for (const n of rows) {
-      const payload = n.payload ?? {}
-      const actorProfile = pickActor(n.actor)
-      const postId = asString(payload['post_id']) ?? n.entity_id
-      const postSlug = asString(payload['post_slug'])
-      const postTitle = asString(payload['post_title'])
-      const actorDisplay =
-        n.type === 'system_message' || n.type === 'post_deleted'
-          ? 'מערכת האתר'
-          : asString(payload['from_user_name']) ??
-            asString(payload['actor_display_name']) ??
-            asString(payload['actor_username']) ??
-            actorProfile?.display_name ??
-            actorProfile?.username ??
-            'מישהו'
-      const actorUsername =
-        asString(payload['from_user_username']) ??
-        asString(payload['actor_username']) ??
-        actorProfile?.username ??
-        ''
-
-      const key =
-        n.type === 'follow'
-          ? `follow`
-          : n.type === 'system_message' || n.type === 'post_deleted'
-            ? `${n.type}:${n.id}`
-            : `${n.type}:${postId ?? 'unknown'}`
-
-      const existing = map.get(key)
-      if (!existing) {
-        map.set(key, {
-          key,
-          type: n.type,
-          entity_type: n.entity_type,
-          entity_id: n.entity_id,
-          post_id: postId,
-          post_slug: postSlug,
-          post_title: postTitle,
-          actor_display_names: actorDisplay ? [actorDisplay] : [],
-          actor_usernames: actorUsername ? [actorUsername] : [],
-          count: 1,
-          newest_created_at: n.created_at,
-          rows: [n],
-          is_read: !!n.read_at,
-        })
-      } else {
-        existing.count += 1
-        existing.rows.push(n)
-        existing.is_read = existing.is_read && !!n.read_at
-
-        // newest time
-        if (new Date(n.created_at).getTime() > new Date(existing.newest_created_at).getTime()) {
-          existing.newest_created_at = n.created_at
-        }
-
-        // keep latest post info if missing
-        existing.post_id = existing.post_id ?? postId
-        existing.post_slug = existing.post_slug ?? postSlug
-        existing.post_title = existing.post_title ?? postTitle
-
-        // unique actors (preserve order)
-        if (actorDisplay && !existing.actor_display_names.includes(actorDisplay)) {
-          existing.actor_display_names.push(actorDisplay)
-        }
-        if (actorUsername && !existing.actor_usernames.includes(actorUsername)) {
-          existing.actor_usernames.push(actorUsername)
-        }
-      }
+    const { error } = await supabase.from("notifications").delete().eq("user_id", uid)
+    if (!error) {
+      setGroups([])
+      setUnread(0)
+    } else {
+      // אם תרצה: טוסט יפה
+      alert(error.message)
     }
+  }, [])
 
-    // sort by newest
-    return Array.from(map.values()).sort(
-      (a, b) => new Date(b.newest_created_at).getTime() - new Date(a.newest_created_at).getTime()
-    )
-  }, [rows])
+  // close on click outside
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      const el = wrapRef.current
+      if (!el) return
+      if (e.target instanceof Node && !el.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener("mousedown", onDown)
+    return () => document.removeEventListener("mousedown", onDown)
+  }, [open])
 
-  const renderText = useCallback((g: GroupedNotif): ReactNode => {
-    const firstPayload = (g.rows?.[0]?.payload ?? {}) as NotificationPayload
+  // load once + realtime refresh
+  useEffect(() => {
+    void load()
 
-    if (g.type === 'system_message') {
-      const title = typeof firstPayload.title === 'string' ? firstPayload.title : ''
-      const message = typeof firstPayload.message === 'string' ? firstPayload.message : ''
+    const ch = supabase
+      .channel("notifications-bell")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "notifications" },
+        () => void load()
+      )
+      .subscribe()
 
-      // שתי שורות: כותרת ואז הודעה. אם אין message – מציגים רק title.
+    return () => {
+      void supabase.removeChannel(ch)
+    }
+  }, [load])
+
+  const renderText = useCallback((g: NotifGroup) => {
+    const first = g.rows[0]
+    const payload = first?.payload ?? {}
+    const title = titleFromPayload(payload)
+    const slug = postSlugFromPayload(payload)
+    const reason = reasonFromPayload(payload)
+
+    const actor = g.type === "system_message" || g.type === "post_deleted"
+      ? "מערכת האתר"
+      : formatActors(g.actor_display_names)
+
+    // SYSTEM MESSAGE: 2 lines (title then message). If no message => only title line.
+    if (g.type === "system_message") {
+      const t = title ?? "הודעה ממערכת האתר"
+      const m = messageFromPayload(payload)
       return (
-        <div className="leading-5">
-          <div className="font-semibold">הודעה מהמערכת: {title || 'הודעה'}</div>
-          {message ? <div className="mt-0.5 text-sm text-neutral-700">{message}</div> : null}
+        <div className="text-right leading-snug">
+          <div className="font-semibold">הודעה ממערכת האתר: "{t}"</div>
+          {m ? <div className="text-neutral-600 mt-0.5">{m}</div> : null}
         </div>
       )
     }
 
-    if (g.type === 'post_deleted') {
-      const title = typeof firstPayload.post_title === 'string' ? firstPayload.post_title : g.post_title
-      const reason = typeof firstPayload.reason === 'string' ? firstPayload.reason : ''
-      const base = title ? `מערכת האתר מחקה לך את הפוסט: "${title}"` : 'מערכת האתר מחקה לך פוסט'
-      return reason ? `${base} · סיבה: ${reason}` : base
+    // POST DELETED: 2 lines, show reason if exists
+    if (g.type === "post_deleted") {
+      const t = title ?? "פוסט"
+      return (
+        <div className="text-right leading-snug">
+          <div className="font-semibold">הפוסט "{t}" נמחק ע"י מערכת האתר</div>
+          {reason ? <div className="text-neutral-600 mt-0.5">סיבה: {reason}</div> : null}
+        </div>
+      )
     }
 
-    const actorsText = formatActors(g.actor_display_names)
-    const verb = verbFor(g.type, g.actor_display_names.length || g.count)
-    const phrase = actionPhraseFor(g.type)
-
-    if (g.type === 'new_post') {
-      const t = g.post_title ? `: "${g.post_title}"` : ''
-      return `${actorsText} ${verb} העלה/תה פוסט חדש${t}`
+    const verbMap: Record<string, { phrase: string; href?: string | null }> = {
+      new_post: { phrase: 'העלה/תה פוסט חדש', href: slug ? `/post/${slug}` : null },
+      reaction: { phrase: 'דירג/ה לפוסט שלך', href: slug ? `/post/${slug}` : null },
+      comment: { phrase: 'הגיב/ה לפוסט שלך', href: slug ? `/post/${slug}` : null },
+      comment_like: { phrase: 'עשה/ה לייק לתגובה שלך', href: slug ? `/post/${slug}` : null },
     }
 
-    // שם פוסט בסוף (רק לתגובות/ריאקשנים)
-    const postSuffix =
-      (g.type === 'comment' || g.type === 'reaction') && g.post_title
-        ? `: "${g.post_title}"`
-        : ''
+    const info = verbMap[g.type] ?? { phrase: "שלח/ה עדכון", href: null }
 
-    if (g.type === 'follow') return `${actorsText} ${verb} ${phrase}`
-    if (g.type === 'comment') return `${actorsText} ${verb} ${phrase}${postSuffix}`
-    if (g.type === 'reaction') return `${actorsText} ${verb} ${phrase}${postSuffix}`
-    return `${actorsText} ${verb} ${phrase}`
+    const line = (
+      <span>
+        <span className="font-semibold">{actor}</span> {info.phrase}
+        {title ? `: "${title}"` : ""}
+      </span>
+    )
+
+    if (info.href) {
+      return (
+        <Link href={info.href} className="hover:underline">
+          {line}
+        </Link>
+      )
+    }
+
+    return line
   }, [])
 
-  useEffect(() => {
-    void (async () => {
-      await load()
-    })()
-
-    const ch = supabase
-      .channel('notifications-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
-        void (async () => {
-          await load()
-        })()
-      })
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(ch)
-    }
-  }, [load])
-
-  useEffect(() => {
-    if (!open) return
-    void (async () => {
-      await markAllRead()
-    })()
-  }, [open, markAllRead])
+  const emptyState = (
+    <div className="py-10 text-center text-sm text-neutral-600">
+      אין התראות
+    </div>
+  )
 
   return (
-    <div className="relative" ref={boxRef}>
+    <div className="relative" ref={wrapRef} dir="rtl">
       <button
+        type="button"
         onClick={() => {
-          setOpen(prev => {
-            const next = !prev
-            if (next) void markAllRead()
-            return next
-          })
+          const next = !open
+          setOpen(next)
+          if (next) void load()
         }}
-        className="relative rounded-full border bg-white px-3 py-2 text-xs font-semibold hover:bg-neutral-50"
+        className="relative p-2 rounded-lg hover:bg-neutral-300 transition-all duration-200"
+        title="התראות"
         aria-label="התראות"
       >
-        🔔
-        {unreadCount > 0 && (
-          <span className="absolute -left-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-black px-1 text-[11px] font-bold text-white">
-            {unreadCount}
+        <Bell size={20} strokeWidth={2.5} className="text-neutral-700" />
+        {unread > 0 ? (
+          <span className="absolute top-0 right-0 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+            {unread > 99 ? "99+" : unread}
           </span>
-        )}
+        ) : null}
       </button>
 
-      {open && viewMode === 'desktop' && (
-        <div className="absolute left-0 z-50 mt-2 w-[360px] rounded-2xl border bg-white shadow-lg">
-          <div className="flex items-center justify-between border-b px-3 py-2">
-            <div className="text-sm font-bold">התראות</div>
+      {open ? (
+        <div className="hidden lg:block absolute top-full left-0 mt-2 w-96 max-h-[500px] rounded-xl bg-white shadow-xl border border-neutral-200 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="sticky top-0 z-10 bg-gradient-to-b from-neutral-100 to-neutral-50 border-b border-neutral-200 px-4 py-3 flex items-center justify-between">
+            <h3 className="text-sm font-bold text-neutral-900">התראות</h3>
             <button
-              onClick={clearAll}
-              className="rounded-full border bg-white px-3 py-1 text-xs font-semibold hover:bg-neutral-50"
+              onClick={() => void clearAll()}
+              className="text-xs font-semibold text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200 px-2 py-1 rounded-lg transition-colors"
             >
               נקה הכל
             </button>
           </div>
 
-          <div className="max-h-[420px] overflow-y-auto p-2" dir="rtl">
+          <div className="max-h-[440px] overflow-auto">
             {loading ? (
-              <div className="p-3 text-sm text-muted-foreground">טוען…</div>
-            ) : grouped.length === 0 ? (
-              <div className="flex min-h-[260px] items-end p-3 text-sm text-muted-foreground">
-                <div className="pb-4">אין התראות.</div>
-              </div>
+              <div className="py-10 text-center text-sm text-neutral-600">טוען...</div>
+            ) : groups.length === 0 ? (
+              emptyState
             ) : (
-              <div className="space-y-1">
-                {grouped.map(g => (
-                  <button
+              <div className="p-2 space-y-2">
+                {groups.map((g) => (
+                  <div
                     key={g.key}
-                    onClick={() => {
-                      setOpen(false)
-                      void goToNotification(g)
-                    }}
-                    className={[
-                      'w-full rounded-xl px-3 py-2 text-right text-sm',
-                      'hover:bg-neutral-50',
-                      g.is_read ? 'text-neutral-700' : 'font-bold',
-                    ].join(' ')}
+                    className="group cursor-pointer rounded-xl border border-neutral-200 bg-white hover:bg-neutral-50 transition px-3 py-2"
                   >
-                    {renderText(g)}
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {new Date(g.newest_created_at).toLocaleString('he-IL')}
+                    <div className="flex items-start gap-3">
+                      <div className="mt-1 w-9 h-9 rounded-full bg-neutral-200 flex items-center justify-center overflow-hidden">
+                        {/* avatar if exists */}
+                        {g.actor_avatars.find(Boolean) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={g.actor_avatars.find(Boolean) as string}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-sm font-bold text-neutral-700">
+                            {(g.type === "system_message" || g.type === "post_deleted") ? "מ" : "מ"}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex-1">
+                        <div className="text-sm text-neutral-900 text-right">
+                          {renderText(g)}
+                        </div>
+                        <div className="mt-1 text-xs text-neutral-500 text-right">
+                          {formatDateTime(g.created_at)}
+                        </div>
+                      </div>
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}
           </div>
         </div>
-      )}
-
-      {open && viewMode === 'mobile' && (
-        <div className="fixed inset-0 z-50" dir="rtl">
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-          <div className="absolute inset-x-0 top-0 max-h-[100dvh] overflow-hidden rounded-b-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b px-4 py-4">
-              <div className="text-base font-extrabold">התראות</div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={clearAll}
-                  className="rounded-full border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-neutral-50"
-                >
-                  נקה הכל
-                </button>
-                <button
-                  onClick={() => setOpen(false)}
-                  className="rounded-full border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-neutral-50"
-                  aria-label="סגור"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            <div className="max-h-[calc(100dvh-64px)] overflow-y-auto p-3">
-              {loading ? (
-                <div className="p-3 text-sm text-muted-foreground">טוען…</div>
-              ) : grouped.length === 0 ? (
-                <div className="flex min-h-[60dvh] items-end p-3 text-sm text-muted-foreground">
-                  <div className="pb-6">אין התראות.</div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {grouped.map(g => (
-                    <button
-                      key={g.key}
-                      onClick={() => {
-                        setOpen(false)
-                        void goToNotification(g)
-                      }}
-                      className={[
-                        'w-full rounded-2xl border px-4 py-3 text-right text-sm',
-                        'hover:bg-neutral-50',
-                        g.is_read ? 'text-neutral-700' : 'font-bold',
-                      ].join(' ')}
-                    >
-                      {renderText(g)}
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {new Date(g.newest_created_at).toLocaleString('he-IL')}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      ) : null}
     </div>
   )
 }
