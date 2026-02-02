@@ -72,31 +72,116 @@ export default function PostComments({ postId, postSlug, postTitle }: Props) {
   // When arriving from a notification link, temporarily highlight the target comment(s).
   // - Single highlight uses the hash: /post/[slug]#comment-<id>
   // - Group highlight uses sessionStorage + short token: /post/[slug]?n=<token>#comment-<first>
+  //
+  // IMPORTANT:
+  // Comments can render asynchronously (load/realtime/hydration). If we clear highlight too early,
+  // some targets won't be highlighted. We therefore:
+  // - keep a pending set of ids
+  // - activate highlight only when the DOM element exists
+  // - remove each highlight 4s *after* activation (per-id timer)
+  // - observe DOM changes for a short time to catch late renders
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set())
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const pendingHighlightRef = useRef<Set<string>>(new Set())
+  const highlightTimersRef = useRef<Map<string, number>>(new Map())
+  const observerRef = useRef<MutationObserver | null>(null)
+  const stopObserverTimerRef = useRef<number | null>(null)
+  const scrolledRef = useRef(false)
+  const tokenStorageKeyRef = useRef<string | null>(null)
+
+  const clearHighlightTimer = (key: string) => {
+    const t = highlightTimersRef.current.get(key)
+    if (t) window.clearTimeout(t)
+    highlightTimersRef.current.delete(key)
+  }
+
+  const activateHighlight = (rawId: string) => {
+    const key = `comment-${rawId}`
+
+    setHighlightIds(prev => {
+      if (prev.has(key)) return prev
+      const next = new Set(prev)
+      next.add(key)
+      return next
+    })
+
+    clearHighlightTimer(key)
+    const t = window.setTimeout(() => {
+      setHighlightIds(prev => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+      highlightTimersRef.current.delete(key)
+    }, 4000)
+    highlightTimersRef.current.set(key, t)
+  }
+
+  const tryActivatePending = () => {
+    if (typeof window === 'undefined') return
+    const pending = pendingHighlightRef.current
+    if (pending.size === 0) return
+
+    // Activate any ids whose element exists in the DOM.
+    Array.from(pending).forEach((rawId) => {
+      const el = document.getElementById(`comment-${rawId}`)
+      if (!el) return
+
+      activateHighlight(rawId)
+      pending.delete(rawId)
+
+      // Scroll to the first available highlighted target once (best UX),
+      // but only after the element exists.
+      if (!scrolledRef.current) {
+        scrolledRef.current = true
+        el.scrollIntoView({ block: 'start', behavior: 'auto' })
+      }
+    })
+  }
+
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    const ids = new Set<string>()
+    const pending = new Set<string>()
 
     // 1) Multi-highlight via token
     try {
       const url = new URL(window.location.href)
       const token = url.searchParams.get('n')
       if (token) {
-        const raw = window.sessionStorage.getItem(`pendemic:comment-highlight:${token}`)
+        const keyPrimary = `pendemic:comment-highlight:${token}`
+        const keyLegacy = `notif:${token}`
+
+        const rawPrimary = window.sessionStorage.getItem(keyPrimary)
+        const rawLegacy = rawPrimary ? null : window.sessionStorage.getItem(keyLegacy)
+        const raw = rawPrimary ?? rawLegacy
+
         if (raw) {
-          const parsed = JSON.parse(raw) as { ids?: unknown; ts?: unknown }
-          const list = Array.isArray(parsed?.ids) ? parsed.ids : []
-          const ts = typeof parsed?.ts === 'number' ? parsed.ts : 0
+          // Remember which key we used so we can clean it up later (important for React strict mode).
+          tokenStorageKeyRef.current = rawPrimary ? keyPrimary : keyLegacy
+
+          let list: unknown[] = []
+          let ts = 0
+
+          try {
+            const parsed = JSON.parse(raw) as any
+            if (Array.isArray(parsed)) {
+              list = parsed
+            } else if (parsed && typeof parsed === 'object') {
+              if (Array.isArray(parsed.ids)) list = parsed.ids
+              if (typeof parsed.ts === 'number') ts = parsed.ts
+            }
+          } catch {
+            // If it's not JSON, ignore.
+          }
+
           // best-effort TTL (10 minutes) so old tokens don't linger.
-          if (list.length > 0 && Date.now() - ts < 10 * 60 * 1000) {
+          if (list.length > 0 && (ts === 0 || Date.now() - ts < 10 * 60 * 1000)) {
             list.forEach((v) => {
-              if (typeof v === 'string' && v.trim()) ids.add(`comment-${v}`)
+              if (typeof v === 'string' && v.trim()) pending.add(v)
             })
           }
         }
-        // one-time use is fine (keeps URL short with no persistent state)
-        window.sessionStorage.removeItem(`pendemic:comment-highlight:${token}`)
       }
     } catch {
       // ignore
@@ -105,14 +190,61 @@ export default function PostComments({ postId, postSlug, postTitle }: Props) {
     // 2) Single highlight via hash
     const hash = window.location.hash
     if (hash && hash.startsWith('#comment-')) {
-      ids.add(hash.slice(1))
+      pending.add(hash.replace('#comment-', '').trim())
     }
 
-    if (ids.size === 0) return
-    setHighlightIds(ids)
-    const t = window.setTimeout(() => setHighlightIds(new Set()), 4000)
-    return () => window.clearTimeout(t)
+    if (pending.size === 0) return
+
+    pendingHighlightRef.current = pending
+    scrolledRef.current = false
+
+    // Try immediately (in case the DOM is already ready)
+    tryActivatePending()
+
+    // Observe DOM changes for a short time to catch late renders
+    if (listRef.current && pendingHighlightRef.current.size > 0) {
+      observerRef.current?.disconnect()
+      observerRef.current = new MutationObserver(() => {
+        tryActivatePending()
+      })
+      observerRef.current.observe(listRef.current, { childList: true, subtree: true })
+
+      if (stopObserverTimerRef.current) window.clearTimeout(stopObserverTimerRef.current)
+      stopObserverTimerRef.current = window.setTimeout(() => {
+        observerRef.current?.disconnect()
+        observerRef.current = null
+        stopObserverTimerRef.current = null
+        pendingHighlightRef.current.clear()
+        if (tokenStorageKeyRef.current) {
+          window.sessionStorage.removeItem(tokenStorageKeyRef.current)
+          tokenStorageKeyRef.current = null
+        }
+      }, 8000)
+    }
+
+    return () => {
+      observerRef.current?.disconnect()
+      observerRef.current = null
+      if (stopObserverTimerRef.current) window.clearTimeout(stopObserverTimerRef.current)
+      stopObserverTimerRef.current = null
+      // IMPORTANT: do NOT remove the sessionStorage token in cleanup.
+      // In Next.js/React Strict Mode (dev), effects mount/unmount twice.
+      // Removing here would delete the token before the second mount can read it,
+      // which breaks multi-highlight. Token cleanup is handled by the observer timeout.
+      // clear any per-id timers
+      highlightTimersRef.current.forEach((t) => window.clearTimeout(t))
+      highlightTimersRef.current.clear()
+      pendingHighlightRef.current.clear()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // After comments are loaded, try again (covers async load without relying on MutationObserver only).
+  useEffect(() => {
+    tryActivatePending()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length])
+
 
 // auto-hide errors (3s)
 const errTimerRef = useRef<number | null>(null)
@@ -349,7 +481,7 @@ async function submitReport() {
               .from('comments')
               .select(
                 `
-                id, post_id, author_id, content, created_at, updated_at,
+                id, post_id, author_id, parent_comment_id, content, created_at, updated_at,
                 author:profiles!fk_comments_author_id_profiles ( username, display_name, avatar_url )
               `
               )
@@ -363,6 +495,7 @@ async function submitReport() {
               id: d.id,
               post_id: d.post_id,
               author_id: d.author_id,
+              parent_comment_id: (d as any).parent_comment_id ?? null,
               content: d.content,
               created_at: d.created_at,
               updated_at: d.updated_at ?? null,
@@ -588,6 +721,18 @@ async function submitReport() {
   return (
 
 <>
+  {/* Subtle highlight animation (lightweight, future-proof) */}
+  <style jsx global>{`
+    .pendemic-comment-hl {
+      animation: pendemicCommentPulse 1s ease-in-out 0s 2;
+      will-change: transform;
+    }
+    @keyframes pendemicCommentPulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.01); }
+      100% { transform: scale(1); }
+    }
+  `}</style>
   {/* Report modal */}
   {reportOpen && (
     <div
@@ -764,7 +909,7 @@ async function submitReport() {
       ) : null}
 
       {/* List */}
-      <div className="mt-4 space-y-3">
+      <div ref={listRef} className="mt-4 space-y-3">
         {loading ? (
           <div className="text-sm text-muted-foreground">טוען תגובות…</div>
         ) : items.length === 0 ? (
@@ -884,7 +1029,7 @@ async function submitReport() {
                 id={`comment-${c.id}`}
                 className={
                   `rounded-2xl border p-3 scroll-mt-24 transition-colors ` +
-                  (highlightIds.has(`comment-${c.id}`) ? 'ring-2 ring-yellow-300 bg-yellow-50' : '')
+                  (highlightIds.has(`comment-${c.id}`) ? 'ring-2 ring-yellow-300 bg-yellow-50 pendemic-comment-hl' : '')
                 }
               >
                 {headerRow}
@@ -933,7 +1078,7 @@ async function submitReport() {
                           id={`comment-${r.id}`}
                           className={
                             `rounded-2xl border bg-white p-3 scroll-mt-24 transition-colors ` +
-                            (highlightIds.has(`comment-${r.id}`) ? 'ring-2 ring-yellow-300 bg-yellow-50' : '')
+                            (highlightIds.has(`comment-${r.id}`) ? 'ring-2 ring-yellow-300 bg-yellow-50 pendemic-comment-hl' : '')
                           }
                         >
                           <div className="flex items-start justify-between gap-3">

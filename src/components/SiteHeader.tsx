@@ -165,6 +165,10 @@ export default function SiteHeader() {
     setMobileMenuOpen(false)
     setMobileWriteOpen(false)
     setMobileProfileOpen(false)
+    // Also close notifications overlay if open.
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pendemic:close-notifications'))
+    }
   }, [])
 
   useClickOutside(writeRef, () => setWriteOpen(false), writeOpen)
@@ -408,15 +412,16 @@ export default function SiteHeader() {
               <div className="flex items-center gap-4">
                 {/* המבורגר - רק במובייל */}
                 <button
-                  onClick={() => setMobileMenuOpen(v => !v)}
+                  onClick={() => {
+                    if (typeof window !== 'undefined') {
+                      window.dispatchEvent(new CustomEvent('pendemic:close-notifications'))
+                    }
+                    setMobileMenuOpen(v => !v)
+                  }}
                   className="lg:hidden p-2 hover:bg-neutral-300 rounded-lg transition-colors"
                   aria-label="תפריט"
                 >
-                  {mobileMenuOpen ? (
-                    <X size={24} className="text-neutral-800" />
-                  ) : (
-                    <Menu size={24} className="text-neutral-800" />
-                  )}
+                  <Menu size={24} className="text-neutral-800" />
                 </button>
 
                 {/* בית - רק בדסקטופ */}
@@ -728,6 +733,7 @@ export default function SiteHeader() {
             dir="rtl"
           >
             <div className="mx-auto max-w-6xl px-4 py-4 space-y-4">
+              {/* אין כפתור סגירה כאן – הסגירה נעשית דרך ה־navbar */}
               {/* חיפוש במובייל */}
               <form
                 className="relative"

@@ -1,12 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { Bell, X } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import Avatar from "@/components/Avatar"
-import { createPortal } from "react-dom"
 
 type ProfileLite = {
   id: string
@@ -71,53 +71,6 @@ function str(v: unknown): string | null {
   return typeof v === "string" ? v : null
 }
 
-function getNestedRecord(payload: Record<string, unknown>, key: string): Record<string, unknown> | null {
-  const v = payload[key]
-  return isRecord(v) ? v : null
-}
-
-function commentIdFromPayloadDeep(payload: Record<string, unknown>): string | null {
-  // No guessing: only read known fields in common shapes (flat or nested).
-  const direct = str(payload.comment_id) || str(payload.commentId) || str(payload.entity_id)
-  if (direct) return direct
-
-  const p1 = getNestedRecord(payload, 'payload')
-  if (p1) {
-    const nested = str(p1.comment_id) || str(p1.commentId)
-    if (nested) return nested
-  }
-
-  const comment = getNestedRecord(payload, 'comment')
-  if (comment) {
-    const cid = str(comment.id) || str(comment.comment_id)
-    if (cid) return cid
-
-    const c2 = getNestedRecord(comment, 'comment')
-    if (c2) {
-      const cid2 = str(c2.id) || str(c2.comment_id)
-      if (cid2) return cid2
-    }
-  }
-
-  return null
-}
-
-function postIdFromPayloadDeep(payload: Record<string, unknown>): string | null {
-  const direct = str(payload.post_id)
-  if (direct) return direct
-  const p1 = getNestedRecord(payload, 'payload')
-  if (p1) {
-    const nested = str(p1.post_id)
-    if (nested) return nested
-  }
-  const post = getNestedRecord(payload, 'post')
-  if (post) {
-    const pid = str(post.id) || str(post.post_id)
-    if (pid) return pid
-  }
-  return null
-}
-
 function titleFromPayload(payload: Record<string, unknown>): string | null {
   const direct = str(payload.post_title) || str(payload.title)
   if (direct) return direct
@@ -135,19 +88,7 @@ function reasonFromPayload(payload: Record<string, unknown>): string | null {
 }
 
 function postSlugFromPayload(payload: Record<string, unknown>): string | null {
-  const direct = str(payload.post_slug) || str(payload.slug)
-  if (direct) return direct
-  const p1 = getNestedRecord(payload, 'payload')
-  if (p1) {
-    const nested = str(p1.post_slug) || str(p1.slug)
-    if (nested) return nested
-  }
-  const post = getNestedRecord(payload, 'post')
-  if (post) {
-    const nested = str(post.slug) || str(post.post_slug)
-    if (nested) return nested
-  }
-  return null
+  return str(payload.post_slug) || str(payload.slug) || null
 }
 
 function commentTextFromPayload(payload: Record<string, unknown>): string | null {
@@ -159,23 +100,6 @@ function commentTextFromPayload(payload: Record<string, unknown>): string | null
     str(payload.text) ||
     null
   )
-}
-
-function deepGet(payload: Record<string, unknown>, path: string[]): unknown {
-  let cur: unknown = payload
-  for (const k of path) {
-    if (!isRecord(cur)) return null
-    cur = cur[k]
-  }
-  return cur
-}
-
-function commentIdFromPayload(payload: Record<string, unknown>): string | null {
-  return commentIdFromPayloadDeep(payload)
-}
-
-function postIdFromPayload(payload: Record<string, unknown>): string | null {
-  return postIdFromPayloadDeep(payload)
 }
 
 function isReplyToComment(payload: Record<string, unknown>): boolean {
@@ -202,13 +126,33 @@ function actorNameFromPayload(payload: Record<string, unknown>): string | null {
 
 function effectiveType(rawType: string, payload: Record<string, unknown>): string {
   // Some older rows store the real action under payload.action.
-  const a = str(payload.action)
-  if (a) return a
+// We use it only when it maps to an existing UI type. Otherwise we keep the raw type.
+const a = str(payload.action)
+if (a === 'comment_like') return 'comment_like'
+if (a === 'comment_reply') return 'comment'
+
+  // Heuristic (safe): if the payload clearly refers to a comment thread, treat it as a comment notification.
+  // This fixes legacy triggers that stored an unrelated `type` while still providing comment_id/parent_comment_id.
+  const nestedComment = payload.comment
+  const hasCommentSignals =
+    typeof payload.comment_id === 'string' ||
+    typeof payload.parent_comment_id === 'string' ||
+    typeof (payload as any).parentCommentId === 'string' ||
+    typeof payload.reply_to_comment_id === 'string' ||
+    typeof payload.reply_to_id === 'string' ||
+    typeof (payload as any).commentId === 'string' ||
+    (isRecord(nestedComment) && (typeof nestedComment.id === 'string' || typeof nestedComment.parent_comment_id === 'string'))
+  if (hasCommentSignals) return 'comment'
+
   return rawType
 }
 
 function normalizeRow(r: NotifRowDb): NotifNormalized {
-  const payload = isRecord(r.payload) ? r.payload : {}
+  // Some legacy triggers store the data under payload.payload (nested json).
+  // We flatten it shallowly so UI + navigation can rely on the same keys.
+  const p0 = isRecord(r.payload) ? { ...r.payload } : {}
+  const nested = (p0 as any).payload
+  const payload = isRecord(nested) ? { ...p0, ...nested } : p0
   const actor = r.actor ?? null
 
   const raw_type = String(r.type ?? '')
@@ -238,8 +182,23 @@ function normalizeRow(r: NotifRowDb): NotifNormalized {
 function groupKey(n: NotifNormalized): string {
   if (n.type === "system_message" || n.type === "post_deleted") return `${n.type}|${n.id}`
 
+  // Comments: group by post (and by reply/non-reply) instead of per-comment,
+  // so multiple commenters appear as a single grouped notification.
+  if (n.type === 'comment') {
+    const p = n.payload
+    const action = str(p.action)
+    const isReply = action === 'comment_reply' || typeof p.parent_comment_id === 'string' || typeof (p as any).parentCommentId === 'string'
+    const postId = str(p.post_id) || ''
+    const slug = postSlugFromPayload(p) || ''
+    const title = titleFromPayload(p) || ''
+    // Separate buckets so replies don't merge with new top-level comments.
+    const kind = isReply ? 'comment_reply' : 'comment'
+    return [kind, postId, slug, title].join('|')
+  }
+
   const p = n.payload
   const entityType = n.entity_type || str(p.entity_type) || ""
+
   const entityId = n.entity_id || str(p.entity_id) || str(p.post_id) || ""
   const slug = postSlugFromPayload(p) || ""
   const title = titleFromPayload(p) || ""
@@ -288,6 +247,8 @@ export default function NotificationsBell() {
   const [groups, setGroups] = useState<NotifGroup[]>([])
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
 
   const getUid = useCallback(async () => {
     const { data } = await supabase.auth.getUser()
@@ -334,13 +295,19 @@ export default function NotificationsBell() {
           const authorId = str(p.author_id)
           if (authorId) profileIds.add(authorId)
 
-          const postId = postIdFromPayload(p)
+          const postId = str(p.post_id)
           if (postId) postIds.add(postId)
 
-          const cId = commentIdFromPayload(p)
+          const nested = (p as any).payload
+          const nestedComment = (p as any).comment
+          const cId =
+            str(p.comment_id) ||
+            (isRecord(nested) ? str((nested as any).comment_id) : null) ||
+            (isRecord(nestedComment) ? str((nestedComment as any).id) : null)
           if (cId) commentIds.add(cId)
         }
-        if (r.entity_type === 'comment' && r.entity_id) commentIds.add(String(r.entity_id))
+        const rawType = String(r.type ?? '')
+        if ((r.entity_type === 'comment' || rawType === 'comment') && r.entity_id) commentIds.add(String(r.entity_id))
       }
 
       const profilesById = new Map<string, ProfileLite>()
@@ -385,7 +352,11 @@ export default function NotificationsBell() {
         const actor = r.actor ?? (fallbackActorId ? profilesById.get(fallbackActorId) ?? null : null)
 
         // If this is a comment-like / reply flow, hydrate comment details
-        const commentId = r.entity_type === 'comment' ? (r.entity_id ? String(r.entity_id) : null) : commentIdFromPayload(p0)
+        const rawType = String(r.type ?? '')
+        const commentId =
+          (r.entity_type === 'comment' || rawType === 'comment')
+            ? (r.entity_id ? String(r.entity_id) : str(p0.comment_id))
+            : str(p0.comment_id)
         if (commentId && commentsById.has(commentId)) {
           const c = commentsById.get(commentId)!
           if (!('comment_id' in p0)) p0.comment_id = commentId
@@ -394,7 +365,7 @@ export default function NotificationsBell() {
           if (!('post_id' in p0)) p0.post_id = c.post_id
         }
 
-        const postId = postIdFromPayload(p0)
+        const postId = str(p0.post_id)
         if (postId && postsById.has(postId)) {
           const post = postsById.get(postId)!
           if (!('post_slug' in p0)) p0.post_slug = post.slug
@@ -514,6 +485,20 @@ export default function NotificationsBell() {
     return () => document.removeEventListener("mousedown", onDown)
   }, [open])
 
+  // Close when other header UI opens (hamburger / dropdowns) or on route changes.
+  useEffect(() => {
+    const onClose = () => setOpen(false)
+    window.addEventListener('pendemic:close-notifications', onClose as EventListener)
+    return () => window.removeEventListener('pendemic:close-notifications', onClose as EventListener)
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    // Any navigation should close the panel.
+    setOpen(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, searchParams.toString()])
+
   // load once + realtime refresh
   useEffect(() => {
     void load()
@@ -533,24 +518,6 @@ export default function NotificationsBell() {
     if (!open) return
     void markAllRead()
   }, [open, markAllRead])
-
-  // Mobile UX: lock background scroll while the fullscreen panel is open.
-  useEffect(() => {
-    if (!open) return
-    if (typeof window === 'undefined') return
-    const isMobile = window.matchMedia('(max-width: 1023px)').matches
-    if (!isMobile) return
-
-    const prevOverflow = document.body.style.overflow
-    const prevOverscroll = (document.body.style as any).overscrollBehavior
-    document.body.style.overflow = 'hidden'
-    ;(document.body.style as any).overscrollBehavior = 'none'
-    return () => {
-      document.body.style.overflow = prevOverflow
-      ;(document.body.style as any).overscrollBehavior = prevOverscroll
-    }
-  }, [open])
-
   const items = useMemo(() => groups, [groups])
 
   const makeShortToken = useCallback(() => {
@@ -593,7 +560,10 @@ export default function NotificationsBell() {
     const slug = postSlugFromPayload(payload)
     if (!slug) return null
 
-    const commentId = commentIdFromPayload(payload) || (first?.entity_type === 'comment' ? (first.entity_id ?? '') : '')
+    const commentId =
+      str(payload.comment_id) ||
+      (first?.entity_type === 'comment' ? (first.entity_id ?? '') : '') ||
+      (first?.raw_type === 'comment' ? (first.entity_id ?? '') : '')
     const hash = commentId ? `#comment-${commentId}` : ''
     return `/post/${slug}${hash}`
   }, [])
@@ -613,15 +583,31 @@ export default function NotificationsBell() {
       if (!slug) return null
 
       // Collect comment ids for highlight.
-      const ids: string[] = []
-      for (const r of g.rows) {
-        const p = r.payload ?? {}
-        const cid = commentIdFromPayload(p) || (r.entity_type === 'comment' ? (r.entity_id ?? null) : null)
-        if (cid && !ids.includes(cid)) ids.push(cid)
-      }
+const entries: { id: string; created_at: string }[] = []
+for (const r of g.rows) {
+  const p = r.payload ?? {}
+  const nested = (p as any).payload
+  const nestedComment = (p as any).comment
+  const cid =
+    str((p as any).comment_id) ||
+    (isRecord(nested) ? str((nested as any).comment_id) : null) ||
+    (isRecord(nestedComment) ? str((nestedComment as any).id) : null) ||
+    (r.entity_type === 'comment' ? (r.entity_id ?? null) : null) ||
+    (r.raw_type === 'comment' ? (r.entity_id ?? null) : null)
 
-      const firstId = ids[0] ?? commentIdFromPayload(payload) ?? null
-      const token = storeHighlightToken(ids)
+  if (!cid) continue
+  // Keep the earliest timestamp per comment id (stable ordering for scroll target).
+  const existing = entries.find(e => e.id === cid)
+  if (!existing) entries.push({ id: cid, created_at: r.created_at })
+  else if (existing.created_at > r.created_at) existing.created_at = r.created_at
+}
+
+const ids = entries
+  .sort((a, b) => (a.created_at > b.created_at ? 1 : -1))
+  .map(e => e.id)
+
+const firstId = ids[0] ?? str(payload.comment_id) ?? null
+const token = storeHighlightToken(ids)
       const q = token ? `?n=${token}` : ''
       const hash = firstId ? `#comment-${firstId}` : ''
       return `/post/${slug}${q}${hash}`
@@ -630,92 +616,96 @@ export default function NotificationsBell() {
   )
 
   const renderContent = useCallback((g: NotifGroup) => {
-    const first = g.rows[0]
-    const payload = first?.payload ?? {}
+  const first = g.rows[0]
+  const payload = first?.payload ?? {}
 
-    if (g.type === "system_message") {
-      const t = titleFromPayload(payload) ?? ""
-      const m = messageFromPayload(payload)
-      return (
-        <div className="text-right leading-snug">
-          <div className="font-semibold">מערכת האתר "{t || "הודעה"}"</div>
-          {m ? <div className="text-neutral-600 mt-0.5">{m}</div> : null}
-        </div>
-      )
-    }
+  if (g.type === "system_message") {
+    const t = titleFromPayload(payload) ?? ""
+    const m = messageFromPayload(payload)
+    return (
+      <div className="text-right leading-snug">
+        <div className="font-semibold">מערכת האתר "{t || "הודעה"}"</div>
+        {m ? <div className="text-neutral-600 mt-0.5">{m}</div> : null}
+      </div>
+    )
+  }
 
-    if (g.type === "post_deleted") {
-      const t = titleFromPayload(payload) ?? "פוסט"
-      const reason = reasonFromPayload(payload)
-      return (
-        <div className="text-right leading-snug">
-          <div className="font-semibold">הפוסט "{t}" נמחק ע"י מערכת האתר</div>
-          {reason ? <div className="text-neutral-600 mt-0.5">סיבה: {reason}</div> : null}
-        </div>
-      )
-    }
+  if (g.type === "post_deleted") {
+    const t = titleFromPayload(payload) ?? "פוסט"
+    const reason = reasonFromPayload(payload)
+    return (
+      <div className="text-right leading-snug">
+        <div className="font-semibold">הפוסט "{t}" נמחק ע"י מערכת האתר</div>
+        {reason ? <div className="text-neutral-600 mt-0.5">סיבה: {reason}</div> : null}
+      </div>
+    )
+  }
 
-    const uniqActors = uniqueActorNames(g.actor_display_names)
-    const who = formatActorsHeb(uniqActors)
-    const count = uniqActors.length
-    const title = titleFromPayload(payload)
-    const commentText = commentTextFromPayload(payload)
+  const uniqActors = uniqueActorNames(g.actor_display_names)
+  const who = formatActorsHeb(uniqActors)
+  const count = uniqActors.length
+  const title = titleFromPayload(payload)
 
-    if (g.type === "follow") {
-      return (
-        <span>
-          <span className="font-semibold">{who}</span> {verbByCount(count, 'התחיל/ה', 'התחילו')} לעקוב אחריך
-        </span>
-      )
-    }
-
-    if (g.type === "comment_like") {
-      const verb = verbByCount(count, "עשה/תה", "עשו")
-      const postTitle = title ?? "ללא כותרת"
-      const snippet = commentText ? clipText(commentText, 35) : null
-      return (
-        <div className="text-right leading-snug">
-          <div>
-            <span className="font-semibold">{who}</span> {verb} לייק לתגובה שלך בפוסט: "{postTitle}"
-          </div>
-          {snippet ? <div className="text-neutral-600 mt-0.5">"{snippet}"</div> : null}
-        </div>
-      )
-    }
-
-    if (g.type === "comment") {
-      const isReply = isReplyToComment(payload)
-      const verb = verbByCount(count, "הגיב/ה", "הגיבו")
-      const postTitle = title ?? "ללא כותרת"
-      return (
-        <span>
-          <span className="font-semibold">{who}</span> {isReply ? `${verb} על התגובה שלך בפוסט` : `${verb} בפוסט שלך`}: "{postTitle}"
-        </span>
-      )
-    }
-
-    if (g.type === "new_post") {
-      return (
-        <span>
-          <span className="font-semibold">{who}</span> {verbByCount(count, 'העלה/תה', 'העלו')} פוסט חדש{title ? `: "${title}"` : ""}
-        </span>
-      )
-    }
-
-    if (g.type === "reaction") {
-      return (
-        <span>
-          <span className="font-semibold">{who}</span> {verbByCount(count, 'דירג/ה', 'דירגו')} את הפוסט שלך{title ? `: "${title}"` : ""}
-        </span>
-      )
-    }
-
+  if (g.type === "follow") {
     return (
       <span>
-        <span className="font-semibold">{who}</span> שלח/ה עדכון{title ? `: "${title}"` : ""}
+        <span className="font-semibold">{who}</span>{" "}
+        {verbByCount(count, "התחיל/ה", "התחילו")} לעקוב אחריך
       </span>
     )
-  }, [])
+  }
+
+  if (g.type === "comment_like") {
+    const verb = verbByCount(count, "עשה/תה", "עשו")
+    const postTitle = title ?? "ללא כותרת"
+    return (
+      <div className="text-right leading-snug">
+        <div>
+          <span className="font-semibold">{who}</span> {verb} לייק לתגובה שלך בפוסט: "{postTitle}"
+        </div>
+      </div>
+    )
+  }
+
+  if (g.type === "comment") {
+    const isReply = isReplyToComment(payload)
+    const verb = verbByCount(count, "הגיב/ה", "הגיבו")
+    const postTitle = title ?? "ללא כותרת"
+    return (
+      <div className="text-right leading-snug">
+        <div>
+          <span className="font-semibold">{who}</span>{" "}
+          {isReply ? `${verb} על התגובה שלך בפוסט` : `${verb} בפוסט שלך`}: "{postTitle}"
+        </div>
+      </div>
+    )
+  }
+
+  if (g.type === "new_post") {
+    return (
+      <span>
+        <span className="font-semibold">{who}</span>{" "}
+        {verbByCount(count, "העלה/תה", "העלו")} פוסט חדש{title ? `: "${title}"` : ""}
+      </span>
+    )
+  }
+
+  if (g.type === "reaction") {
+    return (
+      <span>
+        <span className="font-semibold">{who}</span>{" "}
+        {verbByCount(count, "דירג/ה", "דירגו")} את הפוסט שלך{title ? `: "${title}"` : ""}
+      </span>
+    )
+  }
+
+  return (
+    <span>
+      <span className="font-semibold">{who}</span> שלח/ה עדכון{title ? `: "${title}"` : ""}
+    </span>
+  )
+}, [])
+
 
   const emptyState = <div className="py-10 text-center text-sm text-neutral-600">אין התראות</div>
 
@@ -869,12 +859,12 @@ export default function NotificationsBell() {
         </div>
       ) : null}
 
-      {/* Mobile fullscreen (portal to body so it can't be clipped/hidden by parents) */}
+      {/* Mobile fullscreen (rendered in a portal to avoid being clipped by parents) */}
       {open && typeof document !== 'undefined'
         ? createPortal(
             <>
-              <div className="lg:hidden fixed top-14 left-0 right-0 bottom-0 z-[10001] bg-black/30 backdrop-blur-sm animate-in fade-in duration-200" />
-              <div className="lg:hidden fixed top-14 left-0 right-0 bottom-0 z-[10002] p-0 overflow-hidden animate-in slide-in-from-top duration-300">
+              <div className="lg:hidden fixed top-14 left-0 right-0 bottom-0 z-[9998] bg-black/30 backdrop-blur-sm animate-in fade-in duration-200" />
+              <div className="lg:hidden fixed top-14 left-0 right-0 bottom-0 z-[9999] p-0 overflow-hidden animate-in slide-in-from-top duration-300">
                 {renderPanel('mobile')}
               </div>
             </>,
