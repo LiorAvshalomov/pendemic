@@ -87,6 +87,7 @@ export default function PostComments({ postId, postSlug, postTitle }: Props) {
   const observerRef = useRef<MutationObserver | null>(null)
   const stopObserverTimerRef = useRef<number | null>(null)
   const scrolledRef = useRef(false)
+  const scrollTargetIdRef = useRef<string | null>(null)
   const tokenStorageKeyRef = useRef<string | null>(null)
 
   const clearHighlightTimer = (key: string) => {
@@ -126,18 +127,34 @@ export default function PostComments({ postId, postSlug, postTitle }: Props) {
     Array.from(pending).forEach((rawId) => {
       const el = document.getElementById(`comment-${rawId}`)
       if (!el) return
-
       activateHighlight(rawId)
       pending.delete(rawId)
-
-      // Scroll to the first available highlighted target once (best UX),
-      // but only after the element exists.
-      if (!scrolledRef.current) {
-        scrolledRef.current = true
-        el.scrollIntoView({ block: 'start', behavior: 'auto' })
-      }
     })
+
+    // Scroll exactly once, and only to the hash target (the "first" comment chosen by NotificationsBell).
+    // This avoids unstable behavior where we scroll to whichever comment rendered first (often the newest),
+    // which lands the user in the middle of the thread.
+    if (!scrolledRef.current) {
+      const targetId = scrollTargetIdRef.current
+      if (targetId) {
+        const targetEl = document.getElementById(`comment-${targetId}`)
+        if (targetEl) {
+          scrolledRef.current = true
+
+          // Use an explicit offset so the sticky navbar doesn't cover the top of the comment.
+          const header = document.querySelector('header') as HTMLElement | null
+          const headerH = header?.offsetHeight ?? 56
+          const extra = 12
+          requestAnimationFrame(() => {
+            // First align the element to the top, then apply a negative offset for the sticky header.
+            targetEl.scrollIntoView({ block: 'start', behavior: 'auto' })
+            window.scrollBy({ top: -(headerH + extra), behavior: 'auto' })
+          })
+        }
+      }
+    }
   }
+
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -190,7 +207,12 @@ export default function PostComments({ postId, postSlug, postTitle }: Props) {
     // 2) Single highlight via hash
     const hash = window.location.hash
     if (hash && hash.startsWith('#comment-')) {
-      pending.add(hash.replace('#comment-', '').trim())
+      const id = hash.replace('#comment-', '').trim()
+      if (id) {
+        pending.add(id)
+        // Always scroll to the hash target (earliest in the group), not whichever comment renders first.
+        scrollTargetIdRef.current = id
+      }
     }
 
     if (pending.size === 0) return
@@ -724,7 +746,7 @@ async function submitReport() {
   {/* Subtle highlight animation (lightweight, future-proof) */}
   <style jsx global>{`
     .pendemic-comment-hl {
-      animation: pendemicCommentPulse 1s ease-in-out 0s 2;
+      animation: pendemicCommentPulse 0.7s ease-in-out 0s 2;
       will-change: transform;
     }
     @keyframes pendemicCommentPulse {
@@ -1029,7 +1051,7 @@ async function submitReport() {
                 id={`comment-${c.id}`}
                 className={
                   `rounded-2xl border p-3 scroll-mt-24 transition-colors ` +
-                  (highlightIds.has(`comment-${c.id}`) ? 'ring-2 ring-yellow-300 bg-yellow-50 pendemic-comment-hl' : '')
+                  (highlightIds.has(`comment-${c.id}`) ? 'ring-2 ring-violet-400/40 bg-violet-50 shadow-md pendemic-comment-hl' : '')
                 }
               >
                 {headerRow}
@@ -1078,7 +1100,7 @@ async function submitReport() {
                           id={`comment-${r.id}`}
                           className={
                             `rounded-2xl border bg-white p-3 scroll-mt-24 transition-colors ` +
-                            (highlightIds.has(`comment-${r.id}`) ? 'ring-2 ring-yellow-300 bg-yellow-50 pendemic-comment-hl' : '')
+                            (highlightIds.has(`comment-${r.id}`) ? 'ring-2 ring-violet-400/40 bg-violet-50 shadow-md pendemic-comment-hl' : '')
                           }
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -1118,6 +1140,20 @@ async function submitReport() {
                                     מחיקה
                                   </button>
                                 </>
+                              ) : null}
+                              {!rMine && !rTemp && userId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setReportedComment(r)
+                                    setReportOpen(true)
+                                    setReportErr(null)
+                                    setReportOk(null)
+                                  }}
+                                  className="text-xs font-semibold text-neutral-500 hover:underline"
+                                >
+                                  דווח
+                                </button>
                               ) : null}
                             </div>
                           </div>
