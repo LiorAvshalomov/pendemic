@@ -539,9 +539,9 @@ export default function SiteHeader() {
                           closeAll()
                           requireAuthOrGo('/notebook')
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-neutral-50 border border-transparent hover:border-neutral-200 text-sm font-bold text-right transition-all"
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 text-sm font-black text-right transition-all"
                       >
-                        <NotebookPen size={17} strokeWidth={2.5} className="text-neutral-600" />
+                        <NotebookPen size={17} strokeWidth={2.5} className="text-neutral-900" />
                         <span>המחברת שלי 📓</span>
                       </button>
                     </div>

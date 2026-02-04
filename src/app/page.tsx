@@ -1113,7 +1113,7 @@ export default async function HomePage(props: HomePageProps = {}) {
                             <div className="text-sm font-bold text-gray-800">עדיין אין פוסטים כאן</div>
                             <div className="mt-1 text-xs text-gray-600">רוצה לפתוח את זה עם משהו קצר?</div>
                             <Link
-                              href={`/write?channel=${encodeURIComponent(channelSlug ?? '')}&return=${encodeURIComponent(`/c/${channelSlug}`)}`}
+                              href={`/write?channel=${encodeURIComponent(channelSlug ?? '')}&subcategory=${encodeURIComponent(sc.name_he)}&return=${encodeURIComponent(`/c/${channelSlug}`)}`}
                               className="mt-3 inline-flex items-center justify-center rounded-xl bg-sky- (p.subcategory?.name_he === sc.name_he || p.tags.some(t => t.name_he === sc.name_he))00 px-3 py-2 text-xs font-black text-black shadow-sm transition hover:bg-sky-800 active:scale-[0.99]"
                             >
                               כתוב/י ראשון/ה בתת־קטגוריה הזו
@@ -1295,9 +1295,7 @@ export default async function HomePage(props: HomePageProps = {}) {
                             </div>
                           </div>
                         ))}
-                        <div className="text-sm text-gray-600 bg-white/60 border border-black/10 rounded-xl p-3">
-                          עדיין אין פוסטים בתת־קטגוריה הזו.
-                        </div>
+                        
                       </div>
                     ) : (
                       <div className="text-sm text-gray-500">אין עדיין פעילות לשבוע הזה.</div>

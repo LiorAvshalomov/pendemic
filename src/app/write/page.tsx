@@ -1,7 +1,5 @@
 'use client'
 
-/* eslint-disable react-hooks/set-state-in-effect */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { JSONContent } from '@tiptap/react'
@@ -13,6 +11,10 @@ type Channel = { id: number; name_he: string }
 type Tag = { id: number; type: 'emotion' | 'theme' | 'genre' | 'topic'; name_he: string; channel_id: number | null }
 type TagType = Tag['type']
 type SubcategoryOption = { id: number; name_he: string }
+
+type TagId = number
+
+const MAX_TAGS = 3
 
 type DraftRow = {
   id: string
@@ -34,10 +36,17 @@ const EMPTY_DOC: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }
 const EXCERPT_MAX = 160
 
 // Non-subcategory tag types per channel (subcategory itself is stored in posts.subcategory_tag_id and points to tags.type='genre')
-const TAG_TYPES_BY_CHANNEL: Record<number, Array<Tag['type']>> = {
-  1: ['emotion', 'theme'], // פריקה
-  2: ['emotion', 'theme'], // סיפורים
-  3: ['topic', 'theme'], // מגזין
+const TAG_TYPES_BY_CHANNEL_NAME_HE: Record<string, Array<Tag['type']>> = {
+  'פריקה': ['emotion', 'theme'],
+  'סיפורים': ['emotion', 'theme'],
+  'מגזין': ['topic', 'theme'],
+}
+
+// Allowed subcategory (genre) names per channel.
+const SUBCATEGORY_NAMES_BY_CHANNEL_NAME_HE: Record<string, string[]> = {
+  'פריקה': ['מחשבות', 'שירים', 'וידויים'],
+  'סיפורים': ['סיפורים אמיתיים', 'סיפורים קצרים', 'סיפור בהמשכים'],
+  'מגזין': ['חדשות', 'ספורט', 'תרבות ובידור', 'דעות', 'טכנולוגיה'],
 }
 
 function uniqById<T extends { id: number }>(rows: T[]) {
@@ -94,6 +103,30 @@ export default function WritePage() {
   const draftParam = searchParams.get('draft')
   const returnParam = searchParams.get('return')
   const channelParam = searchParams.get('channel')
+  const subcategoryParam = searchParams.get('subcategory')
+
+  // URL presets
+  const CHANNEL_SLUG_TO_NAME_HE: Record<string, string> = {
+    prika: 'פריקה',
+    release: 'פריקה',
+    stories: 'סיפורים',
+    magazine: 'מגזין',
+  }
+
+  const resolveChannelIdFromParam = (param: string | null, channelRows: Channel[]): number | null => {
+    if (!param) return null
+    if (/^\d+$/.test(param)) return Number(param)
+    const nameHe = CHANNEL_SLUG_TO_NAME_HE[param] ?? param
+    const byName = channelRows.find(c => c.name_he === nameHe)
+    return byName?.id ?? null
+  }
+
+  const resolveSubcategoryIdFromParam = (param: string | null, subcats: SubcategoryOption[]): number | null => {
+    if (!param) return null
+    const match = subcats.find(s => s.name_he === param)
+    return match?.id ?? null
+  }
+
 
   const safeReturnParam = (() => {
     if (!returnParam || !returnParam.startsWith('/')) return null
@@ -206,8 +239,6 @@ export default function WritePage() {
 
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasLoadedDraftOnce = useRef(false)
-  const hasEnsuredDraftOnce = useRef(false)
-
   // --- Auth guard
   useEffect(() => {
     const run = async () => {
@@ -247,125 +278,109 @@ export default function WritePage() {
     void load()
   }, [])
 
-  // reset load guard when URL changes
-  useEffect(() => {
-    hasLoadedDraftOnce.current = false
-  }, [activeIdFromUrl])
+  // Apply URL presets (channel/subcategory) deterministically on navigation.
+// We intentionally do NOT auto-select a subcategory unless it was explicitly provided in the URL.
+const presetKey = `${channelParam ?? ''}|${subcategoryParam ?? ''}|${activeIdFromUrl ?? ''}`
 
-  // ✅ Reset editor state when navigating to "new post" (no edit/draft in URL)
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => {
-    const wantsNew = !activeIdFromUrl
-    if (!wantsNew) return
+useEffect(() => {
+  if (!channels.length) return
+  const nextChannel = resolveChannelIdFromParam(channelParam, channels)
+  if (nextChannel != null) setChannelId(nextChannel)
 
-    const nextChannel = channelParam ? Number(channelParam) : null
-
-    if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
-    autosaveTimer.current = null
-    setSavePending(false)
-
-    setCreatedDraftId(null)
-    setDraftSlug(null)
-    setLoadedStatus(null)
-    setTitle('')
-    setExcerpt('')
-    setContentJson(EMPTY_DOC)
-    setCoverUrl(null)
-    setCoverSource(null)
-    setAutoCoverUsed(false)
-    setSelectedTagIds([])
+  // If we have a channel preset but no explicit subcategory, keep it unselected ("בחר תת־קטגוריה")
+  if (channelParam && !subcategoryParam) {
     setSubcategoryTagId(null)
-    setLastSavedAt(null)
-    setErrorMsg(null)
-    setInitialSnapshot(null)
+  }
+}, [presetKey, channels, channelParam, subcategoryParam, activeIdFromUrl])
 
-    if (Number.isFinite(nextChannel as number)) {
-      setChannelId(nextChannel)
-    }
-  }, [activeIdFromUrl, channelParam])
 
-  // --- Load "tags" (chips) when channel changes
+
+  // Apply URL subcategory preset after options are loaded
   useEffect(() => {
-    const loadTags = async () => {
+    if (!subcategoryParam) return
+    if (!subcategoryOptions.length) return
+    const next = resolveSubcategoryIdFromParam(subcategoryParam, subcategoryOptions)
+    if (next != null) setSubcategoryTagId(next)
+  }, [subcategoryOptions, subcategoryParam, presetKey])
+
+  // --- Load subcategory (genre) options + tags for the selected channel
+  useEffect(() => {
+    const run = async () => {
       if (!channelId) return
-      const allowedTypes = (TAG_TYPES_BY_CHANNEL[channelId] ?? ['emotion', 'theme']) as TagType[]
+      if (!channels.length) return
+
+      const currentChannelNameHe = channels.find(c => c.id === channelId)?.name_he ?? ''
+      const allowedSubcats = SUBCATEGORY_NAMES_BY_CHANNEL_NAME_HE[currentChannelNameHe] ?? []
 
       const { data, error } = await supabase
         .from('tags')
-        .select('id, type, name_he, channel_id')
-        .eq('is_active', true)
-        .in('type', allowedTypes as unknown as string[])
+        .select('id, name_he, type, channel_id')
+        .eq('type', 'genre')
+        .eq('channel_id', channelId)
+        .order('name_he')
 
       if (error) {
-        console.error(error)
+        // Don't block the editor; just keep empty options
+        console.error('Failed to load subcategories', error)
+        setSubcategoryOptions([])
+        return
+      }
+
+      const rowsRaw = ((data ?? []) as Array<{ id: number; name_he: string; type: 'genre'; channel_id: number | null }>).filter(r =>
+        allowedSubcats.length ? allowedSubcats.includes(r.name_he) : true,
+      )
+
+      // Some environments may contain duplicate "genre" tags (same Hebrew name). Deduplicate by name.
+      const byName = new Map<string, { id: number; name_he: string }>()
+      for (const r of rowsRaw) {
+        if (!byName.has(r.name_he)) byName.set(r.name_he, { id: r.id, name_he: r.name_he })
+      }
+      const rows = Array.from(byName.values())
+
+      setSubcategoryOptions(rows)
+
+      // If current selected subcategory no longer exists, clear it
+      setSubcategoryTagId(prev => (prev && rows.some(r => r.id === prev) ? prev : null))
+    }
+
+    void run()
+  }, [channelId, channels])
+
+  useEffect(() => {
+    const run = async () => {
+      if (!channelId) return
+      if (!channels.length) return
+
+      const currentChannelNameHe = channels.find(c => c.id === channelId)?.name_he ?? ''
+      const allowedTypes = TAG_TYPES_BY_CHANNEL_NAME_HE[currentChannelNameHe] ?? (['emotion', 'theme', 'topic'] as TagType[])
+
+      const { data, error } = await supabase
+        .from('tags')
+        .select('id, name_he, type, channel_id')
+        .in('type', allowedTypes)
+        .or(`channel_id.is.null,channel_id.eq.${channelId}`)
+        .order('name_he')
+
+      if (error) {
+        console.error('Failed to load tags', error)
         setTags([])
         return
       }
 
-      const filtered = (data ?? []).filter(t => t.channel_id === null || t.channel_id === channelId) as Tag[]
-      const withoutGenre = filtered.filter(t => t.type !== 'genre')
-      setTags(uniqById(withoutGenre))
+      const rows = (data ?? []) as Tag[]
+      setTags(rows)
+
+      // Drop selected tags that are no longer available
+      setSelectedTagIds(prev => prev.filter(id => rows.some(t => t.id === id)))
     }
 
-    void loadTags()
-  }, [channelId])
+    void run()
+  }, [channelId, channels])
 
-  // --- Load subcategories for selected channel
+  // reset load guard when URL changes
   useEffect(() => {
-    const loadSubcategories = async () => {
-      if (!channelId) return
-
-      const { data: postRows, error: postErr } = await supabase
-        .from('posts')
-        .select('subcategory_tag_id')
-        .eq('channel_id', channelId)
-        .not('subcategory_tag_id', 'is', null)
-
-      if (postErr) {
-        console.error(postErr)
-        setSubcategoryOptions([])
-        setSubcategoryTagId(null)
-        return
-      }
-
-      const ids = Array.from(new Set((postRows ?? []).map(r => r.subcategory_tag_id).filter(Boolean) as number[]))
-
-      if (ids.length === 0) {
-        setSubcategoryOptions([])
-        setSubcategoryTagId(null)
-        return
-      }
-
-      const { data: tagRows, error: tagErr } = await supabase.from('tags').select('id, name_he').in('id', ids)
-
-      if (tagErr) {
-        console.error(tagErr)
-        setSubcategoryOptions([])
-        setSubcategoryTagId(null)
-        return
-      }
-
-      const rows = uniqById((tagRows ?? []) as SubcategoryOption[])
-      rows.sort((a, b) => a.name_he.localeCompare(b.name_he, 'he'))
-
-      setSubcategoryOptions(rows)
-      setSubcategoryTagId(prev => {
-        if (prev && rows.some(r => r.id === prev)) return prev
-        return rows[0]?.id ?? null
-      })
-    }
-
-    void loadSubcategories()
-  }, [channelId])
-
-  const toggleTag = (id: number) => {
-    if (settingsLocked) return
-    setSelectedTagIds(prev => {
-      if (prev.includes(id)) return prev.filter(x => x !== id)
-      if (prev.length >= 3) return prev
-      return [...prev, id]
-    })
-  }
+    hasLoadedDraftOnce.current = false
+  }, [activeIdFromUrl])
 
   // --- Load draft/post (once) if ?draft=... or ?edit=...
   useEffect(() => {
@@ -396,8 +411,15 @@ export default function WritePage() {
       setTitle(loadedTitle.trim() ? loadedTitle : '')
       setExcerpt((d.excerpt ?? '').toString())
       setContentJson((d.content_json as JSONContent) ?? EMPTY_DOC)
-      setChannelId(d.channel_id)
-      setSubcategoryTagId(d.subcategory_tag_id)
+      // Prefer URL preset over stored draft values (important for flows like /write?channel=magazine&...)
+      const urlChannelId = resolveChannelIdFromParam(channelParam, channels)
+      setChannelId(urlChannelId ?? d.channel_id)
+      // If we came with a channel preset (dropdown/home) but no explicit subcategory, keep subcategory unselected.
+      if (channelParam && !subcategoryParam) {
+        setSubcategoryTagId(null)
+      } else {
+        setSubcategoryTagId(d.subcategory_tag_id)
+      }
       // Draft covers might store a storage path (private bucket). For preview we must turn it into a signed URL.
       if (d.status === 'draft' && d.cover_image_url && !String(d.cover_image_url).startsWith('http')) {
         const path = String(d.cover_image_url)
@@ -434,7 +456,7 @@ export default function WritePage() {
     }
 
     void loadDraft()
-  }, [effectivePostId, userId])
+  }, [effectivePostId, userId, channels, channelParam])
 
   const ensureDraft = useCallback(async (): Promise<{ id: string; slug: string } | null> => {
     if (!userId) return null
@@ -442,9 +464,16 @@ export default function WritePage() {
     if (isEditMode) return null
     if (effectivePostId && draftSlug) return { id: effectivePostId, slug: draftSlug }
 
+    if (createdDraftId && draftSlug) return { id: createdDraftId, slug: draftSlug }
+    if (createdDraftId) return { id: createdDraftId, slug: draftSlug ?? '' }
+
 
     // ✅ channel_id is NOT NULL — make sure we always have one before insert
 let effectiveChannelId = channelId
+
+// Prefer URL preset if provided
+const urlPresetChannelId = resolveChannelIdFromParam(channelParam, channels)
+if (urlPresetChannelId != null) effectiveChannelId = urlPresetChannelId
 
 if (!effectiveChannelId) {
   // try from loaded channels state
@@ -483,15 +512,23 @@ if (!effectiveChannelId) {
     // On publish we still enforce a real title.
     const dbTitle = title.trim() ? title.trim() : ' '
 
+    const effectiveSubcategoryTagId: number | null = (() => {
+      if (subcategoryTagId != null) return subcategoryTagId
+      const urlSub = resolveSubcategoryIdFromParam(subcategoryParam, subcategoryOptions)
+      return urlSub
+    })()
+
     const { data: created, error } = await supabase
       .from('posts')
       .insert({
+
         slug,
         title: dbTitle,
         excerpt: excerpt.trim() || null,
         content_json: contentJson,
         channel_id: effectiveChannelId,
-        subcategory_tag_id: subcategoryTagId,
+                subcategory_tag_id: effectiveSubcategoryTagId,
+
         author_id: userId,
         status: 'draft',
         cover_image_url: coverUrl,
@@ -507,19 +544,30 @@ if (!effectiveChannelId) {
 
     setCreatedDraftId(created.id)
     setDraftSlug(created.slug)
-    router.replace(`/write?draft=${created.id}`)
-    return { id: created.id, slug: created.slug }
-  }, [userId, isEditMode, effectivePostId, draftSlug, title, excerpt, contentJson, channelId, channels, subcategoryTagId, coverUrl, coverSource, router])
-
-  // Create a draft early so media uploads (image/youtube) won't be blocked by "wait for first save".
-  useEffect(() => {
-    if (!userId) return
-    if (isEditMode) return
-    if (effectivePostId) return
-    if (hasEnsuredDraftOnce.current) return
-    hasEnsuredDraftOnce.current = true
-    void ensureDraft()
-  }, [userId, isEditMode, effectivePostId, ensureDraft])
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('draft', created.id)
+    router.replace(`/write?${params.toString()}`)
+        return { id: created.id, slug: created.slug }
+  }, [
+    userId,
+    isEditMode,
+    effectivePostId,
+    draftSlug,
+    createdDraftId,
+    title,
+    excerpt,
+    contentJson,
+    channelId,
+    channels,
+    subcategoryTagId,
+    subcategoryOptions,
+    channelParam,
+    subcategoryParam,
+    searchParams,
+    coverUrl,
+    coverSource,
+    router,
+  ])
 
   const syncTags = useCallback(
     async (postId: string) => {
@@ -816,7 +864,7 @@ if (!effectiveChannelId) {
 
       const upload = await supabase.storage.from('post-covers').upload(publicPath, download.data, {
         upsert: true,
-        contentType: (download.data as any)?.type || undefined,
+                contentType: download.data.type || undefined,
       })
       if (upload.error) {
         throw new Error(upload.error.message ?? 'לא הצלחתי להעביר את הקאבר')
@@ -868,8 +916,8 @@ if (!effectiveChannelId) {
         if (draftSlug && draftSlug !== 'undefined' && draftSlug !== 'null') return router.push(`/post/${draftSlug}`)
         router.push('/notebook')
         return
-      } catch (e: any) {
-        setErrorMsg(e?.message ?? 'שגיאה בשמירת שינויים')
+      } catch (e: unknown) {
+                setErrorMsg(e instanceof Error ? e.message : 'שגיאה בשמירת שינויים')
         setSaving(false)
         return
       }
@@ -920,8 +968,8 @@ if (!effectiveChannelId) {
         setCoverStoragePath(null)
         setCoverSource(promoted.source)
       }
-    } catch (e: any) {
-      setErrorMsg(e?.message ?? 'שגיאה בהעברת קאבר')
+    } catch (e: unknown) {
+              setErrorMsg(e instanceof Error ? e.message : 'שגיאה בהעברת קאבר')
       setSaving(false)
       return
     }
@@ -1139,6 +1187,22 @@ if (!effectiveChannelId) {
                   <div className="mt-3 flex flex-wrap gap-2">
                     {tags.map(t => {
                       const selected = selectedTagIds.includes(t.id)
+                      const toggleTag = (tagId: TagId): boolean => {
+  let hitLimit = false
+
+  setSelectedTagIds(prev => {
+    if (prev.includes(tagId)) {
+      return prev.filter(id => id !== tagId)
+    }
+    if (prev.length >= MAX_TAGS) {
+      hitLimit = true
+      return prev
+    }
+    return [...prev, tagId]
+  })
+
+  return hitLimit
+}
                       return (
                         <button
                           key={t.id}

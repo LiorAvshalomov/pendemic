@@ -7,9 +7,9 @@ export default async function ReleasePage() {
       forcedChannelName="פריקה"
       forcedSubtitle="הכי חם החודש בקטגוריה"
       forcedSubcategories={[
+        { name_he: 'וידויים' },
         { name_he: 'מחשבות' },
-        { name_he: 'שירים' },
-        { name_he: 'וידויים' }
+        { name_he: 'שירים' }
       ]}
     />
   )
