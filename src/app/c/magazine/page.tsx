@@ -1,18 +1,17 @@
-import ChannelFeedPage from '@/components/ChannelFeedPage'
+import HomePage from '@/app/page'
 
 export default async function MagazinePage() {
   return (
-    <ChannelFeedPage
-      channelSlug="magazine"
-      channelName="מגזין"
-      subtitle="פיד מסונן לקטגוריה"
-      subcategories={['חדשות', 'ספורט', 'תרבות ובידור', 'דעות', 'טכנולוגיה']}
-      tiles={[
-        { key: 'moving', label: 'מרגש' },
-        { key: 'funny', label: 'מצחיק' },
-        { key: 'creative', label: 'יצירתי' },
-        { key: 'interesting', label: 'מעניין' },
-        { key: 'smart', label: 'חכם' },
+    <HomePage
+      forcedChannelSlug="magazine"
+      forcedChannelName="כתבות"
+      forcedSubtitle="הכי חם החודש בקטגוריה"
+      forcedSubcategories={[
+        { name_he: 'חדשות' },
+        { name_he: 'ספורט' },
+        { name_he: 'תרבות ובידור' },
+        { name_he: 'דעות' },
+        { name_he: 'טכנולוגיה' },
       ]}
     />
   )

@@ -17,15 +17,15 @@ type PostRow = {
   channel: { slug: string; name_he: string }[] | null
   author: { username: string; display_name: string | null; avatar_url: string | null }[] | null
   post_tags:
+  | {
+    tag:
     | {
-        tag:
-          | {
-              name_he: string
-              slug: string
-            }[]
-          | null
-      }[]
+      name_he: string
+      slug: string
+    }[]
     | null
+  }[]
+  | null
 }
 
 type ReactionVoteRow = {
@@ -91,6 +91,7 @@ function Avatar({
   size?: number
 }) {
   const initials = name.trim().slice(0, 1) || 'P'
+
   return (
     <div
       className="rounded-full overflow-hidden bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-black shrink-0"
@@ -230,16 +231,16 @@ function FeaturedPost({ post }: { post: CardPost }) {
                 )}
                 <div className="flex items-center justify-between text-xs text-gray-500">
 
-            <div className="min-w-0 text-right">
-              <span title={formatDateTimeHe(post.created_at)}>{formatRelativeHe(post.created_at)}</span>
-              {post.subcategory ? (
-                <>
-                  <span className="mx-2">•</span>
-                  <span className="font-semibold text-gray-700">{post.subcategory.name_he}</span>
-                </>
-              ) : null}
-            </div>
-          </div>
+                  <div className="min-w-0 text-right">
+                    <span title={formatDateTimeHe(post.created_at)}>{formatRelativeHe(post.created_at)}</span>
+                    {post.subcategory ? (
+                      <>
+                        <span className="mx-2">•</span>
+                        <span className="font-semibold text-gray-700">{post.subcategory.name_he}</span>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -302,10 +303,10 @@ function SimplePostCard({ post }: { post: CardPost }) {
                 <span className="font-semibold">{post.subcategory.name_he}</span>
               </>
             ) : null}
-            
+
           </div>
-                    <div className="shrink-0">
-            <MedalsInline medals={post.allTimeMedals}  />
+          <div className="shrink-0">
+            <MedalsInline medals={post.allTimeMedals} />
           </div>
         </div>
 
@@ -360,97 +361,97 @@ function ListRowCompact({ post }: { post: CardPost }) {
       {/* Make the layout non-interactive so clicks fall through to the overlay link.
           Specific interactive elements opt-in with pointer-events-auto. */}
       <div className="relative z-20 pointer-events-none">
-      {/* In RTL, flex-row-reverse keeps the image on the LEFT (as requested) */}
-      <div className="flex flex-row-reverse items-start gap-4">
-        <div className="w-[136px] sm:w-[168px] shrink-0">
-          <Link href={`/post/${post.slug}`} className="block pointer-events-auto">
-            {/*
+        {/* In RTL, flex-row-reverse keeps the image on the LEFT (as requested) */}
+        <div className="flex flex-row-reverse items-start gap-4">
+          <div className="w-[136px] sm:w-[168px] shrink-0">
+            <Link href={`/post/${post.slug}`} className="block pointer-events-auto">
+              {/*
               Constrain cover image height to prevent oversized uploads (e.g. desktop images)
               from expanding the card. The aspect ratio keeps a consistent thumbnail size.
             */}
-            <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-100">
-              {post.cover_image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={post.cover_image_url}
-                  alt={post.title}
-                  className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
-                />
-              ) : null}
-            </div>
-          </Link>
-        </div>
-
-        <div className="min-w-0 flex-1 text-right">
-           <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-          <div className="text-xs text-gray-500">
-            <span title={formatDateTimeHe(post.created_at)}>{formatRelativeHe(post.created_at)}
-                 
-            </span>
-            {post.subcategory ? (
-              <>
-                <span className="mx-2">•</span>
-                <span className="font-semibold text-gray-700">{post.subcategory.name_he}</span>
-              </>
-            ) : null}
-
-            
-            
-          </div>
-          <div className="shrink-0">
-            <MedalsInline medals={post.allTimeMedals}  />
-          </div>
-
-          
-          </div>
-
-          <div className="mt-1 text-[15px] sm:text-base font-black leading-snug line-clamp-2">
-            <Link href={`/post/${post.slug}`} className="transition-colors hover:text-sky-700 pointer-events-auto">
-              {post.title}
+              <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-100">
+                {post.cover_image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={post.cover_image_url}
+                    alt={post.title}
+                    className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+                  />
+                ) : null}
+              </div>
             </Link>
           </div>
-          
 
-          <div className="mt-1.5 min-h-[24px]">
-            {post.excerpt ? (
-              <p className="text-xs sm:text-sm text-gray-600 leading-relaxed line-clamp-2">
-                {truncateText(post.excerpt, 90)}
-              </p>
+          <div className="min-w-0 flex-1 text-right">
+            <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+              <div className="text-xs text-gray-500">
+                <span title={formatDateTimeHe(post.created_at)}>{formatRelativeHe(post.created_at)}
+
+                </span>
+                {post.subcategory ? (
+                  <>
+                    <span className="mx-2">•</span>
+                    <span className="font-semibold text-gray-700">{post.subcategory.name_he}</span>
+                  </>
+                ) : null}
+
+
+
+              </div>
+              <div className="shrink-0">
+                <MedalsInline medals={post.allTimeMedals} />
+              </div>
+
+
+            </div>
+
+            <div className="mt-1 text-[15px] sm:text-base font-black leading-snug line-clamp-2">
+              <Link href={`/post/${post.slug}`} className="transition-colors hover:text-sky-700 pointer-events-auto">
+                {post.title}
+              </Link>
+            </div>
+
+
+            <div className="mt-1.5 min-h-[24px]">
+              {post.excerpt ? (
+                <p className="text-xs sm:text-sm text-gray-600 leading-relaxed line-clamp-2">
+                  {truncateText(post.excerpt, 90)}
+                </p>
+              ) : null}
+            </div>
+
+            {/* Author row UNDER excerpt */}
+            <div className="mt-1.5 flex items-center justify-start gap-2 text-xs text-gray-700">
+              {post.author_username ? (
+                <Link
+                  href={`/u/${post.author_username}`}
+                  className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-black/10 transition-colors duration-200 pointer-events-auto"
+                >
+                  <Avatar url={post.author_avatar_url} name={post.author_name} size={24} />
+                  <span className="font-semibold transition-colors group-hover/author:text-neutral-900">{post.author_name}</span>
+                </Link>
+              ) : (
+                <div className="inline-flex items-center gap-2">
+                  <Avatar url={post.author_avatar_url} name={post.author_name} size={24} />
+                  <span className="font-semibold">{post.author_name}</span>
+                </div>
+              )}
+            </div>
+
+            {post.tags.length ? (
+              <div className="mt-2 flex flex-wrap justify-end gap-1">
+                {post.tags.slice(0, 2).map(t => (
+                  <span
+                    key={t.slug}
+                    className="inline-flex rounded-full bg-black/5 px-2 py-0.5 text-[11px] font-semibold text-gray-700"
+                  >
+                    {t.name_he}
+                  </span>
+                ))}
+              </div>
             ) : null}
           </div>
-          
-          {/* Author row UNDER excerpt */}
-          <div className="mt-1.5 flex items-center justify-start gap-2 text-xs text-gray-700">
-            {post.author_username ? (
-              <Link
-                href={`/u/${post.author_username}`}
-                className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-black/10 transition-colors duration-200 pointer-events-auto"
-              >
-                <Avatar url={post.author_avatar_url} name={post.author_name} size={24} />
-                <span className="font-semibold transition-colors group-hover/author:text-neutral-900">{post.author_name}</span>
-              </Link>
-            ) : (
-              <div className="inline-flex items-center gap-2">
-                <Avatar url={post.author_avatar_url} name={post.author_name} size={24} />
-                <span className="font-semibold">{post.author_name}</span>
-              </div>
-            )}
-          </div>
-
-          {post.tags.length ? (
-            <div className="mt-2 flex flex-wrap justify-end gap-1">
-              {post.tags.slice(0, 2).map(t => (
-                <span
-                  key={t.slug}
-                  className="inline-flex rounded-full bg-black/5 px-2 py-0.5 text-[11px] font-semibold text-gray-700"
-                >
-                  {t.name_he}
-                </span>
-              ))}
-            </div>
-          ) : null}
         </div>
-      </div>
       </div>
     </article>
   )
@@ -469,70 +470,77 @@ function RecentMiniRow({ post }: { post: CardPost }) {
       </Link>
 
       <div className="relative z-20 pointer-events-none">
-      {/* In RTL, flex-row-reverse keeps the image on the LEFT (as requested) */}
-      <div className="flex flex-row-reverse items-start gap-3">
-        <div className="w-[94px] shrink-0">
-          <Link href={`/post/${post.slug}`} className="block pointer-events-auto">
-            <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-100">
-              {post.cover_image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={post.cover_image_url}
-                  alt={post.title}
-                  className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
-                />
+        {/* In RTL, flex-row-reverse keeps the image on the LEFT (as requested) */}
+        <div className="flex flex-row-reverse items-start gap-3">
+          <div className="w-[94px] shrink-0">
+            <Link href={`/post/${post.slug}`} className="block pointer-events-auto">
+              <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-100">
+                {post.cover_image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={post.cover_image_url}
+                    alt={post.title}
+                    className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+                  />
+                ) : null}
+              </div>
+            </Link>
+          </div>
+
+          <div className="min-w-0 flex-1 text-right">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 text-sm font-black leading-snug">
+                <Link href={`/post/${post.slug}`} className="transition-colors hover:text-sky-700 line-clamp-1 block pointer-events-auto">
+                  {truncateText(post.title, 48)}
+                </Link>
+              </div>
+
+              <div className="shrink-0 pt-0.5">
+                <MedalsInline medals={post.allTimeMedals} />
+              </div>
+            </div>
+
+
+            <div className="mt-1 min-h-[18px]">
+              {post.excerpt ? (
+                <p className="text-xs text-gray-600 leading-snug line-clamp-1">
+                  {truncateText(post.excerpt, 25)}
+                </p>
               ) : null}
             </div>
-          </Link>
-        </div>
+            <div className="mt-1 text-[12px] text-gray-500 flex items-center justify-between">
+              {post.author_username ? (
+                <Link
+                  href={`/u/${post.author_username}`}
+                  className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-black/10 transition-colors duration-200 pointer-events-auto"
+                >
+                  <Avatar url={post.author_avatar_url} name={post.author_name} size={22} />
+                  <span className="font-semibold transition-colors group-hover/author:text-neutral-900">{post.author_name}</span>
+                </Link>
+              ) : (
+                <div className="inline-flex items-center gap-2">
+                  <Avatar url={post.author_avatar_url} name={post.author_name} size={22} />
+                  <span className="font-semibold">{post.author_name}</span>
+                </div>
+              )}
 
-        <div className="min-w-0 flex-1 text-right">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1 text-sm font-black leading-snug">
-              <Link href={`/post/${post.slug}`} className="transition-colors hover:text-sky-700 line-clamp-1 block pointer-events-auto">
-                {truncateText(post.title, 48)}
-              </Link>
+              <span title={formatDateTimeHe(post.created_at)}>{formatRelativeHe(post.created_at)}</span>
             </div>
-
-            <div className="shrink-0 pt-0.5">
-              <MedalsInline medals={post.allTimeMedals} />
-            </div>
-          </div>
-
-
-          <div className="mt-1 min-h-[18px]">
-            {post.excerpt ? (
-              <p className="text-xs text-gray-600 leading-snug line-clamp-1">
-                {truncateText(post.excerpt, 25)}
-              </p>
-            ) : null}
-          </div>
-          <div className="mt-1 text-[12px] text-gray-500 flex items-center justify-between">
-            {post.author_username ? (
-              <Link
-                href={`/u/${post.author_username}`}
-                className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-black/10 transition-colors duration-200 pointer-events-auto"
-              >
-                <Avatar url={post.author_avatar_url} name={post.author_name} size={22} />
-                <span className="font-semibold transition-colors group-hover/author:text-neutral-900">{post.author_name}</span>
-              </Link>
-            ) : (
-              <div className="inline-flex items-center gap-2">
-                <Avatar url={post.author_avatar_url} name={post.author_name} size={22} />
-                <span className="font-semibold">{post.author_name}</span>
-              </div>
-            )}
-
-            <span title={formatDateTimeHe(post.created_at)}>{formatRelativeHe(post.created_at)}</span>
           </div>
         </div>
-      </div>
       </div>
     </div>
   )
 }
 
-export default async function HomePage() {
+export type HomePageProps = {
+  forcedChannelSlug?: string
+  forcedChannelName?: string
+  forcedSubtitle?: string
+  forcedSubcategories?: { name_he: string }[]
+}
+
+export default async function HomePage(props: HomePageProps = {}) {
   type RankedRow = {
     post_id: string
     reactions_total: number
@@ -547,57 +555,121 @@ export default async function HomePage() {
 
   const nowIso = new Date().toISOString()
 
+  const isChannelPage = Boolean(props.forcedChannelSlug)
+  const channelSlug = props.forcedChannelSlug ?? null
+  const channelName = props.forcedChannelName ?? null
+  const channelSubtitle = props.forcedSubtitle ?? null
+  const forcedSubcategories = props.forcedSubcategories ?? []
+
   const [rankedCombinedRes, rankedStoriesRes, rankedReleaseRes, rankedMagazineRes, rankedAllRes, recentRes] =
-    await Promise.all([
-      supabase.rpc('pendemic_ranked_posts_weekly', {
-        ref_ts: nowIso,
-        channel_slugs: ['stories', 'release'],
-        limit_count: 120,
-      }),
-      supabase.rpc('pendemic_ranked_posts_weekly', {
-        ref_ts: nowIso,
-        channel_slugs: ['stories'],
-        limit_count: 120,
-      }),
-      supabase.rpc('pendemic_ranked_posts_weekly', {
-        ref_ts: nowIso,
-        channel_slugs: ['release'],
-        limit_count: 120,
-      }),
-      supabase.rpc('pendemic_ranked_posts_weekly', {
-        ref_ts: nowIso,
-        channel_slugs: ['magazine'],
-        limit_count: 120,
-      }),
-      // For writers-of-week scoring we want broader coverage.
-      supabase.rpc('pendemic_ranked_posts_weekly', {
-        ref_ts: nowIso,
-        channel_slugs: null,
-        limit_count: 500,
-      }),
-      // Recent posts for the sidebar (not ranked)
-      supabase
-        .from('posts')
-        .select(
-          `
-          id,
-          title,
-          slug,
-          created_at,
-          published_at,
-          excerpt,
-          cover_image_url,
-          subcategory_tag_id,
-          channel:channels ( slug, name_he ),
-          author:profiles!posts_author_id_fkey ( username, display_name, avatar_url ),
-          post_tags:post_tags!fk_post_tags_post_id_posts ( tag:tags!fk_post_tags_tag_id_tags ( name_he, slug ) )
-          `
-        )
-        .is('deleted_at', null)
-        .eq('status', 'published')
-        .order('published_at', { ascending: false })
-        .limit(12),
-    ])
+    isChannelPage
+      ? await Promise.all([
+        // Monthly ranking for this channel page
+        supabase.rpc('pendemic_ranked_posts_monthly', {
+          ref_ts: nowIso,
+          channel_slugs: channelSlug ? [channelSlug] : null,
+          limit_count: 500,
+        }),
+        // Keep these placeholders for compatibility with existing rendering code (not used on channel pages)
+        supabase.rpc('pendemic_ranked_posts_monthly', {
+          ref_ts: nowIso,
+          channel_slugs: ['stories'],
+          limit_count: 0,
+        }),
+        supabase.rpc('pendemic_ranked_posts_monthly', {
+          ref_ts: nowIso,
+          channel_slugs: ['release'],
+          limit_count: 0,
+        }),
+        supabase.rpc('pendemic_ranked_posts_monthly', {
+          ref_ts: nowIso,
+          channel_slugs: ['magazine'],
+          limit_count: 0,
+        }),
+        // For writers-of-month scoring: broad coverage but still filtered to this channel
+        supabase.rpc('pendemic_ranked_posts_monthly', {
+          ref_ts: nowIso,
+          channel_slugs: channelSlug ? [channelSlug] : null,
+          limit_count: 500,
+        }),
+        // Recent posts for the sidebar (filtered by channel on channel pages)
+        (() => {
+          let q = supabase
+            .from('posts')
+            .select(
+              `
+                id,
+                title,
+                slug,
+                created_at,
+                published_at,
+                excerpt,
+                cover_image_url,
+                subcategory_tag_id,
+                channel:channels ( slug, name_he ),
+                author:profiles!posts_author_id_fkey ( username, display_name, avatar_url ),
+                post_tags:post_tags!fk_post_tags_post_id_posts ( tag:tags!fk_post_tags_tag_id_tags ( name_he, slug ) )
+                `
+            )
+            .is('deleted_at', null)
+            .eq('status', 'published')
+            .order('published_at', { ascending: false })
+            .limit(12)
+
+          if (channelSlug) q = q.eq('channel.slug', channelSlug)
+          return q
+        })(),
+      ])
+      : await Promise.all([
+        supabase.rpc('pendemic_ranked_posts_weekly', {
+          ref_ts: nowIso,
+          channel_slugs: ['stories', 'release'],
+          limit_count: 120,
+        }),
+        supabase.rpc('pendemic_ranked_posts_weekly', {
+          ref_ts: nowIso,
+          channel_slugs: ['stories'],
+          limit_count: 120,
+        }),
+        supabase.rpc('pendemic_ranked_posts_weekly', {
+          ref_ts: nowIso,
+          channel_slugs: ['release'],
+          limit_count: 120,
+        }),
+        supabase.rpc('pendemic_ranked_posts_weekly', {
+          ref_ts: nowIso,
+          channel_slugs: ['magazine'],
+          limit_count: 120,
+        }),
+        // For writers-of-week scoring we want broader coverage.
+        supabase.rpc('pendemic_ranked_posts_weekly', {
+          ref_ts: nowIso,
+          channel_slugs: null,
+          limit_count: 500,
+        }),
+        // Recent posts for the sidebar (not ranked)
+        supabase
+          .from('posts')
+          .select(
+            `
+              id,
+              title,
+              slug,
+              created_at,
+              published_at,
+              excerpt,
+              cover_image_url,
+              subcategory_tag_id,
+              channel:channels ( slug, name_he ),
+              author:profiles!posts_author_id_fkey ( username, display_name, avatar_url ),
+              post_tags:post_tags!fk_post_tags_post_id_posts ( tag:tags!fk_post_tags_tag_id_tags ( name_he, slug ) )
+              `
+          )
+          .is('deleted_at', null)
+          .eq('status', 'published')
+          .order('published_at', { ascending: false })
+          .limit(12),
+      ])
 
   const rpcError =
     rankedCombinedRes.error ||
@@ -618,6 +690,7 @@ export default async function HomePage() {
   }
 
   const rankedCombined = (rankedCombinedRes.data ?? []) as RankedRow[]
+  const rankedForPage = rankedCombined
   const rankedStories = (rankedStoriesRes.data ?? []) as RankedRow[]
   const rankedRelease = (rankedReleaseRes.data ?? []) as RankedRow[]
   const rankedMagazine = (rankedMagazineRes.data ?? []) as RankedRow[]
@@ -632,7 +705,7 @@ export default async function HomePage() {
   const pickTopByKey = (key: string): RankedRow | null => {
     let best: RankedRow | null = null
     let bestCount = -1
-    for (const r of rankedCombined) {
+    for (const r of rankedForPage) {
       if (used.has(r.post_id)) continue
       const v = r.reactions_by_key?.[key] ?? 0
       if (v > bestCount) {
@@ -665,6 +738,8 @@ export default async function HomePage() {
   const releaseRanks = pickRankedList(rankedRelease, 5)
   const magazineRanks = pickRankedList(rankedMagazine, 3) // requested: ONLY 3
 
+  const channelRanks = isChannelPage ? pickRankedList(rankedForPage, 60) : []
+
   // Collect post IDs we need full data for
   const idsNeeded = Array.from(
     new Set(
@@ -676,6 +751,7 @@ export default async function HomePage() {
         ...storiesRanks.map(r => r.post_id),
         ...releaseRanks.map(r => r.post_id),
         ...magazineRanks.map(r => r.post_id),
+        ...(isChannelPage ? rankedForPage.slice(0, 200).map(r => r.post_id) : []),
       ].filter((v): v is string => typeof v === 'string')
     )
   )
@@ -721,17 +797,17 @@ export default async function HomePage() {
   }
 
   const medalsByPostId = new Map<string, { gold: number; silver: number; bronze: number }>()
-  ;(medalsRows ?? []).forEach(r => {
-    const row = r as { post_id: string; gold: number; silver: number; bronze: number }
-    medalsByPostId.set(row.post_id, {
-      gold: row.gold ?? 0,
-      silver: row.silver ?? 0,
-      bronze: row.bronze ?? 0,
+    ; (medalsRows ?? []).forEach(r => {
+      const row = r as { post_id: string; gold: number; silver: number; bronze: number }
+      medalsByPostId.set(row.post_id, {
+        gold: row.gold ?? 0,
+        silver: row.silver ?? 0,
+        bronze: row.bronze ?? 0,
+      })
     })
-  })
 
   const postsById = new Map<string, PostRow>()
-  ;((postsRows ?? []) as PostRow[]).forEach(p => postsById.set(p.id, p))
+    ; ((postsRows ?? []) as PostRow[]).forEach(p => postsById.set(p.id, p))
 
   // Subcategory tags map (only for posts we render)
   const subcatIds = Array.from(
@@ -744,10 +820,10 @@ export default async function HomePage() {
   const tagsMap = new Map<number, { name_he: string; slug: string }>()
   if (subcatIds.length > 0) {
     const { data: tagRows } = await supabase.from('tags').select('id,name_he,slug').in('id', subcatIds)
-    ;(tagRows ?? []).forEach(r => {
-      const tr = r as TagRow
-      tagsMap.set(tr.id, { name_he: tr.name_he, slug: tr.slug })
-    })
+      ; (tagRows ?? []).forEach(r => {
+        const tr = r as TagRow
+        tagsMap.set(tr.id, { name_he: tr.name_he, slug: tr.slug })
+      })
   }
 
   const rankByPostId = new Map<string, RankedRow>()
@@ -833,14 +909,14 @@ export default async function HomePage() {
     .in('id', rankedAllIds)
 
   const authorByPostId = new Map<string, { username: string | null; name: string; avatar_url: string | null }>()
-  ;((writerPostRows ?? []) as { id: string; author: { username: string; display_name: string | null; avatar_url: string | null }[] | null }[]).forEach(r => {
-    const a = firstRel(r.author)
-    authorByPostId.set(r.id, {
-      username: a?.username ?? null,
-      name: a?.display_name ?? a?.username ?? 'אנונימי',
-      avatar_url: a?.avatar_url ?? null,
+    ; ((writerPostRows ?? []) as { id: string; author: { username: string; display_name: string | null; avatar_url: string | null }[] | null }[]).forEach(r => {
+      const a = firstRel(r.author)
+      authorByPostId.set(r.id, {
+        username: a?.username ?? null,
+        name: a?.display_name ?? a?.username ?? 'אנונימי',
+        avatar_url: a?.avatar_url ?? null,
+      })
     })
-  })
 
   const writerScores = (() => {
     const map = new Map<
@@ -896,121 +972,249 @@ export default async function HomePage() {
   return (
     <main className="min-h-screen" dir="rtl">
       <div className="mx-auto max-w-6xl px-4 py-6">
-        <div className="space-y-8">
-          {/* Top of page: featured + top posts */}
-          <div className="space-y-6">
-            {featured ? (
-              <div>
-                <FeaturedPost post={featured} />
+        
+{isChannelPage ? (
+          <div className="space-y-8">
+            {/* Channel header */}
+            {channelName ? (
+              <div className="space-y-1">
+                <div className="text-2xl sm:text-3xl font-black tracking-tight">{channelName}</div>
+                {channelSubtitle ? (
+                  <div className="text-sm text-gray-600">{channelSubtitle}</div>
+                ) : null}
               </div>
             ) : null}
 
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-lg font-black tracking-tight">פוסטים מובילים</div>
+            {/* Top of page: featured + top posts (monthly, filtered) */}
+            <div className="space-y-6">
+              {featured ? (
+                <div>
+                  <FeaturedPost post={featured} />
+                </div>
+              ) : null}
+
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-lg font-black tracking-tight">פוסטים מובילים</div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {top1 ? <SimplePostCard post={top1} /> : null}
+                  {top2 ? <SimplePostCard post={top2} /> : null}
+                  {top3 ? <SimplePostCard post={top3} /> : null}
+                </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {top1 ? <SimplePostCard post={top1} /> : null}
-                {top2 ? <SimplePostCard post={top2} /> : null}
-                {top3 ? <SimplePostCard post={top3} /> : null}
+            </div>
+
+            {/* Below: subcategories (HOT monthly) + sidebar */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
+              <div className="space-y-8">
+                {forcedSubcategories.map(sc => {
+                  const items = channelRanks
+                    .map(r => postsById.get(r.post_id) ? toCard(postsById.get(r.post_id) as PostRow, r) : null)
+                    .filter((x): x is CardPost => x !== null)
+                    .filter(p => p.subcategory?.name_he === sc.name_he)
+
+                  const rows = takeUnique(items, 3, used)
+                  if (rows.length === 0) return null
+
+                  return (
+                    <div key={sc.name_he}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="text-lg font-black tracking-tight">{sc.name_he}</div>
+                      </div>
+                      <div className="space-y-3">
+                        {rows.map(p => (
+                          <ListRowCompact key={p.id} post={p} />
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="lg:col-span-1">
+
+              {/* Sidebar (sticky, NO internal scrolling) */}
+              <StickySidebar containerId="main-content">
+                <div className="space-y-8">
+                  {/* Recent posts FIRST */}
+                  <div className="bg-slate-100/70 rounded-2xl p-5 shadow-sm border border-black/10">
+                    <Link href={channelSlug ? `/search?sort=recent&channel=${channelSlug}` : "/search?sort=recent"} className="text-base font-black mb-4 inline-flex hover:text-sky-700 transition-colors">פוסטים אחרונים</Link>
+                    <div className="space-y-3">
+                      {recentMini.slice(0, 8).map(p => (
+                        <RecentMiniRow key={p.id} post={p} />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Writers of week */}
+                  <div className="bg-slate-100/70 rounded-2xl p-5 shadow-sm border border-black/10">
+                    <div className="text-base font-black mb-4">{isChannelPage ? 'כותבי החודש' : 'כותבי השבוע'}</div>
+
+                    {writerScores.length ? (
+                      <div className="space-y-3">
+                        {writerScores.map((w, idx) => (
+                          <div key={`${w.username ?? w.name}`} className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-7 h-7 rounded-full bg-black/5 border border-black/10 flex items-center justify-center text-xs font-black text-gray-700">
+                                {idx + 1}
+                              </div>
+
+                              {w.username ? (
+                                <Link href={`/u/${w.username}`} className="group/writer inline-flex items-center gap-2">
+                                  <Avatar url={w.avatar_url} name={w.name} size={36} />
+                                  <span className="text-sm font-bold transition-colors group-hover/writer:text-sky-700">
+                                    {w.name}
+                                  </span>
+                                </Link>
+                              ) : (
+                                <div className="inline-flex items-center gap-2">
+                                  <Avatar url={w.avatar_url} name={w.name} size={36} />
+                                  <span className="text-sm font-bold">{w.name}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div dir="ltr" className="text-xs text-gray-700 flex items-center gap-2">
+                              {w.gold ? <span>🥇 {w.gold}</span> : null}
+                              {w.silver ? <span>🥈 {w.silver}</span> : null}
+                              {w.bronze ? <span>🥉 {w.bronze}</span> : null}
+                              {!w.gold && !w.silver && !w.bronze ? <span>❤️ {w.reactions}</span> : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">אין עדיין פעילות לשבוע הזה.</div>
+                    )}
+
+                    <div className="mt-5">
+                      <HomeWriteCTA />
+                    </div>
+                  </div>
+                </div>
+              </StickySidebar>
               </div>
             </div>
           </div>
+        ) : (
 
-          {/* Below: categories on the right, sidebar on the left */}
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
-            {/* Categories */}
-            <div className="space-y-8">
-              <div>
-                <SectionHeader title="סיפורים" href="/c/stories" />
-                <div className="space-y-3">
-                  {stories.map(p => (
-                    <ListRowCompact key={p.id} post={p} />
-                  ))}
+          <div className="space-y-8">
+            {/* Top of page: featured + top posts */}
+            <div className="space-y-6">
+              {featured ? (
+                <div>
+                  <FeaturedPost post={featured} />
                 </div>
-              </div>
+              ) : null}
 
               <div>
-                <SectionHeader title="פריקה" href="/c/release" />
-                <div className="space-y-3">
-                  {release.map(p => (
-                    <ListRowCompact key={p.id} post={p} />
-                  ))}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-lg font-black tracking-tight">פוסטים מובילים</div>
                 </div>
-              </div>
-
-              <div>
-                <SectionHeader title="מגזין" href="/c/magazine" />
-                <div className="space-y-3">
-                  {magazine.map(p => (
-                    <ListRowCompact key={p.id} post={p} />
-                  ))}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {top1 ? <SimplePostCard post={top1} /> : null}
+                  {top2 ? <SimplePostCard post={top2} /> : null}
+                  {top3 ? <SimplePostCard post={top3} /> : null}
                 </div>
               </div>
             </div>
 
-            {/* Sidebar (sticky, NO internal scrolling) */}
-            <StickySidebar containerId="main-content">
+            {/* Below: categories on the right, sidebar on the left */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
+              {/* Categories */}
               <div className="space-y-8">
-                {/* Recent posts FIRST */}
-                <div className="bg-slate-100/70 rounded-2xl p-5 shadow-sm border border-black/10">
-                  <Link href="/search?sort=recent" className="text-base font-black mb-4 inline-flex hover:text-sky-700 transition-colors">פוסטים אחרונים</Link>
+                <div>
+                  <SectionHeader title="סיפורים" href="/c/stories" />
                   <div className="space-y-3">
-                    {recentMini.slice(0, 8).map(p => (
-                      <RecentMiniRow key={p.id} post={p} />
+                    {stories.map(p => (
+                      <ListRowCompact key={p.id} post={p} />
                     ))}
                   </div>
                 </div>
 
-                {/* Writers of week */}
-                <div className="bg-slate-100/70 rounded-2xl p-5 shadow-sm border border-black/10">
-                  <div className="text-base font-black mb-4">כותבי השבוע</div>
+                <div>
+                  <SectionHeader title="פריקה" href="/c/release" />
+                  <div className="space-y-3">
+                    {release.map(p => (
+                      <ListRowCompact key={p.id} post={p} />
+                    ))}
+                  </div>
+                </div>
 
-                  {writerScores.length ? (
-                    <div className="space-y-3">
-                      {writerScores.map((w, idx) => (
-                        <div key={`${w.username ?? w.name}`} className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-7 h-7 rounded-full bg-black/5 border border-black/10 flex items-center justify-center text-xs font-black text-gray-700">
-                              {idx + 1}
-                            </div>
-
-                            {w.username ? (
-                              <Link href={`/u/${w.username}`} className="group/writer inline-flex items-center gap-2">
-                                <Avatar url={w.avatar_url} name={w.name} size={36} />
-                                <span className="text-sm font-bold transition-colors group-hover/writer:text-sky-700">
-                                  {w.name}
-                                </span>
-                              </Link>
-                            ) : (
-                              <div className="inline-flex items-center gap-2">
-                                <Avatar url={w.avatar_url} name={w.name} size={36} />
-                                <span className="text-sm font-bold">{w.name}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div dir="ltr" className="text-xs text-gray-700 flex items-center gap-2">
-                            {w.gold ? <span>🥇 {w.gold}</span> : null}
-                            {w.silver ? <span>🥈 {w.silver}</span> : null}
-                            {w.bronze ? <span>🥉 {w.bronze}</span> : null}
-                            {!w.gold && !w.silver && !w.bronze ? <span>❤️ {w.reactions}</span> : null}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-500">אין עדיין פעילות לשבוע הזה.</div>
-                  )}
-
-                  <div className="mt-5">
-                    <HomeWriteCTA />
+                <div>
+                  <SectionHeader title="מגזין" href="/c/magazine" />
+                  <div className="space-y-3">
+                    {magazine.map(p => (
+                      <ListRowCompact key={p.id} post={p} />
+                    ))}
                   </div>
                 </div>
               </div>
-            </StickySidebar>
+
+              {/* Sidebar (sticky, NO internal scrolling) */}
+              <StickySidebar containerId="main-content">
+                <div className="space-y-8">
+                  {/* Recent posts FIRST */}
+                  <div className="bg-slate-100/70 rounded-2xl p-5 shadow-sm border border-black/10">
+                    <Link href="/search?sort=recent" className="text-base font-black mb-4 inline-flex hover:text-sky-700 transition-colors">פוסטים אחרונים</Link>
+                    <div className="space-y-3">
+                      {recentMini.slice(0, 8).map(p => (
+                        <RecentMiniRow key={p.id} post={p} />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Writers of week */}
+                  <div className="bg-slate-100/70 rounded-2xl p-5 shadow-sm border border-black/10">
+                    <div className="text-base font-black mb-4">כותבי השבוע</div>
+
+                    {writerScores.length ? (
+                      <div className="space-y-3">
+                        {writerScores.map((w, idx) => (
+                          <div key={`${w.username ?? w.name}`} className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-7 h-7 rounded-full bg-black/5 border border-black/10 flex items-center justify-center text-xs font-black text-gray-700">
+                                {idx + 1}
+                              </div>
+
+                              {w.username ? (
+                                <Link href={`/u/${w.username}`} className="group/writer inline-flex items-center gap-2">
+                                  <Avatar url={w.avatar_url} name={w.name} size={36} />
+                                  <span className="text-sm font-bold transition-colors group-hover/writer:text-sky-700">
+                                    {w.name}
+                                  </span>
+                                </Link>
+                              ) : (
+                                <div className="inline-flex items-center gap-2">
+                                  <Avatar url={w.avatar_url} name={w.name} size={36} />
+                                  <span className="text-sm font-bold">{w.name}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div dir="ltr" className="text-xs text-gray-700 flex items-center gap-2">
+                              {w.gold ? <span>🥇 {w.gold}</span> : null}
+                              {w.silver ? <span>🥈 {w.silver}</span> : null}
+                              {w.bronze ? <span>🥉 {w.bronze}</span> : null}
+                              {!w.gold && !w.silver && !w.bronze ? <span>❤️ {w.reactions}</span> : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">אין עדיין פעילות לשבוע הזה.</div>
+                    )}
+
+                    <div className="mt-5">
+                      <HomeWriteCTA />
+                    </div>
+                  </div>
+                </div>
+              </StickySidebar>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </main>
   )

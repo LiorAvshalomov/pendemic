@@ -373,6 +373,28 @@ export default async function ChannelFeedPage({
   tiles: TileConfig[]
   subcategories?: string[]
 }) {
+    const { data: channelRow, error: channelErr } = await supabase
+    .from('channels')
+    .select('id, slug, name_he')
+    .eq('slug', channelSlug)
+    .maybeSingle()
+
+  if (channelErr || !channelRow?.id) {
+    return (
+      <main className="min-h-screen bg-neutral-50" dir="rtl">
+        <div className="mx-auto max-w-6xl px-4 py-10">
+          <h1 className="text-xl font-bold">לא נמצאה קטגוריה</h1>
+          <div className="mt-2 text-sm text-muted-foreground">
+            slug: <span dir="ltr">{channelSlug}</span>
+          </div>
+          {channelErr ? (
+            <pre className="mt-4 rounded border bg-white p-4 text-xs">{JSON.stringify(channelErr, null, 2)}</pre>
+          ) : null}
+        </div>
+      </main>
+    )
+  }
+
   const { data: rows, error } = await supabase
     .from('posts')
     .select(
@@ -392,6 +414,7 @@ export default async function ChannelFeedPage({
     )
     .is('deleted_at', null)
     .eq('status', 'published')
+    .eq('channel_id', channelRow.id)
     .order('published_at', { ascending: false })
     .limit(250)
 
@@ -643,7 +666,7 @@ export default async function ChannelFeedPage({
                           <div className="font-bold">{w.name}</div>
                         )}
                         <div dir="ltr" className="mt-1 text-xs text-muted-foreground">
-                          ❤️ {w.reactions}
+                          🥇 {w.gold}  🥈 {w.silver}  🥉 {w.bronze}
                         </div>
                       </div>
                     </div>
