@@ -14,9 +14,7 @@ type PostRow = {
   excerpt: string | null
   cover_image_url: string | null
   subcategory_tag_id: number | null
-  subcategory_tag_id: number | null
-  subcategory_tag_id: number | null
-  subcategory_tag_id: number | null
+
   channel: { slug: string; name_he: string }[] | null
   author: { username: string; display_name: string | null; avatar_url: string | null }[] | null
   post_tags:
@@ -55,6 +53,7 @@ type CardPost = {
   excerpt: string | null
   created_at: string
   cover_image_url: string | null
+  subcategory_tag_id: number | null
   channel_slug: string | null
   channel_name: string | null
   author_username: string | null
@@ -324,7 +323,7 @@ function SimplePostCard({ post }: { post: CardPost }) {
             {truncateText(post.excerpt, 90)}
           </p>
         ) : null}
-        <div className="mt-3 flex items-center justify-start gap-2 text-xs text-gray-700">
+        <div className={`${post.excerpt ? "mt-3" : "mt-4"} flex items-center justify-start gap-2 text-xs text-gray-700`}>
           {post.author_username ? (
             <Link href={`/u/${post.author_username}`} className="group/author inline-flex items-center gap-2">
               <Avatar url={post.author_avatar_url} name={post.author_name} size={24} />
@@ -571,6 +570,8 @@ export default async function HomePage(props: HomePageProps = {}) {
 
   // Resolve subcategory tag ids for forced subcategories (by Hebrew name)
   const forcedSubcatIdsByName = new Map<string, number>()
+  const forcedSubcategoryPostsById = new Map<number, PostRow[]>()
+  
   if (isChannelPage && forcedSubcategories.length > 0) {
     const names = forcedSubcategories.map(s => s.name_he)
     const { data: forcedTagRows } = await supabase
@@ -580,6 +581,43 @@ export default async function HomePage(props: HomePageProps = {}) {
     ;(forcedTagRows ?? []).forEach(r => {
       const rr = r as { id: number; name_he: string }
       forcedSubcatIdsByName.set(rr.name_he, rr.id)
+    })
+  }
+  
+  // Bulk fetch recent posts for all forced subcategories (channel pages), so subcategory sections never rely on ranking availability
+  if (isChannelPage && channelId != null && forcedSubcatIdsByName.size > 0) {
+    const subcatIds = Array.from(new Set(Array.from(forcedSubcatIdsByName.values())))
+    const { data: subcatPostRows } = await supabase
+      .from('posts')
+      .select(
+        `
+          id,
+          title,
+          slug,
+          created_at,
+          published_at,
+          excerpt,
+          cover_image_url,
+          subcategory_tag_id,
+          channel:channels ( slug, name_he ),
+          author:profiles!posts_author_id_fkey ( username, display_name, avatar_url ),
+          post_tags:post_tags!fk_post_tags_post_id_posts ( tag:tags!fk_post_tags_tag_id_tags ( name_he, slug ) )
+        `
+      )
+      .is('deleted_at', null)
+      .eq('status', 'published')
+      .eq('channel_id', channelId)
+      .in('subcategory_tag_id', subcatIds)
+      .order('published_at', { ascending: false })
+      .limit(250)
+
+    ;(subcatPostRows ?? []).forEach(r => {
+      const row = r as PostRow
+      const sid = row.subcategory_tag_id
+      if (typeof sid !== 'number') return
+      const prev = forcedSubcategoryPostsById.get(sid) ?? []
+      prev.push(row)
+      forcedSubcategoryPostsById.set(sid, prev)
     })
   }
 
@@ -1050,17 +1088,17 @@ export default async function HomePage(props: HomePageProps = {}) {
                                     const rankedItems = channelRanks
                     .map(r => (postsById.get(r.post_id) ? toCard(postsById.get(r.post_id) as PostRow, r) : null))
                     .filter((x): x is CardPost => x !== null)
+                  const forcedId = forcedSubcatIdsByName.get(sc.name_he)
 
-                  const items = [...rankedItems, ...recentPosts]
-                    .filter(p => {
-                      const forcedId = forcedSubcatIdsByName.get(sc.name_he)
-                      return forcedId != null
-                        ? (p.subcategory_tag_id === forcedId || p.tags.some(t => t.name_he === sc.name_he))
-                        : (p.subcategory?.name_he === sc.name_he || p.tags.some(t => t.name_he === sc.name_he))
-                    })
+                  // Subcategory sections on channel pages should be HOT (monthly ranking), not recent.
+                  // We filter ranked items by subcategory_tag_id (stable), and also allow tag-name fallback.
+                  const hotItems = rankedItems.filter(p => {
+                    return forcedId != null
+                      ?  (p.subcategory?.name_he === sc.name_he || p.tags.some(t => t.name_he === sc.name_he))
+                      : (p.subcategory?.name_he === sc.name_he || p.tags.some(t => t.name_he === sc.name_he))
+                  })
 
-                  const rows = takeUnique(items, 3, used)
-                  if (rows.length === 0) return null
+                  const rows = takeUnique(hotItems, 3, used)
 
                   return (
                     <div key={sc.name_he}>
@@ -1068,9 +1106,20 @@ export default async function HomePage(props: HomePageProps = {}) {
                         <div className="text-lg font-black tracking-tight">{sc.name_he}</div>
                       </div>
                       <div className="space-y-3">
-                        {rows.map(p => (
+                        {rows.length > 0 ? rows.map(p => (
                           <ListRowCompact key={p.id} post={p} />
-                        ))}
+                        )) : (
+                          <div className="rounded-2xl border border-black/10 bg-white/60 p-4">
+                            <div className="text-sm font-bold text-gray-800">עדיין אין פוסטים כאן</div>
+                            <div className="mt-1 text-xs text-gray-600">רוצה לפתוח את זה עם משהו קצר?</div>
+                            <Link
+                              href={`/write?channel=${encodeURIComponent(channelSlug ?? '')}&return=${encodeURIComponent(`/c/${channelSlug}`)}`}
+                              className="mt-3 inline-flex items-center justify-center rounded-xl bg-sky- (p.subcategory?.name_he === sc.name_he || p.tags.some(t => t.name_he === sc.name_he))00 px-3 py-2 text-xs font-black text-black shadow-sm transition hover:bg-sky-800 active:scale-[0.99]"
+                            >
+                              כתוב/י ראשון/ה בתת־קטגוריה הזו
+                            </Link>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -1170,18 +1219,18 @@ export default async function HomePage(props: HomePageProps = {}) {
               {/* Categories */}
               <div className="space-y-8">
                 <div>
-                  <SectionHeader title="סיפורים" href="/c/stories" />
+                  <SectionHeader title="פריקה" href="/c/release" />
                   <div className="space-y-3">
-                    {storiesFinal.map(p => (
+                    {releaseFinal.map(p => (
                       <ListRowCompact key={p.id} post={p} />
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <SectionHeader title="פריקה" href="/c/release" />
+                  <SectionHeader title="סיפורים" href="/c/stories" />
                   <div className="space-y-3">
-                    {releaseFinal.map(p => (
+                    {storiesFinal.map(p => (
                       <ListRowCompact key={p.id} post={p} />
                     ))}
                   </div>
@@ -1246,6 +1295,9 @@ export default async function HomePage(props: HomePageProps = {}) {
                             </div>
                           </div>
                         ))}
+                        <div className="text-sm text-gray-600 bg-white/60 border border-black/10 rounded-xl p-3">
+                          עדיין אין פוסטים בתת־קטגוריה הזו.
+                        </div>
                       </div>
                     ) : (
                       <div className="text-sm text-gray-500">אין עדיין פעילות לשבוע הזה.</div>
