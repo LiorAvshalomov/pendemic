@@ -34,14 +34,10 @@ export default function ProfileNonOwnerActions({ profileId }: { profileId: strin
   // ✅ לא מציגים “שלח הודעה” על עצמי
   if (meId && meId === profileId) return null
 
-  async function handleMessage() {
-    // ✅ לא מחובר → התחבר
-    if (!meId) {
-      alert('כדי לשלוח הודעה צריך להתחבר 🙂')
-      router.push('/login')
-      return
-    }
+  // ✅ לא מציגים בפרופיל אם לא מחובר (יש התחברות ב-SiteHeader)
+  if (!meId) return null
 
+  async function handleMessage() {
     setLoading(true)
     const { data, error } = await supabase.rpc('start_conversation', {
       other_user_id: profileId,
@@ -60,7 +56,7 @@ export default function ProfileNonOwnerActions({ profileId }: { profileId: strin
     <button
       onClick={handleMessage}
       disabled={loading}
-      className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+      className="h-10 min-w-[110px] rounded-full bg-black px-4 text-sm font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer transition hover:scale-[1.02] active:scale-[0.98] hover:bg-black/90"
     >
       {loading ? 'פותח…' : 'שלח הודעה'}
     </button>

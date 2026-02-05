@@ -643,6 +643,14 @@ export default function SiteHeader() {
                           <span>עריכת פרופיל</span>
                         </Link>
                         <Link
+                          href="/saved"
+                          onClick={closeAll}
+                          className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-emerald-50 border border-transparent hover:border-emerald-200 text-sm transition-all"
+                        >
+                          <BookOpen size={18} className="text-neutral-600" />
+                          <span>פוסטים שמורים</span>
+                        </Link>
+                        <Link
                           href="/trash"
                           onClick={closeAll}
                           className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-zinc-50 border border-transparent hover:border-zinc-200 text-sm transition-all"
@@ -902,6 +910,14 @@ export default function SiteHeader() {
                         <Settings size={18} className="text-neutral-600" />
                         <span>עריכת פרופיל</span>
                       </Link>
+                        <Link
+                          href="/saved"
+                          onClick={closeAll}
+                          className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-emerald-50 border border-transparent hover:border-emerald-200 text-sm transition-all"
+                        >
+                          <BookOpen size={18} className="text-neutral-600" />
+                          <span>פוסטים שמורים</span>
+                        </Link>
                       <Link
                         href="/trash"
                         onClick={closeAll}

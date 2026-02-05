@@ -12,6 +12,7 @@ export default function ProfileBottomTabsClient({
   postsCount,
   commentsWritten,
   commentsReceived,
+  medals,
   reactionTotals,
 }: {
   profileId: string
@@ -19,6 +20,7 @@ export default function ProfileBottomTabsClient({
   postsCount: number
   commentsWritten: number
   commentsReceived: number
+  medals: { gold: number; silver: number; bronze: number }
   reactionTotals?: ProfileReactionTotal[]
 }) {
   const [tab, setTab] = useState<Tab>('posts')
@@ -59,7 +61,7 @@ export default function ProfileBottomTabsClient({
               postsCount={postsCount}
               commentsWritten={commentsWritten}
               commentsReceived={commentsReceived}
-              medals={{ gold: 0, silver: 0, bronze: 0 }}
+              medals={medals}
               reactionTotals={reactionTotals ?? []}
             />
           </div>

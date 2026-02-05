@@ -75,7 +75,8 @@ export default function FollowButton({
   if (!myId || myId === targetUserId) return null
 
   const base =
-    'h-9 rounded-full px-4 text-sm font-semibold transition inline-flex items-center justify-center'
+    // min-w keeps layout stable when toggling between "עקוב" and "הסר מעקב"
+    'h-10 min-w-[110px] rounded-full px-4 text-sm font-semibold transition inline-flex items-center justify-center cursor-pointer hover:scale-[1.02] active:scale-[0.98]'
 
   return (
     <button

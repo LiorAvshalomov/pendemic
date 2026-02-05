@@ -5,18 +5,66 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 
 type SavedPostRow = {
-  id: string
   created_at: string
+  post_id: string
   post: {
     id: string
     slug: string
     title: string | null
     excerpt: string | null
-    author_username: string | null
-    author_display_name: string | null
-    channel_name: string | null
     published_at: string | null
+    author: {
+      username: string | null
+      display_name: string | null
+      avatar_url: string | null
+    } | null
+    channel: {
+      slug: string | null
+      name_he: string | null
+    } | null
   } | null
+}
+
+type PaginationState = {
+  page: number
+  pageSize: number
+  total: number
+}
+
+type SupabaseLikeError = {
+  message?: string
+  details?: unknown
+  hint?: unknown
+  code?: unknown
+}
+
+function asCleanString(v: unknown): string {
+  if (v == null) return ''
+  if (typeof v === 'string') return v.trim()
+  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v).trim()
+  // Supabase/PostgREST sometimes returns details/hint as objects.
+  try {
+    return JSON.stringify(v).trim()
+  } catch {
+    return String(v).trim()
+  }
+}
+
+function formatErr(e: unknown): string {
+  if (e && typeof e === 'object') {
+    const se = e as SupabaseLikeError
+    const msg = asCleanString(se.message)
+    const details = asCleanString(se.details)
+    const hint = asCleanString(se.hint)
+    const code = asCleanString(se.code)
+
+    // Sometimes Supabase/PostgREST errors have an empty message but include details/code.
+    const parts = [msg, details, hint].filter(Boolean)
+    const combined = parts.join(' — ')
+    if (combined) return code ? `${combined} (${code})` : combined
+    if (code) return `שגיאה מהשרת (${code})`
+  }
+  return e instanceof Error && e.message ? e.message : 'שגיאה לא ידועה'
 }
 
 function clampText(s: string | null | undefined, max: number) {
@@ -25,10 +73,20 @@ function clampText(s: string | null | undefined, max: number) {
   return t.length > max ? t.slice(0, max).trimEnd() + '…' : t
 }
 
+function initialsFromName(name: string): string {
+  const cleaned = name.trim()
+  if (!cleaned) return '∗'
+  // Take first 2 characters (works okay for Hebrew/English).
+  return cleaned.slice(0, 2)
+}
+
 export default function SavedPostsPage() {
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState<SavedPostRow[]>([])
   const [err, setErr] = useState<string | null>(null)
+  const [pg, setPg] = useState<PaginationState>({ page: 0, pageSize: 8, total: 0 })
+  const [userId, setUserId] = useState<string | null>(null)
+  const [removingPostIds, setRemovingPostIds] = useState<Record<string, true>>({})
 
   useEffect(() => {
     let alive = true
@@ -47,18 +105,31 @@ export default function SavedPostsPage() {
           return
         }
 
-        const { data, error } = await supabase
+        if (alive) setUserId(u.user.id)
+
+        const from = pg.page * pg.pageSize
+        const to = from + pg.pageSize - 1
+
+        const { data, error, count } = await supabase
           .from('post_bookmarks')
           .select(
-            'id, created_at, post:posts(id, slug, title, excerpt, author_username, author_display_name, channel_name, published_at)'
+            // IMPORTANT:
+            // In our DB PostgREST needs explicit relationship names for embeds,
+            // otherwise it may return 400 or silently omit nested objects.
+            'created_at, post_id, post:posts!post_bookmarks_post_id_fkey(id, slug, title, excerpt, published_at, author:profiles!posts_author_id_fkey(username, display_name, avatar_url), channel:channels!posts_channel_id_fkey(slug, name_he))',
+            { count: 'exact' }
           )
+          .eq('user_id', u.user.id)
           .order('created_at', { ascending: false })
+          .range(from, to)
 
         if (error) throw error
-        if (alive) setRows((data ?? []) as SavedPostRow[])
+        if (alive) {
+          setRows((data ?? []) as SavedPostRow[])
+          setPg((prev) => ({ ...prev, total: typeof count === 'number' ? count : prev.total }))
+        }
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : 'שגיאה לא ידועה'
-        if (alive) setErr(msg)
+        if (alive) setErr(formatErr(e))
       } finally {
         if (alive) setLoading(false)
       }
@@ -66,7 +137,81 @@ export default function SavedPostsPage() {
     return () => {
       alive = false
     }
-  }, [])
+  }, [pg.page, pg.pageSize])
+
+  const totalPages = Math.max(1, Math.ceil(pg.total / pg.pageSize))
+  const canPrev = pg.page > 0
+  const canNext = pg.page < totalPages - 1
+
+  const removeBookmark = async (postId: string) => {
+    if (!userId) {
+      setErr('כדי להסיר פוסט מהשמורים צריך להתחבר.')
+      return
+    }
+    // optimistic UI
+    setRemovingPostIds((prev) => ({ ...prev, [postId]: true }))
+
+    const prevRows = rows
+    setRows((rws) => rws.filter((r) => r.post_id !== postId))
+    setPg((prev) => ({ ...prev, total: Math.max(0, prev.total - 1) }))
+
+    try {
+      const { error } = await supabase
+        .from('post_bookmarks')
+        .delete()
+        .eq('user_id', userId)
+        .eq('post_id', postId)
+
+      if (error) throw error
+
+      // If we removed the last item on the page, go back one page.
+      setPg((prev) => {
+        const newTotalPages = Math.max(1, Math.ceil(prev.total / prev.pageSize))
+        const safePage = Math.min(prev.page, newTotalPages - 1)
+        return safePage === prev.page ? prev : { ...prev, page: safePage }
+      })
+    } catch (e: unknown) {
+      // rollback
+      setRows(prevRows)
+      setPg((prev) => ({ ...prev, total: prev.total + 1 }))
+      setErr(formatErr(e))
+    } finally {
+      setRemovingPostIds((prev) => {
+        const next = { ...prev }
+        delete next[postId]
+        return next
+      })
+    }
+  }
+
+  const PaginationBar = ({ className = '' }: { className?: string }) => {
+    if (pg.total <= pg.pageSize) return null
+    return (
+      <div className={`flex items-center justify-between gap-3 ${className}`}>
+        <div className="text-xs text-neutral-500">
+          עמוד {pg.page + 1} מתוך {totalPages}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPg((prev) => ({ ...prev, page: prev.page - 1 }))}
+            disabled={!canPrev}
+            className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm font-semibold text-neutral-900 shadow-sm transition hover:-translate-y-[1px] hover:bg-neutral-50 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            הקודם
+          </button>
+          <button
+            type="button"
+            onClick={() => setPg((prev) => ({ ...prev, page: prev.page + 1 }))}
+            disabled={!canNext}
+            className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm font-semibold text-neutral-900 shadow-sm transition hover:-translate-y-[1px] hover:bg-neutral-50 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            הבא
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <main className="min-h-screen bg-neutral-50" dir="rtl">
@@ -86,29 +231,122 @@ export default function SavedPostsPage() {
           ) : rows.length === 0 ? (
             <div className="mt-6 text-sm text-neutral-600">אין פוסטים שמורים עדיין.</div>
           ) : (
-            <div className="mt-6 space-y-3">
-              {rows.map((r) => {
-                const p = r.post
-                if (!p) return null
-                return (
-                  <Link
-                    key={r.id}
-                    href={`/post/${p.slug}`}
-                    className="block rounded-2xl border border-neutral-200 bg-white px-4 py-3 hover:bg-neutral-50"
-                  >
-                    <div className="text-[15px] font-extrabold text-neutral-950">
-                      {clampText(p.title ?? 'ללא כותרת', 60)}
+            <div className="mt-6">
+              <PaginationBar className="mb-4" />
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {rows.map((r) => {
+                  const p = r.post
+                  if (!p) {
+                    return (
+                      <div
+                        key={`${r.post_id}-${r.created_at}`}
+                        className="rounded-2xl border border-neutral-200 bg-white p-4"
+                      >
+                        <div className="text-[15px] font-extrabold text-neutral-950">פוסט לא זמין</div>
+                        <div className="mt-1 text-sm text-neutral-600">
+                          נראה שהפוסט שנשמר נמחק או שאינך מורשה לצפות בו.
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  const authorDisplay = p.author?.display_name ?? p.author?.username ?? 'משתמש'
+                  const authorUsername = p.author?.username ?? null
+                  const channelLabel = p.channel?.name_he ?? ''
+                  const savedAt = new Date(r.created_at)
+
+                  return (
+                    <div
+                      key={`${r.post_id}-${r.created_at}`}
+                      className="group rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm transition hover:-translate-y-[1px] hover:border-neutral-300 hover:shadow"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <Link
+                            href={`/post/${p.slug}`}
+                            className="block text-[15px] font-extrabold text-neutral-950 underline-offset-4 hover:underline"
+                          >
+                            {clampText(p.title ?? 'ללא כותרת', 80)}
+                          </Link>
+                          {p.excerpt ? (
+                            <div className="mt-2 text-sm leading-6 text-neutral-600">
+                              {clampText(p.excerpt, 140)}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          {authorUsername ? (
+                            <Link
+                              href={`/u/${authorUsername}`}
+                              className="flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-2 py-1 text-xs font-semibold text-neutral-900 shadow-sm transition hover:bg-neutral-50"
+                            >
+                              <span className="relative grid h-8 w-8 place-items-center overflow-hidden rounded-full ring-1 ring-black/10">
+                                {p.author?.avatar_url ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={p.author.avatar_url}
+                                    alt={authorDisplay}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <span className="text-xs font-black text-neutral-700">
+                                    {initialsFromName(authorDisplay)}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="max-w-[110px] truncate">{authorDisplay}</span>
+                            </Link>
+                          ) : (
+                            <div className="flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-2 py-1 text-xs font-semibold text-neutral-900 shadow-sm">
+                              <span className="grid h-8 w-8 place-items-center rounded-full ring-1 ring-black/10">
+                                <span className="text-xs font-black text-neutral-700">
+                                  {initialsFromName(authorDisplay)}
+                                </span>
+                              </span>
+                              <span className="max-w-[110px] truncate">{authorDisplay}</span>
+                            </div>
+                          )}
+
+                          {channelLabel ? (
+                            <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-xs font-semibold text-neutral-700">
+                              {channelLabel}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-between gap-3 border-t border-neutral-200 pt-3 text-xs text-neutral-500">
+                        <div className="truncate">נשמר · {savedAt.toLocaleDateString('he-IL')}</div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              void removeBookmark(r.post_id)
+                            }}
+                            disabled={!!removingPostIds[r.post_id]}
+                            className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-bold text-neutral-900 shadow-sm transition hover:translate-y-[1px] hover:bg-neutral-50 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            הסר
+                          </button>
+
+                          <Link
+                            href={`/post/${p.slug}`}
+                            className="rounded-xl bg-neutral-900 px-3 py-2 text-xs font-bold text-white transition hover:translate-y-[1px] hover:bg-neutral-800 active:translate-y-0"
+                          >
+                            לקריאה
+                          </Link>
+                        </div>
+                      </div>
                     </div>
-                    {p.excerpt ? (
-                      <div className="mt-1 text-sm text-neutral-600">{clampText(p.excerpt, 90)}</div>
-                    ) : null}
-                    <div className="mt-2 text-xs text-neutral-500">
-                      {p.author_display_name ?? p.author_username ?? ''}
-                      {p.channel_name ? ` · ${p.channel_name}` : ''}
-                    </div>
-                  </Link>
-                )
-              })}
+                  )
+                })}
+              </div>
+
+              <PaginationBar className="mt-6" />
             </div>
           )}
         </div>

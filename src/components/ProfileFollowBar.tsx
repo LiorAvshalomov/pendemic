@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import FollowButton from '@/components/FollowButton'
 import ProfileNonOwnerActions from '@/components/ProfileNonOwnerActions'
@@ -18,8 +17,6 @@ export default function ProfileFollowBar({
   initialFollowers: number
   initialFollowing: number
 }) {
-  const router = useRouter()
-
   const [followersCount, setFollowersCount] = useState(initialFollowers)
   const [followingCount, setFollowingCount] = useState(initialFollowing)
   const [meId, setMeId] = useState<string | null>(null)
@@ -90,41 +87,47 @@ export default function ProfileFollowBar({
   }, [profileId, refreshCounts])
 
   return (
-    <div className="mt-6 border-t pt-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Link
-          href={`/u/${username}/followers`}
-          className="rounded-full border bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-        >
-          עוקבים <span className="ms-2 text-muted-foreground">{followersCount}</span>
-        </Link>
-
-        <Link
-          href={`/u/${username}/following`}
-          className="rounded-full border bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-        >
-          נעקבים <span className="ms-2 text-muted-foreground">{followingCount}</span>
-        </Link>
-
-        <div className="ms-auto flex items-center gap-2">
-          {/* ✅ לא מציגים הודעה/מעקב על עצמי */}
-          {isMe ? null : !isAuthed ? (
-            <button
-              onClick={() => {
-                alert('כדי לעקוב/לשלוח הודעה צריך להתחבר 🙂')
-                router.push('/login')
-              }}
-              className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+    <div className="mt-6">
+      {/* full-width divider inside the card (match mockup) */}
+      <div className="-mx-4 border-t border-neutral-200/80 pt-4 sm:-mx-5">
+        <div className="grid grid-cols-2 items-end gap-4 px-4 sm:px-5">
+          {/* counts (stick to RIGHT side of the card in RTL) */}
+          <div className="flex items-end justify-end gap-6 sm:gap-10">
+            <Link
+              href={`/u/${username}/followers`}
+              className="group inline-flex flex-col items-center justify-center cursor-pointer select-none transition hover:scale-[1.02] active:scale-[0.98]"
             >
-              התחבר
-            </button>
-          ) : (
-            <>
-              <FollowButton targetUserId={profileId} targetUsername={username} />
-              {/* ✅ אצלך כנראה הטייפ הוא רק profileId */}
-              <ProfileNonOwnerActions profileId={profileId} />
-            </>
-          )}
+              <span className="text-2xl font-bold leading-none transition group-hover:opacity-90">
+                {followersCount}
+              </span>
+              <span className="mt-1 text-xs text-muted-foreground transition group-hover:text-neutral-700">
+                עוקבים
+              </span>
+            </Link>
+
+            <Link
+              href={`/u/${username}/following`}
+              className="group inline-flex flex-col items-center justify-center cursor-pointer select-none transition hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <span className="text-2xl font-bold leading-none transition group-hover:opacity-90">
+                {followingCount}
+              </span>
+              <span className="mt-1 text-xs text-muted-foreground transition group-hover:text-neutral-700">
+                עוקב אחרי
+              </span>
+            </Link>
+          </div>
+
+          {/* actions (stick to LEFT side of the card) */}
+          <div className="flex items-center justify-start gap-3 sm:gap-4">
+            {/* ✅ לא מציגים פעולות על עצמי / לא מחובר */}
+            {isMe || !isAuthed ? null : (
+              <>
+                <FollowButton targetUserId={profileId} targetUsername={username} />
+                <ProfileNonOwnerActions profileId={profileId} />
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
