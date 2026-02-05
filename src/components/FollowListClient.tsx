@@ -144,7 +144,7 @@ export default function FollowListClient({
           <p className="text-sm text-neutral-500">{emptyText}</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {users.map(u => {
             const name = displayNameOnly(u)
 
@@ -173,7 +173,7 @@ export default function FollowListClient({
                     >
                       {name}
                     </Link>
-                    <div className="text-xs text-neutral-500 mt-0.5">
+                    <div className="text-xs text-neutral-500 mt-0.5 truncate">
                       @{u.username}
                     </div>
                     <div className="text-xs text-neutral-500 mt-1">

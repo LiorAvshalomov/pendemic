@@ -15,7 +15,7 @@ type PostBase = {
   excerpt: string | null
   created_at: string
   cover_image_url: string | null
-  channel?: { name_he: string }[] | null
+  channel_id: number | null
 }
 
 type PostRow = PostBase
@@ -28,7 +28,12 @@ type PostItem = {
   created_at: string
   cover_image_url: string | null
   channel_name: string | null
-  medals?: { gold: number; silver: number; bronze: number } | null
+  medals: { gold: number; silver: number; bronze: number } | null
+}
+
+type ChannelRow = {
+  id: number
+  name_he: string
 }
 
 function clampPage(n: number) {
@@ -59,11 +64,15 @@ function timeAgo(dateStr: string): string {
   return `לפני ${Math.floor(seconds / 31536000)} שנים`
 }
 
+// Updated colors as requested:
+// פריקה - red/pink background
+// סיפורים - blue background  
+// מגזין - purple background
 function getChannelStyle(channelName: string | null): string {
   switch (channelName) {
-    case 'פריקה': return 'bg-rose-100 text-rose-700'
+    case 'פריקה': return 'bg-red-100 text-red-700'
     case 'סיפורים': return 'bg-blue-100 text-blue-700'
-    case 'מגזין': return 'bg-emerald-100 text-emerald-700'
+    case 'מגזין': return 'bg-purple-100 text-purple-700'
     default: return 'bg-neutral-100 text-neutral-600'
   }
 }
@@ -97,6 +106,8 @@ function DesktopPostCard({
   returnTo: string
   onDelete: (post: PostItem) => void
 }) {
+  const hasMedals = post.medals && (post.medals.gold > 0 || post.medals.silver > 0 || post.medals.bronze > 0)
+
   return (
     <article className="group relative hidden sm:block rounded-xl border border-neutral-100 bg-neutral-50 p-4 transition-colors hover:bg-neutral-100">
       {/* Owner actions */}
@@ -150,24 +161,26 @@ function DesktopPostCard({
             <p className="text-sm text-neutral-600 line-clamp-1 mt-1">{post.excerpt}</p>
           )}
 
-          {/* Meta row */}
+          {/* Meta row: Date • Category | Medals */}
           <div className="flex items-center justify-between mt-auto pt-2">
             <div className="flex items-center gap-2 text-xs text-neutral-500">
               <span>{timeAgo(post.created_at)}</span>
-              <span>•</span>
               {post.channel_name && (
-                <span className={`rounded px-2 py-0.5 text-xs font-semibold ${getChannelStyle(post.channel_name)}`}>
-                  {post.channel_name}
-                </span>
+                <>
+                  <span>•</span>
+                  <span className={`rounded px-2 py-0.5 text-xs font-semibold ${getChannelStyle(post.channel_name)}`}>
+                    {post.channel_name}
+                  </span>
+                </>
               )}
             </div>
 
-            {/* Medals */}
-            {post.medals && (post.medals.gold > 0 || post.medals.silver > 0 || post.medals.bronze > 0) && (
+            {/* Medals - left side */}
+            {hasMedals && (
               <div className="flex items-center gap-1.5 text-sm">
-                {post.medals.bronze > 0 && <span>{post.medals.bronze} 🥉</span>}
-                {post.medals.silver > 0 && <span>{post.medals.silver} 🥈</span>}
-                {post.medals.gold > 0 && <span>{post.medals.gold} 🥇</span>}
+                {post.medals!.bronze > 0 && <span>{post.medals!.bronze} 🥉</span>}
+                {post.medals!.silver > 0 && <span>{post.medals!.silver} 🥈</span>}
+                {post.medals!.gold > 0 && <span>{post.medals!.gold} 🥇</span>}
               </div>
             )}
           </div>
@@ -191,6 +204,8 @@ function MobilePostCard({
   returnTo: string
   onDelete: (post: PostItem) => void
 }) {
+  const hasMedals = post.medals && (post.medals.gold > 0 || post.medals.silver > 0 || post.medals.bronze > 0)
+
   return (
     <article className="group relative sm:hidden rounded-xl border border-neutral-100 bg-neutral-50 overflow-hidden">
       {/* Owner actions */}
@@ -243,7 +258,7 @@ function MobilePostCard({
           <p className="text-sm text-neutral-600 line-clamp-2 mb-2">{post.excerpt}</p>
         )}
 
-        {/* Meta row */}
+        {/* Meta row: Date • Category | Medals */}
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
             <span className="text-neutral-500">{timeAgo(post.created_at)}</span>
@@ -255,11 +270,11 @@ function MobilePostCard({
           </div>
 
           {/* Medals */}
-          {post.medals && (post.medals.gold > 0 || post.medals.silver > 0 || post.medals.bronze > 0) && (
+          {hasMedals && (
             <div className="flex items-center gap-1 text-sm">
-              {post.medals.bronze > 0 && <span>{post.medals.bronze} 🥉</span>}
-              {post.medals.silver > 0 && <span>{post.medals.silver} 🥈</span>}
-              {post.medals.gold > 0 && <span>{post.medals.gold} 🥇</span>}
+              {post.medals!.bronze > 0 && <span>{post.medals!.bronze} 🥉</span>}
+              {post.medals!.silver > 0 && <span>{post.medals!.silver} 🥈</span>}
+              {post.medals!.gold > 0 && <span>{post.medals!.gold} 🥇</span>}
             </div>
           )}
         </div>
@@ -293,6 +308,7 @@ export default function ProfilePostsClient({
   const [total, setTotal] = useState(0)
   const [refreshKey, setRefreshKey] = useState(0)
   const [sortedIdsCache, setSortedIdsCache] = useState<Record<string, string[]>>({})
+  const [channelsMap, setChannelsMap] = useState<Map<number, string>>(new Map())
   
   // Mobile: 4 posts, Desktop: 5 posts
   const [isMobile, setIsMobile] = useState(false)
@@ -307,6 +323,21 @@ export default function ProfilePostsClient({
   const perPage = isMobile ? 4 : 5
 
   void username // suppress unused warning
+
+  // Load channels mapping once
+  useEffect(() => {
+    const loadChannels = async () => {
+      const { data } = await supabase.from('channels').select('id, name_he')
+      if (data) {
+        const map = new Map<number, string>()
+        for (const ch of data as ChannelRow[]) {
+          map.set(ch.id, ch.name_he)
+        }
+        setChannelsMap(map)
+      }
+    }
+    loadChannels()
+  }, [])
 
   useEffect(() => {
     supabase.auth.getUser()
@@ -343,6 +374,8 @@ export default function ProfilePostsClient({
   }
 
   useEffect(() => {
+    if (channelsMap.size === 0) return // Wait for channels to load
+
     let cancelled = false
 
     async function run() {
@@ -367,7 +400,7 @@ export default function ProfilePostsClient({
         if (sort === 'recent') {
           const res = await supabase
             .from('posts')
-            .select(`id, slug, title, excerpt, created_at, cover_image_url, channel:channels ( name_he )`)
+            .select('id, slug, title, excerpt, created_at, cover_image_url, channel_id')
             .eq('author_id', profileId)
             .eq('status', 'published')
             .is('deleted_at', null)
@@ -376,18 +409,22 @@ export default function ProfilePostsClient({
 
           if (res.error) throw res.error
 
-          // Get medals for these posts
+          // Get medals for these posts from post_medals_all_time
           const postIds = (res.data ?? []).map((p: PostBase) => p.id)
-          let medalsMap = new Map<string, { gold: number; silver: number; bronze: number }>()
+          const medalsMap = new Map<string, { gold: number; silver: number; bronze: number }>()
           
           if (postIds.length > 0) {
             const { data: medalsData } = await supabase
-              .from('post_medals_summary')
+              .from('post_medals_all_time')
               .select('post_id, gold, silver, bronze')
               .in('post_id', postIds)
             
             for (const m of medalsData ?? []) {
-              medalsMap.set(m.post_id, { gold: m.gold ?? 0, silver: m.silver ?? 0, bronze: m.bronze ?? 0 })
+              medalsMap.set(m.post_id, { 
+                gold: m.gold ?? 0, 
+                silver: m.silver ?? 0, 
+                bronze: m.bronze ?? 0 
+              })
             }
           }
 
@@ -398,7 +435,7 @@ export default function ProfilePostsClient({
             excerpt: p.excerpt,
             created_at: p.created_at,
             cover_image_url: p.cover_image_url,
-            channel_name: p.channel?.[0]?.name_he ?? null,
+            channel_name: p.channel_id ? channelsMap.get(p.channel_id) ?? null : null,
             medals: medalsMap.get(p.id) ?? null,
           })) as PostItem[]
 
@@ -412,7 +449,7 @@ export default function ProfilePostsClient({
         if (!sortedIds) {
           const allPostsRes = await supabase
             .from('posts')
-            .select('id, slug, title, excerpt, created_at, cover_image_url, channel:channels ( name_he )')
+            .select('id, slug, title, excerpt, created_at, cover_image_url, channel_id')
             .eq('author_id', profileId)
             .eq('status', 'published')
             .is('deleted_at', null)
@@ -463,22 +500,26 @@ export default function ProfilePostsClient({
 
         const res = await supabase
           .from('posts')
-          .select(`id, slug, title, excerpt, created_at, cover_image_url, channel:channels ( name_he )`)
+          .select('id, slug, title, excerpt, created_at, cover_image_url, channel_id')
           .in('id', sliceIds)
           .is('deleted_at', null)
 
         if (res.error) throw res.error
 
         // Get medals
-        let medalsMap = new Map<string, { gold: number; silver: number; bronze: number }>()
+        const medalsMap = new Map<string, { gold: number; silver: number; bronze: number }>()
         if (sliceIds.length > 0) {
           const { data: medalsData } = await supabase
-            .from('post_medals_summary')
+            .from('post_medals_all_time')
             .select('post_id, gold, silver, bronze')
             .in('post_id', sliceIds)
           
           for (const m of medalsData ?? []) {
-            medalsMap.set(m.post_id, { gold: m.gold ?? 0, silver: m.silver ?? 0, bronze: m.bronze ?? 0 })
+            medalsMap.set(m.post_id, { 
+              gold: m.gold ?? 0, 
+              silver: m.silver ?? 0, 
+              bronze: m.bronze ?? 0 
+            })
           }
         }
 
@@ -493,7 +534,7 @@ export default function ProfilePostsClient({
             excerpt: p.excerpt,
             created_at: p.created_at,
             cover_image_url: p.cover_image_url,
-            channel_name: p.channel?.[0]?.name_he ?? null,
+            channel_name: p.channel_id ? channelsMap.get(p.channel_id) ?? null : null,
             medals: medalsMap.get(p.id) ?? null,
           })) as PostItem[]
 
@@ -507,7 +548,7 @@ export default function ProfilePostsClient({
 
     void run()
     return () => { cancelled = true }
-  }, [profileId, sort, page, perPage, sortedIdsCache, refreshKey])
+  }, [profileId, sort, page, perPage, sortedIdsCache, refreshKey, channelsMap])
 
   const pages = useMemo(() => {
     const n = totalPages
