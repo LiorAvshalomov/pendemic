@@ -195,6 +195,7 @@ function ImageNodeView({ node, updateAttributes, deleteNode, editor, getPos }: N
   const moveByOne = (direction: -1 | 1) => {
     if (!editor || typeof getPos !== 'function') return
     const pos = getPos()
+		if (typeof pos !== 'number') return
     const { state, dispatch } = editor.view
     const $pos = state.doc.resolve(pos)
     const index = $pos.index()
@@ -364,6 +365,7 @@ function YoutubeNodeView({ node, deleteNode, editor, getPos }: NodeViewProps) {
   const moveByOne = (direction: -1 | 1) => {
     if (!editor || typeof getPos !== 'function') return
     const pos = getPos()
+		if (typeof pos !== 'number') return
     const { state, dispatch } = editor.view
     const $pos = state.doc.resolve(pos)
     const index = $pos.index()
