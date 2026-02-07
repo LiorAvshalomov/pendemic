@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { EditorContent, JSONContent, useEditor } from '@tiptap/react'
+import { EditorContent, JSONContent, useEditor, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react'
+import type { NodeViewProps } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 
 import Underline from '@tiptap/extension-underline'
@@ -140,10 +141,144 @@ function replaceImageSrcByPath(json: JSONContent, pathToSrc: Record<string, stri
   return clone as unknown as JSONContent
 }
 
+function extractYoutubeId(inputUrl: string): string | null {
+  const clean = inputUrl.replace(/[\u200E\u200F\u202A-\u202E]/g, '').trim()
+  if (!clean) return null
+
+  // Ensure URL() can parse even if scheme missing
+  const withScheme = /^https?:\/\//i.test(clean) ? clean : `https://${clean}`
+
+  try {
+    const u = new URL(withScheme)
+    const host = u.hostname.replace(/^www\./, '')
+    const path = u.pathname || ''
+
+    // youtu.be/<id>
+    if (host === 'youtu.be') {
+      const id = path.split('/').filter(Boolean)[0]
+      if (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) return id
+    }
+
+    // *.youtube.com, *.youtube-nocookie.com (including music.youtube.com, m.youtube.com)
+    if (host.endsWith('youtube.com') || host.endsWith('youtube-nocookie.com')) {
+      // /watch?v=<id>
+      const v = u.searchParams.get('v')
+      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v
+
+      // /shorts/<id>, /embed/<id>, /v/<id>, /live/<id>
+      const parts = path.split('/').filter(Boolean)
+      const idx = parts.findIndex((p) => ['shorts', 'embed', 'v', 'live'].includes(p))
+      const id = idx >= 0 ? parts[idx + 1] : parts[0]
+      if (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) return id
+    }
+  } catch {
+    // fall through to regex fallback
+  }
+
+  // Regex fallback for odd share formats / redirects
+  const m =
+    clean.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|v\/|live\/))([a-zA-Z0-9_-]{11})/) ??
+    null
+  return m ? m[1] : null
+}
+
+function ImageNodeView({ node, updateAttributes, deleteNode }: NodeViewProps) {
+  const raw = node.attrs.widthPercent as number | null | undefined
+  const wp = raw === 33 || raw === 66 ? raw : 100
+  const nextWidth = () => {
+    const cycle: Record<number, number> = { 100: 33, 33: 66, 66: 100 }
+    updateAttributes({ widthPercent: cycle[wp] ?? 100 })
+  }
+  const label = wp === 33 ? 'S' : wp === 66 ? 'M' : 'L'
+
+  return (
+    <NodeViewWrapper className="relative block" style={{ width: `${wp}%` }}>
+      <img
+        src={(node.attrs.src as string) || ''}
+        alt={(node.attrs.alt as string) ?? ''}
+        style={{ width: '100%', borderRadius: 14, display: 'block' }}
+        draggable={false}
+      />
+      <button
+        type="button"
+        onClick={deleteNode}
+        style={{
+          position: 'absolute', top: 6, left: 6,
+          width: 24, height: 24, borderRadius: 12,
+          background: 'rgba(0,0,0,0.6)', color: '#fff',
+          border: 'none', cursor: 'pointer', fontSize: 14,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          lineHeight: 1,
+        }}
+      >
+        ×
+      </button>
+      <button
+        type="button"
+        onClick={nextWidth}
+        style={{
+          position: 'absolute', bottom: 6, left: 6,
+          padding: '2px 8px', borderRadius: 8,
+          background: 'rgba(0,0,0,0.6)', color: '#fff',
+          border: 'none', cursor: 'pointer', fontSize: 11,
+          fontWeight: 700,
+        }}
+      >
+        {label}
+      </button>
+    </NodeViewWrapper>
+  )
+}
+
+function YoutubeNodeView({ node, deleteNode }: NodeViewProps) {
+  const src = node.attrs.src as string
+  return (
+    <NodeViewWrapper className="relative" style={{ maxWidth: '100%', margin: '10px 0' }}>
+      <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: 14 }}>
+        <iframe
+          src={src}
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
+          referrerPolicy="strict-origin-when-cross-origin"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+        />
+      </div>
+      <div style={{ marginTop: 6 }}>
+        <a
+          href={(() => {
+            const id = extractYoutubeId(src) ?? ''
+            return id ? `https://www.youtube.com/watch?v=${id}` : src
+          })()}
+          target="_blank"
+          rel="noreferrer"
+          style={{ fontSize: 13, textDecoration: 'underline', opacity: 0.85 }}
+        >
+          פתח ביוטיוב
+        </a>
+      </div>
+      <button
+        type="button"
+        onClick={deleteNode}
+        style={{
+          position: 'absolute', top: 6, left: 6,
+          width: 24, height: 24, borderRadius: 12,
+          background: 'rgba(0,0,0,0.6)', color: '#fff',
+          border: 'none', cursor: 'pointer', fontSize: 14,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          lineHeight: 1, zIndex: 1,
+        }}
+      >
+        ×
+      </button>
+    </NodeViewWrapper>
+  )
+}
+
 export default function Editor({ value, onChange, postId, userId }: Props) {
   const [showMedia, setShowMedia] = useState(false)
   const [showStyle, setShowStyle] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [ytError, setYtError] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -166,16 +301,21 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
           return {
             ...this.parent?.(),
             path: { default: null },
+            widthPercent: { default: 100 },
           }
+        },
+        addNodeView() {
+          return ReactNodeViewRenderer(ImageNodeView)
         },
       }).configure({
         inline: false,
         allowBase64: false,
-        HTMLAttributes: {
-          style: 'max-width: 100%; border-radius: 14px; margin: 10px 0;',
-        },
       }),
-      Youtube.configure({
+      Youtube.extend({
+        addNodeView() {
+          return ReactNodeViewRenderer(YoutubeNodeView)
+        },
+      }).configure({
         width: 640,
         height: 360,
         nocookie: true,
@@ -188,7 +328,7 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
       attributes: {
         dir: 'rtl',
         style:
-          'min-height: 320px; padding: 16px; border: 1px solid #ddd; border-radius: 16px; outline: none; line-height: 1.8; background: #fff; font-size: 16px;',
+          'min-height: 320px; padding: 16px; border: 1px solid #ddd; border-radius: 16px; outline: none; line-height: 1.8; background: #fff; font-size: 16px; font-family: var(--font-editor-hebrew), sans-serif;',
       },
     },
     onUpdate({ editor }) {
@@ -248,14 +388,35 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
       return
     }
 
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run()
+    const { from, to } = editor.state.selection
+    if (from === to) {
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: 'text',
+          text: url.trim(),
+          marks: [{ type: 'link', attrs: { href: url.trim() } }],
+        })
+        .run()
+    } else {
+      editor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run()
+    }
   }, [editor])
 
   const addYoutube = useCallback(() => {
     if (!editor) return
     const url = window.prompt('הדבק לינק YouTube:')
     if (!url) return
-    editor.chain().focus().setYoutubeVideo({ src: url }).run()
+    const cleanUrl = url.replace(/[\u200E\u200F\u202A-\u202E]/g, '').trim()
+    const videoId = extractYoutubeId(cleanUrl)
+    if (!videoId) {
+      setYtError('לא הצלחתי לזהות סרטון YouTube מהקישור')
+      return
+    }
+    setYtError('')
+    const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1`
+    editor.chain().focus().setYoutubeVideo({ src: embedUrl }).run()
   }, [editor])
 
   const triggerImagePick = useCallback(() => {
@@ -481,6 +642,11 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
           <div style={{ fontSize: 12, opacity: 0.8, marginInlineStart: 8 }}>
             תמונות בטיוטות נשמרות כפרטיות.
           </div>
+          {ytError && (
+            <div style={{ fontSize: 12, color: '#D92D20', fontWeight: 700, width: '100%' }}>
+              {ytError}
+            </div>
+          )}
         </div>
       )}
 

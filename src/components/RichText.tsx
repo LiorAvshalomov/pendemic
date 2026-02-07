@@ -10,6 +10,7 @@ type Attrs = {
   alt?: string
   width?: number
   height?: number
+  widthPercent?: number
 }
 
 export type RichNode = {
@@ -122,11 +123,27 @@ function renderNode(node: RichNode, key: string): React.ReactNode {
       return <hr key={key} />
 
     case 'image': {
-      const src = (node.attrs as Attrs | undefined)?.src
-      if (!src) return null
-      const alt = (node.attrs as Attrs | undefined)?.alt ?? ''
-      return <img key={key} src={src} alt={alt} loading="lazy" />
-    }
+  const attrs = node.attrs as Attrs | undefined
+  const src = attrs?.src
+  if (!src) return null
+
+  const alt = attrs?.alt ?? ''
+
+  const raw = attrs?.widthPercent
+  const wp = raw === 33 || raw === 66 || raw === 100 ? raw : 100
+
+  return (
+    <div key={key} className="my-4" style={{ width: `${wp}%` }}>
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        style={{ width: '100%', height: 'auto', display: 'block' }}
+        className="rounded-2xl"
+      />
+    </div>
+  )
+}
 
     // TipTap YouTube extension commonly emits a node type of "youtube".
     // Some setups may emit "youtubeVideo".

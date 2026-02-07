@@ -282,3 +282,66 @@ html {
     animation: none !important;
   }
 }
+
+/* === ProseMirror editor styles === */
+.ProseMirror blockquote {
+  border-right: 4px solid #d1d5db;
+  padding-right: 16px;
+  margin: 12px 0;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.ProseMirror ul {
+  list-style-type: disc;
+  padding-right: 24px;
+  margin: 8px 0;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+  padding-right: 24px;
+  margin: 8px 0;
+}
+
+.ProseMirror a {
+  color: #2563eb;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ProseMirror h2 {
+  font-size: 1.5em;
+  font-weight: 700;
+  margin: 16px 0 8px;
+}
+
+.ProseMirror h3 {
+  font-size: 1.25em;
+  font-weight: 700;
+  margin: 12px 0 6px;
+}
+
+.ProseMirror hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 16px 0;
+}
+
+/* Responsive images & YouTube in editor */
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+}
+
+.ProseMirror div[data-youtube-video] {
+  max-width: 100%;
+  width: 100%;
+}
+
+.ProseMirror div[data-youtube-video] iframe {
+  display: block;
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 16 / 9;
+}
