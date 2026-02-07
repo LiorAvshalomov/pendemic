@@ -174,6 +174,39 @@ function renderNode(node: RichNode, key: string): React.ReactNode {
       )
     }
 
+    case 'relatedPosts': {
+      const rawItems = (node.attrs as Record<string, unknown> | undefined)?.items
+      if (!Array.isArray(rawItems) || rawItems.length === 0) return null
+      const typedItems = rawItems as Array<{ id: string; slug: string; title: string }>
+      return (
+        <div
+          key={key}
+          dir="rtl"
+          style={{
+            marginTop: 32,
+            paddingTop: 20,
+            borderTop: '1px solid #e5e5e5',
+          }}
+        >
+          <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>
+            פרקים בסדרה
+          </h3>
+          <ol style={{ paddingRight: 20, listStyleType: 'decimal', margin: 0 }}>
+            {typedItems.map((item, i) => (
+              <li key={item.id || i} style={{ marginBottom: 6, lineHeight: 1.7 }}>
+                <a
+                  href={`/post/${item.slug}`}
+                  style={{ color: '#2563EB', textDecoration: 'none' }}
+                >
+                  {item.title}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )
+    }
+
     default:
       return <span key={key}>{children}</span>
   }

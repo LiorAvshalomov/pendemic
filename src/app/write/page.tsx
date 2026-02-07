@@ -182,6 +182,35 @@ export default function WritePage() {
   const settingsLocked = useMemo(() => isEditMode && loadedStatus === 'published', [isEditMode, loadedStatus])
   const autosaveEnabled = useMemo(() => !settingsLocked, [settingsLocked])
 
+  // Chapters feature: enabled only for סיפורים > סיפור בהמשכים
+  const chaptersEnabled = useMemo(() => {
+    const ch = channels.find(c => c.id === channelId)
+    const sub = subcategoryOptions.find(s => s.id === subcategoryTagId)
+    return ch?.name_he === 'סיפורים' && sub?.name_he === 'סיפור בהמשכים'
+  }, [channels, channelId, subcategoryOptions, subcategoryTagId])
+
+  const [chapterUserPosts, setChapterUserPosts] = useState<Array<{ id: string; slug: string; title: string }>>([])
+
+  useEffect(() => {
+    if (!chaptersEnabled || !userId) {
+      setChapterUserPosts([])
+      return
+    }
+    let cancelled = false
+    supabase
+      .from('posts')
+      .select('id, slug, title')
+      .eq('author_id', userId)
+      .eq('status', 'published')
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .limit(50)
+      .then(({ data }) => {
+        if (cancelled) return
+        setChapterUserPosts((data ?? []) as Array<{ id: string; slug: string; title: string }>)
+      })
+    return () => { cancelled = true }
+  }, [chaptersEnabled, userId])
+
   // Track "dirty" state for edit-mode (published) so Cancel can truly discard changes
   const [initialSnapshot, setInitialSnapshot] = useState<string | null>(null)
   const currentSnapshot = useMemo(() => {
@@ -1272,7 +1301,7 @@ if (!effectiveChannelId) {
               {autosaveEnabled ? 'הטקסט נשמר אוטומטית' : 'השינויים לא נשמרים עד שלוחצים שמור'}
             </div>
           </div>
-          <Editor value={contentJson} onChange={setContentJson} postId={effectivePostId} userId={userId} />
+          <Editor value={contentJson} onChange={setContentJson} postId={effectivePostId} userId={userId} chaptersEnabled={chaptersEnabled} userPosts={chapterUserPosts} />
         </section>
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">

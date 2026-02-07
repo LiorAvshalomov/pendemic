@@ -25,7 +25,12 @@ type Props = {
 
   // אופציונלי (אם יש לך userId בדף write, תעביר אותו כדי לחסוך getUser)
   userId?: string | null
+
+  chaptersEnabled?: boolean
+  userPosts?: ChapterItem[]
 }
+
+type ChapterItem = { id: string; slug: string; title: string }
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }
 
@@ -150,6 +155,32 @@ function extractYoutubeId(url: string): string | null {
     if (m) return m[1]
   }
   return null
+}
+
+function chaptersEqual(a: ChapterItem[], b: ChapterItem[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id || a[i].slug !== b[i].slug || a[i].title !== b[i].title) return false
+  }
+  return true
+}
+
+function stripRelatedPosts(json: JSONContent): JSONContent {
+  const content = (json?.content ?? []).filter(n => n.type !== 'relatedPosts')
+  return { ...json, content }
+}
+
+function extractRelatedPostsItems(json: JSONContent): ChapterItem[] {
+  const rpNode = (json?.content ?? []).find(n => n.type === 'relatedPosts')
+  return (rpNode?.attrs?.items ?? []) as ChapterItem[]
+}
+
+function appendRelatedPosts(json: JSONContent, items: ChapterItem[]): JSONContent {
+  const content = (json?.content ?? []).filter(n => n.type !== 'relatedPosts')
+  if (items.length > 0) {
+    content.push({ type: 'relatedPosts', attrs: { items } })
+  }
+  return { ...json, content }
 }
 
 function ImageNodeView({ node, updateAttributes, deleteNode, editor, getPos }: NodeViewProps) {
@@ -469,13 +500,20 @@ function YoutubeNodeView({ node, deleteNode, editor, getPos }: NodeViewProps) {
   )
 }
 
-export default function Editor({ value, onChange, postId, userId }: Props) {
+export default function Editor({ value, onChange, postId, userId, chaptersEnabled, userPosts: userPostsProp }: Props) {
   const [showMedia, setShowMedia] = useState(false)
   const [showStyle, setShowStyle] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [ytError, setYtError] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const chaptersContainerRef = useRef<HTMLDivElement>(null)
+  const chaptersRef = useRef<ChapterItem[]>([])
+  const [showChapters, setShowChapters] = useState(false)
+  const [chaptersItems, setChaptersItems] = useState<ChapterItem[]>([])
+  const [pendingIds, setPendingIds] = useState<string[]>([])
+  const [chapterSearch, setChapterSearch] = useState('')
+  const userPosts = userPostsProp ?? []
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -529,14 +567,20 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
       },
     },
     onUpdate({ editor }) {
-      onChange(editor.getJSON())
+      onChange(appendRelatedPosts(editor.getJSON(), chaptersRef.current))
     },
   })
 
   // נטען כל פעם שמגיע value חדש (טעינת טיוטה)
   useEffect(() => {
     if (!editor) return
-    const next = value ?? EMPTY_DOC
+    const raw = value ?? EMPTY_DOC
+    const next = stripRelatedPosts(raw)
+
+    // Extract and sync relatedPosts chapters
+    const items = extractRelatedPostsItems(raw)
+    chaptersRef.current = items
+    setChaptersItems(prev => chaptersEqual(prev, items) ? prev : items)
 
     // רק אם באמת שונה (כדי לא לשרוף undo)
     try {
@@ -702,6 +746,66 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
     [editor, postId, userId]
   )
 
+  // Close chapters panel when feature is toggled off
+  useEffect(() => {
+    if (!chaptersEnabled) setShowChapters(false)
+  }, [chaptersEnabled])
+
+  // Reset pending selection when panel closes
+  useEffect(() => {
+    if (!showChapters) { setPendingIds([]); setChapterSearch('') }
+  }, [showChapters])
+
+  // Close chapters panel on click outside
+  useEffect(() => {
+    if (!showChapters) return
+    const handler = (e: MouseEvent) => {
+      if (chaptersContainerRef.current && !chaptersContainerRef.current.contains(e.target as Node)) {
+        setShowChapters(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showChapters])
+
+  const updateChapters = useCallback((newItems: ChapterItem[]) => {
+    chaptersRef.current = newItems
+    setChaptersItems(newItems)
+    if (!editor || editor.isDestroyed) return
+    onChange(appendRelatedPosts(editor.getJSON(), newItems))
+  }, [editor, onChange])
+
+  const availablePosts = userPosts.filter(p =>
+    p.id !== postId && !chaptersItems.some(c => c.id === p.id)
+  )
+
+  const togglePending = useCallback((id: string) => {
+    setPendingIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }, [])
+
+  const addChecked = useCallback(() => {
+    if (pendingIds.length === 0) return
+    const toAdd = pendingIds
+      .map(id => availablePosts.find(p => p.id === id))
+      .filter((p): p is ChapterItem => p != null)
+    if (toAdd.length === 0) return
+    updateChapters([...chaptersItems, ...toAdd])
+    setPendingIds([])
+  }, [pendingIds, availablePosts, chaptersItems, updateChapters])
+
+  const removeChapter = useCallback((index: number) => {
+    updateChapters(chaptersItems.filter((_, i) => i !== index))
+  }, [chaptersItems, updateChapters])
+
+  const moveChapter = useCallback((index: number, direction: -1 | 1) => {
+    const newIndex = index + direction
+    if (newIndex < 0 || newIndex >= chaptersItems.length) return
+    const newItems = [...chaptersItems]
+    const [item] = newItems.splice(index, 1)
+    newItems.splice(newIndex, 0, item)
+    updateChapters(newItems)
+  }, [chaptersItems, updateChapters])
+
   if (!editor) return null
 
   const words = editor.storage.characterCount.words()
@@ -778,6 +882,7 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
           onClick={() => {
             setShowMedia(v => !v)
             setShowStyle(false)
+            setShowChapters(false)
           }}
         />
         <Btn
@@ -786,8 +891,250 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
           onClick={() => {
             setShowStyle(v => !v)
             setShowMedia(false)
+            setShowChapters(false)
           }}
         />
+
+        {chaptersEnabled && (
+          <div ref={chaptersContainerRef} style={{ position: 'relative' }}>
+            <Btn
+              label="הוספת פרקים"
+              subtle
+              active={showChapters}
+              onClick={() => {
+                setShowChapters(v => !v)
+                setShowMedia(false)
+                setShowStyle(false)
+              }}
+            />
+            {showChapters && (
+              <>
+                {/* backdrop for mobile bottom-sheet */}
+                <div
+                  style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 49,
+                    background: 'rgba(0,0,0,0.15)',
+                  }}
+                  className="chapters-backdrop"
+                  onClick={() => setShowChapters(false)}
+                />
+                <div
+                  className="chapters-panel"
+                  style={{
+                    zIndex: 50,
+                    border: '1px solid #eee',
+                    borderRadius: 16,
+                    padding: 12,
+                    background: '#fff',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+                    direction: 'rtl',
+                    boxSizing: 'border-box',
+                    overflowX: 'hidden',
+                  }}
+                >
+                  {/* Search */}
+                  <input
+                    type="text"
+                    value={chapterSearch}
+                    onChange={e => setChapterSearch(e.target.value)}
+                    placeholder="חיפוש פוסט..."
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px',
+                      borderRadius: 10,
+                      border: '1px solid #ddd',
+                      fontSize: 13,
+                      direction: 'rtl',
+                      background: '#fff',
+                      boxSizing: 'border-box',
+                      marginBottom: 6,
+                    }}
+                  />
+
+                  {/* Available posts – checkboxes */}
+                  <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid #eee', borderRadius: 10, background: '#fafafa' }}>
+                    {userPosts.length === 0 && (
+                      <div style={{ padding: '10px 8px', fontSize: 12, color: '#999', textAlign: 'center' }}>טוען...</div>
+                    )}
+                    {availablePosts
+                      .filter(p => !chapterSearch.trim() || p.title.includes(chapterSearch.trim()))
+                      .map(p => (
+                        <label
+                          key={p.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '6px 8px',
+                            cursor: 'pointer',
+                            fontSize: 12,
+                            borderBottom: '1px solid #f0f0f0',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={pendingIds.includes(p.id)}
+                            onChange={() => togglePending(p.id)}
+                            style={{ accentColor: '#111', flexShrink: 0 }}
+                          />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {p.title}
+                          </span>
+                        </label>
+                      ))}
+                    {userPosts.length > 0 && availablePosts.filter(p => !chapterSearch.trim() || p.title.includes(chapterSearch.trim())).length === 0 && (
+                      <div style={{ padding: '10px 8px', fontSize: 12, color: '#999', textAlign: 'center' }}>אין פוסטים זמינים</div>
+                    )}
+                  </div>
+
+                  {/* Add checked button */}
+                  <button
+                    type="button"
+                    onClick={addChecked}
+                    disabled={pendingIds.length === 0}
+                    style={{
+                      width: '100%',
+                      marginTop: 6,
+                      padding: '7px 0',
+                      borderRadius: 10,
+                      border: '1px solid #ddd',
+                      background: pendingIds.length > 0 ? '#111' : '#f5f5f5',
+                      color: pendingIds.length > 0 ? '#fff' : '#999',
+                      cursor: pendingIds.length > 0 ? 'pointer' : 'not-allowed',
+                      fontSize: 13,
+                      fontWeight: 700,
+                    }}
+                  >
+                    הוסף נבחרים{pendingIds.length > 0 ? ` (${pendingIds.length})` : ''}
+                  </button>
+
+                  {/* Selected chapters list */}
+                  {chaptersItems.length > 0 && (
+                    <div style={{ fontSize: 12, fontWeight: 700, marginTop: 10, marginBottom: 6, color: '#666' }}>
+                      פרקים שנבחרו:
+                    </div>
+                  )}
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    {chaptersItems.map((item, i) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          padding: '4px 8px',
+                          borderRadius: 8,
+                          border: '1px solid #eee',
+                          background: '#fafafa',
+                          fontSize: 12,
+                        }}
+                      >
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                          {i + 1}. {item.title}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => moveChapter(i, -1)}
+                          disabled={i === 0}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            border: '1px solid #ddd',
+                            background: '#fff',
+                            cursor: i === 0 ? 'not-allowed' : 'pointer',
+                            opacity: i === 0 ? 0.3 : 1,
+                            fontSize: 13,
+                            flexShrink: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                          aria-label="הזז למעלה"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveChapter(i, 1)}
+                          disabled={i === chaptersItems.length - 1}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            border: '1px solid #ddd',
+                            background: '#fff',
+                            cursor: i === chaptersItems.length - 1 ? 'not-allowed' : 'pointer',
+                            opacity: i === chaptersItems.length - 1 ? 0.3 : 1,
+                            fontSize: 13,
+                            flexShrink: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                          aria-label="הזז למטה"
+                        >
+                          ▼
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeChapter(i)}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            border: '1px solid #ddd',
+                            background: '#fff',
+                            cursor: 'pointer',
+                            fontSize: 15,
+                            color: '#D92D20',
+                            flexShrink: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 700,
+                          }}
+                          aria-label="הסר"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <style>{`
+                  .chapters-panel {
+                    position: fixed;
+                    bottom: 12px;
+                    left: 12px;
+                    right: 12px;
+                    width: auto;
+                    max-width: 480px;
+                    max-height: 70vh;
+                    overflow-y: auto;
+                    margin: 0 auto;
+                  }
+                  .chapters-backdrop { display: block; }
+                  @media (min-width: 641px) {
+                    .chapters-panel {
+                      position: absolute;
+                      bottom: auto;
+                      top: 110%;
+                      left: auto;
+                      right: 0;
+                      width: min(360px, calc(100vw - 24px));
+                      max-height: 420px;
+                      margin: 0;
+                    }
+                    .chapters-backdrop { display: none; }
+                  }
+                `}</style>
+              </>
+            )}
+          </div>
+        )}
 
         <span style={{ flex: 1 }} />
 
