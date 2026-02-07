@@ -141,135 +141,330 @@ function replaceImageSrcByPath(json: JSONContent, pathToSrc: Record<string, stri
   return clone as unknown as JSONContent
 }
 
-function extractYoutubeId(inputUrl: string): string | null {
-  const clean = inputUrl.replace(/[\u200E\u200F\u202A-\u202E]/g, '').trim()
-  if (!clean) return null
-
-  // Ensure URL() can parse even if scheme missing
-  const withScheme = /^https?:\/\//i.test(clean) ? clean : `https://${clean}`
-
-  try {
-    const u = new URL(withScheme)
-    const host = u.hostname.replace(/^www\./, '')
-    const path = u.pathname || ''
-
-    // youtu.be/<id>
-    if (host === 'youtu.be') {
-      const id = path.split('/').filter(Boolean)[0]
-      if (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) return id
-    }
-
-    // *.youtube.com, *.youtube-nocookie.com (including music.youtube.com, m.youtube.com)
-    if (host.endsWith('youtube.com') || host.endsWith('youtube-nocookie.com')) {
-      // /watch?v=<id>
-      const v = u.searchParams.get('v')
-      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v
-
-      // /shorts/<id>, /embed/<id>, /v/<id>, /live/<id>
-      const parts = path.split('/').filter(Boolean)
-      const idx = parts.findIndex((p) => ['shorts', 'embed', 'v', 'live'].includes(p))
-      const id = idx >= 0 ? parts[idx + 1] : parts[0]
-      if (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) return id
-    }
-  } catch {
-    // fall through to regex fallback
+function extractYoutubeId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
+  ]
+  for (const p of patterns) {
+    const m = url.match(p)
+    if (m) return m[1]
   }
-
-  // Regex fallback for odd share formats / redirects
-  const m =
-    clean.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|v\/|live\/))([a-zA-Z0-9_-]{11})/) ??
-    null
-  return m ? m[1] : null
+  return null
 }
 
-function ImageNodeView({ node, updateAttributes, deleteNode }: NodeViewProps) {
+function ImageNodeView({ node, updateAttributes, deleteNode, editor, getPos }: NodeViewProps) {
   const raw = node.attrs.widthPercent as number | null | undefined
-  const wp = raw === 33 || raw === 66 ? raw : 100
+  const wp = raw === 33 || raw === 66 || raw === 100 ? raw : 100
+
   const nextWidth = () => {
     const cycle: Record<number, number> = { 100: 33, 33: 66, 66: 100 }
     updateAttributes({ widthPercent: cycle[wp] ?? 100 })
   }
+
+  const moveByOne = (direction: -1 | 1) => {
+    if (!editor || typeof getPos !== 'function') return
+    const pos = getPos()
+    const { state, dispatch } = editor.view
+    const $pos = state.doc.resolve(pos)
+    const index = $pos.index()
+    const parent = $pos.parent
+    const parentStart = $pos.start()
+
+    if (direction === -1 && index === 0) return
+    if (direction === 1 && index >= parent.childCount - 1) return
+
+    const currentNode = parent.child(index)
+    const currentSize = currentNode.nodeSize
+    const slice = state.doc.slice(pos, pos + currentSize)
+
+    // Helper: compute the absolute position of the child at `childIndex` inside this parent.
+    const childPos = (childIndex: number) => {
+      let offset = 0
+      for (let i = 0; i < childIndex; i++) offset += parent.child(i).nodeSize
+      return parentStart + offset
+    }
+
+    let tr = state.tr
+
+    if (direction === -1) {
+      // Insert before the previous sibling (positions before `pos` are stable after deleting later content).
+      const insertPos = childPos(index - 1)
+      tr = tr.delete(pos, pos + currentSize).insert(insertPos, slice.content)
+    } else {
+      // Move after the next sibling. After deletion, the next sibling shifts left to `pos`.
+      const nextNode = parent.child(index + 1)
+      const insertPos = pos + nextNode.nodeSize
+      tr = tr.delete(pos, pos + currentSize).insert(insertPos, slice.content)
+    }
+
+    dispatch(tr.scrollIntoView())
+    editor.commands.focus()
+  }
+
   const label = wp === 33 ? 'S' : wp === 66 ? 'M' : 'L'
 
   return (
-    <NodeViewWrapper className="relative block" style={{ width: `${wp}%` }}>
+    <NodeViewWrapper className="relative block" draggable data-drag-handle style={{ width: `${wp}%`, cursor: 'grab' }}>
       <img
         src={(node.attrs.src as string) || ''}
         alt={(node.attrs.alt as string) ?? ''}
         style={{ width: '100%', borderRadius: 14, display: 'block' }}
         draggable={false}
       />
+
+      {/* Remove */}
       <button
         type="button"
         onClick={deleteNode}
+        contentEditable={false}
         style={{
-          position: 'absolute', top: 6, left: 6,
-          width: 24, height: 24, borderRadius: 12,
-          background: 'rgba(0,0,0,0.6)', color: '#fff',
-          border: 'none', cursor: 'pointer', fontSize: 14,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'absolute',
+          top: 6,
+          left: 6,
+          width: 24,
+          height: 24,
+          borderRadius: 12,
+          background: 'rgba(0,0,0,0.6)',
+          color: '#fff',
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: 14,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           lineHeight: 1,
+          zIndex: 2,
         }}
+        aria-label="Remove image"
       >
         ×
       </button>
+
+      {/* Resize */}
       <button
         type="button"
         onClick={nextWidth}
+        contentEditable={false}
         style={{
-          position: 'absolute', bottom: 6, left: 6,
-          padding: '2px 8px', borderRadius: 8,
-          background: 'rgba(0,0,0,0.6)', color: '#fff',
-          border: 'none', cursor: 'pointer', fontSize: 11,
+          position: 'absolute',
+          bottom: 6,
+          left: 6,
+          padding: '2px 8px',
+          borderRadius: 8,
+          background: 'rgba(0,0,0,0.6)',
+          color: '#fff',
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: 11,
           fontWeight: 700,
+          zIndex: 2,
         }}
+        aria-label="Change image size"
       >
         {label}
       </button>
+
+      {/* Move up/down fallback (works on iOS) */}
+      <div
+        contentEditable={false}
+        style={{
+          position: 'absolute',
+          bottom: 6,
+          right: 6,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+          zIndex: 2,
+        }}
+        aria-label="Move image"
+      >
+        <button
+          type="button"
+          onClick={() => moveByOne(-1)}
+          style={{
+            width: 30,
+            height: 28,
+            borderRadius: 8,
+            background: 'rgba(0,0,0,0.6)',
+            color: '#fff',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: 14,
+            lineHeight: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          aria-label="Move image up"
+          title="למעלה"
+        >
+          ▲
+        </button>
+        <button
+          type="button"
+          onClick={() => moveByOne(1)}
+          style={{
+            width: 30,
+            height: 28,
+            borderRadius: 8,
+            background: 'rgba(0,0,0,0.6)',
+            color: '#fff',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: 14,
+            lineHeight: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          aria-label="Move image down"
+          title="למטה"
+        >
+          ▼
+        </button>
+      </div>
     </NodeViewWrapper>
   )
 }
 
-function YoutubeNodeView({ node, deleteNode }: NodeViewProps) {
-  const src = node.attrs.src as string
+function YoutubeNodeView({ node, deleteNode, editor, getPos }: NodeViewProps) {
+  const src = (node.attrs.src as string) || ''
+
+  const moveByOne = (direction: -1 | 1) => {
+    if (!editor || typeof getPos !== 'function') return
+    const pos = getPos()
+    const { state, dispatch } = editor.view
+    const $pos = state.doc.resolve(pos)
+    const index = $pos.index()
+    const parent = $pos.parent
+    const parentStart = $pos.start()
+
+    if (direction === -1 && index === 0) return
+    if (direction === 1 && index >= parent.childCount - 1) return
+
+    const currentNode = parent.child(index)
+    const currentSize = currentNode.nodeSize
+    const slice = state.doc.slice(pos, pos + currentSize)
+
+    const childPos = (childIndex: number) => {
+      let offset = 0
+      for (let i = 0; i < childIndex; i++) offset += parent.child(i).nodeSize
+      return parentStart + offset
+    }
+
+    let tr = state.tr
+    if (direction === -1) {
+      const insertPos = childPos(index - 1)
+      tr = tr.delete(pos, pos + currentSize).insert(insertPos, slice.content)
+    } else {
+      const nextNode = parent.child(index + 1)
+      const insertPos = pos + nextNode.nodeSize
+      tr = tr.delete(pos, pos + currentSize).insert(insertPos, slice.content)
+    }
+
+    dispatch(tr.scrollIntoView())
+    editor.commands.focus()
+  }
+
   return (
-    <NodeViewWrapper className="relative" style={{ maxWidth: '100%', margin: '10px 0' }}>
+    <NodeViewWrapper className="relative" draggable data-drag-handle style={{ maxWidth: '100%', margin: '10px 0', cursor: 'grab' }}>
       <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: 14 }}>
         <iframe
           src={src}
-          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none', pointerEvents: 'none' }}
           referrerPolicy="strict-origin-when-cross-origin"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
         />
       </div>
-      <div style={{ marginTop: 6 }}>
-        <a
-          href={(() => {
-            const id = extractYoutubeId(src) ?? ''
-            return id ? `https://www.youtube.com/watch?v=${id}` : src
-          })()}
-          target="_blank"
-          rel="noreferrer"
-          style={{ fontSize: 13, textDecoration: 'underline', opacity: 0.85 }}
-        >
-          פתח ביוטיוב
-        </a>
-      </div>
+
+      {/* Remove */}
       <button
         type="button"
         onClick={deleteNode}
+        contentEditable={false}
         style={{
-          position: 'absolute', top: 6, left: 6,
-          width: 24, height: 24, borderRadius: 12,
-          background: 'rgba(0,0,0,0.6)', color: '#fff',
-          border: 'none', cursor: 'pointer', fontSize: 14,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          lineHeight: 1, zIndex: 1,
+          position: 'absolute',
+          top: 6,
+          left: 6,
+          width: 24,
+          height: 24,
+          borderRadius: 12,
+          background: 'rgba(0,0,0,0.6)',
+          color: '#fff',
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: 14,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          lineHeight: 1,
+          zIndex: 2,
         }}
+        aria-label="Remove video"
       >
         ×
       </button>
+
+      {/* Move up/down fallback */}
+      <div
+        contentEditable={false}
+        style={{
+          position: 'absolute',
+          bottom: 6,
+          right: 6,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+          zIndex: 2,
+        }}
+        aria-label="Move video"
+      >
+        <button
+          type="button"
+          onClick={() => moveByOne(-1)}
+          style={{
+            width: 30,
+            height: 28,
+            borderRadius: 8,
+            background: 'rgba(0,0,0,0.6)',
+            color: '#fff',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: 14,
+            lineHeight: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          aria-label="Move video up"
+          title="למעלה"
+        >
+          ▲
+        </button>
+        <button
+          type="button"
+          onClick={() => moveByOne(1)}
+          style={{
+            width: 30,
+            height: 28,
+            borderRadius: 8,
+            background: 'rgba(0,0,0,0.6)',
+            color: '#fff',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: 14,
+            lineHeight: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          aria-label="Move video down"
+          title="למטה"
+        >
+          ▼
+        </button>
+      </div>
     </NodeViewWrapper>
   )
 }
@@ -297,6 +492,7 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
       Color,
       Highlight.configure({ multicolor: true }),
       Image.extend({
+        draggable: true,
         addAttributes() {
           return {
             ...this.parent?.(),
@@ -312,6 +508,7 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
         allowBase64: false,
       }),
       Youtube.extend({
+        draggable: true,
         addNodeView() {
           return ReactNodeViewRenderer(YoutubeNodeView)
         },
@@ -349,7 +546,10 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
       // ignore
     }
 
-    editor.commands.setContent(next, { emitUpdate: false })
+    setTimeout(() => {
+      if (editor.isDestroyed) return
+      editor.commands.setContent(next, { emitUpdate: false })
+    }, 0)
   }, [editor, value])
 
   // רענון Signed URLs לתמונות פרטיות כשפותחים/טוענים טיוטה
@@ -371,7 +571,10 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
       if (Object.keys(map).length === 0) return
 
       const next = replaceImageSrcByPath(json, map)
+      setTimeout(() => {
+      if (editor.isDestroyed) return
       editor.commands.setContent(next, { emitUpdate: false })
+    }, 0)
     }
 
     void refresh()
@@ -415,7 +618,7 @@ export default function Editor({ value, onChange, postId, userId }: Props) {
       return
     }
     setYtError('')
-    const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1`
+    const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`
     editor.chain().focus().setYoutubeVideo({ src: embedUrl }).run()
   }, [editor])
 
