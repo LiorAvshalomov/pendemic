@@ -10,7 +10,7 @@ export default async function ChatPage({ params }: PageProps) {
 
   if (!id) {
     return (
-      <div className="h-full" dir="rtl">
+      <div className="h-full min-h-0 flex flex-col overflow-hidden" dir="rtl">
         <div className="rounded-3xl border bg-white p-4 text-sm text-muted-foreground shadow-sm">
           שגיאה: חסר מזהה שיחה (conversationId).
         </div>
@@ -19,9 +19,9 @@ export default async function ChatPage({ params }: PageProps) {
   }
 
   return (
-    <div className="h-full" dir="rtl">
+    <div className="h-full min-h-0 flex flex-col overflow-hidden" dir="rtl">
       {/* Mobile back */}
-      <div className="md:hidden mb-3">
+      <div className="md:hidden shrink-0 py-2">
         <Link
           href="/inbox"
           className="inline-flex items-center rounded-2xl border bg-white px-3 py-2 text-sm font-bold shadow-sm"
@@ -30,7 +30,9 @@ export default async function ChatPage({ params }: PageProps) {
         </Link>
       </div>
 
-      <ChatClient conversationId={id} />
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <ChatClient conversationId={id} />
+      </div>
     </div>
   )
 }

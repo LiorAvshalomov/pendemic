@@ -722,7 +722,8 @@ export default function SiteHeader() {
       {/* Spacer so content doesn't hide under the fixed navbar */}
       <div className="h-14" aria-hidden="true" />
 
-      {/* שורה 2: BRAND + CHANNELS + SEARCH - Desktop Only */}
+      {/* שורה 2: BRAND + CHANNELS + SEARCH - Desktop Only (hidden on inbox) */}
+      {!pathname.startsWith('/inbox') && (
       <div className="bg-gradient-to-b from-neutral-50 to-white hidden lg:block border-b border-neutral-200">
         <div className="mx-auto max-w-6xl px-4">
           <div className="grid items-center gap-4 py-5" dir="rtl" style={{ gridTemplateColumns: '1fr auto 1fr' }}>
@@ -755,6 +756,7 @@ export default function SiteHeader() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Mobile Menu Dropdown - Full Screen */}
       {mobileMenuOpen && (

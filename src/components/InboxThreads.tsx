@@ -17,10 +17,6 @@ type ConvRow = {
   unread_count: number
 }
 
-function isSameDay(a: Date, b: Date) {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
-}
-
 function daysDiff(from: Date, to: Date) {
   const a = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime()
   const b = new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime()
@@ -114,7 +110,7 @@ export default function InboxThreads() {
           <div className="rounded-2xl border bg-white p-4 text-sm text-muted-foreground">אין עדיין שיחות.</div>
         ) : (
           <div className="space-y-2">
-            {rows.map(r => {
+            {rows.map((r) => {
               const displayName =
                 (r.other_display_name ?? '').trim() || (r.other_username ?? '').trim() || 'שיחה'
               const isActive = selectedConversationId === r.conversation_id
@@ -123,26 +119,27 @@ export default function InboxThreads() {
               const hasUnread = unread > 0
               const lastBody = (r.last_body ?? '').trim() || 'אין עדיין הודעות'
 
+              const rowClassName = [
+                'group block rounded-2xl border p-3 transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300',
+                isActive
+                  ? 'bg-white border-neutral-300 ring-1 ring-neutral-300'
+                  : hasUnread
+                    ? 'bg-white border-neutral-200 hover:bg-neutral-50 hover:shadow-sm hover:-translate-y-[1px] active:translate-y-0 active:shadow-none'
+                    : 'bg-white hover:bg-neutral-50 hover:shadow-sm hover:-translate-y-[1px] active:translate-y-0 active:shadow-none',
+              ].join(' ')
+
               return (
-                <Link
-                  key={r.conversation_id}
-                  href={`/inbox/${r.conversation_id}`}
-                  className={[
-                    'group block rounded-2xl border p-3 transition',
-                    isActive
-                      ? 'bg-white border-neutral-300 ring-1 ring-neutral-300'
-                      : hasUnread
-                        ? 'bg-white border-neutral-200 hover:bg-neutral-50'
-                        : 'bg-white hover:bg-neutral-50',
-                  ].join(' ')}
-                >
+                <Link key={r.conversation_id} href={`/inbox/${r.conversation_id}`} className={rowClassName}>
                   <div className="flex items-center gap-3">
                     <Avatar src={r.other_avatar_url} name={displayName} size={44} shape="square" />
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <div
-                          className={['truncate text-sm font-black', hasUnread ? 'text-neutral-950' : 'text-neutral-900'].join(' ')}
+                          className={[
+                            'truncate text-sm font-black',
+                            hasUnread ? 'text-neutral-950' : 'text-neutral-900',
+                          ].join(' ')}
                         >
                           {displayName}
                         </div>
@@ -157,11 +154,11 @@ export default function InboxThreads() {
                             {timeText}
                           </div>
 
-                          {hasUnread && (
+                          {hasUnread ? (
                             <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-black px-2 py-0.5 text-[11px] font-bold text-white">
                               {unread > 99 ? '99+' : unread}
                             </span>
-                          )}
+                          ) : null}
                         </div>
                       </div>
 

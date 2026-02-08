@@ -2,10 +2,10 @@ import InboxThreads from '@/components/InboxThreads'
 
 export default function InboxPage() {
   return (
-    <div className="h-[calc(100dvh-120px)] min-h-0 overflow-hidden">
+    <div className="h-full min-h-0 overflow-hidden">
       {/* Mobile: show threads list */}
-      <div className="md:hidden">
-        <div className="overflow-hidden rounded-2xl border border-black/5 bg-[#FAF9F6] shadow-sm">
+      <div className="md:hidden h-full min-h-0 overflow-hidden">
+        <div className="h-full min-h-0 overflow-hidden rounded-2xl border border-black/5 bg-[#FAF9F6] shadow-sm">
           <InboxThreads />
         </div>
       </div>

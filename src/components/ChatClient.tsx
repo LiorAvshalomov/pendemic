@@ -634,7 +634,7 @@ export default function ChatClient({ conversationId }: { conversationId: string 
 
   return (
     <div
-      className="flex min-h-0 flex-col overflow-hidden rounded-3xl border bg-white shadow-sm h-[calc(100dvh-180px)] md:h-full"
+      className="flex min-h-0 flex-col overflow-hidden rounded-3xl border bg-white shadow-sm h-full"
       dir="rtl"
     >
       {/* Header */}

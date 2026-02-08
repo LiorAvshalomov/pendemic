@@ -9,6 +9,7 @@ export default function SiteFooter() {
   const pathname = usePathname() || ''
   const isAuth = AUTH_ROUTES.some((p) => pathname.startsWith(p))
   if (isAuth) return null
+  if (pathname.startsWith('/inbox')) return null
 
   return (
     <footer className="mt-16 border-t bg-black/10 backdrop-blur supports-[backdrop-filter]:bg-black/5">
