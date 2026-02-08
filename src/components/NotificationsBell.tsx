@@ -86,6 +86,14 @@ function reasonFromPayload(payload: Record<string, unknown>): string | null {
   return str(payload.reason) || null
 }
 
+function noteSnippetFromPayload(payload: Record<string, unknown>): string | null {
+  const direct = str(payload.note_snippet) || str(payload.note_preview) || str(payload.note_body)
+  if (direct) return direct
+  const note = payload.note
+  if (isRecord(note)) return str(note.snippet) || str(note.body) || null
+  return null
+}
+
 function postSlugFromPayload(payload: Record<string, unknown>): string | null {
   return str(payload.post_slug) || str(payload.slug) || null
 }
@@ -606,6 +614,20 @@ const token = storeHighlightToken(ids)
   const payload = first?.payload ?? {}
 
   if (g.type === "system_message") {
+    const action = str((payload as Record<string, unknown>).action)
+
+    // ✅ note deleted (admin/system)
+    if (action === "note_deleted") {
+      const snippet = noteSnippetFromPayload(payload) ?? titleFromPayload(payload) ?? "פתק"
+      const reason = reasonFromPayload(payload)
+      return (
+        <div className="text-right leading-snug">
+          <div className="font-semibold truncate">מערכת האתר מחקה לך את הפתק ״{snippet}״</div>
+          {reason ? <div className="text-neutral-600 mt-0.5">סיבה: {reason}</div> : null}
+        </div>
+      )
+    }
+
     const t = titleFromPayload(payload) ?? ""
     const m = messageFromPayload(payload)
     return (

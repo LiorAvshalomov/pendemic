@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabaseClient'
 import Avatar from '@/components/Avatar'
 import { timeAgoHeShort } from '@/lib/time'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -20,6 +21,7 @@ type NoteRow = {
 
 const NOTE_MAX = 220
 const COOLDOWN_SECONDS = 10 * 60
+const NOTE_TTL_SECONDS = 12 * 60 * 60
 
 function getColumnsCount() {
   if (typeof window === 'undefined') return 1
@@ -42,9 +44,25 @@ function secondsToClock(sec: number) {
   return `${m}:${String(r).padStart(2, '0')}`
 }
 
+function secondsToHumanHe(sec: number) {
+  const s = Math.max(0, Math.floor(sec))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  if (h <= 0) return `${m} דק׳`
+  if (m <= 0) return `${h} ש׳`
+  return `${h} ש׳ ${m} דק׳`
+}
+
+function clipOneLineNote(s: string, maxChars: number) {
+  const oneLine = s.replace(/\s+/g, ' ').trim()
+  if (oneLine.length <= maxChars) return oneLine
+  return oneLine.slice(0, Math.max(0, maxChars - 1)).trimEnd() + '…'
+}
+
 export default function CommunityNotesWall() {
   const router = useRouter()
   const [meId, setMeId] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
   const [notes, setNotes] = useState<NoteRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -58,6 +76,12 @@ export default function CommunityNotesWall() {
   // subtle highlight for realtime updates
   const [highlightId, setHighlightId] = useState<string | null>(null)
 
+  // admin moderation UI
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<NoteRow | null>(null)
+  const [deleteReason, setDeleteReason] = useState('')
+  const [deleting, setDeleting] = useState(false)
+
   const [body, setBody] = useState('')
   const [posting, setPosting] = useState(false)
   const [myLastUpdatedAt, setMyLastUpdatedAt] = useState<string | null>(null)
@@ -67,6 +91,8 @@ export default function CommunityNotesWall() {
 
   const [tick, setTick] = useState(0)
   const remainingSeconds = useMemo(() => {
+    // include tick so the memo recalculates every second (countdown animation)
+    void tick
     if (!myLastUpdatedAt) return 0
     const last = new Date(myLastUpdatedAt).getTime()
     const elapsed = (Date.now() - last) / 1000
@@ -100,8 +126,36 @@ export default function CommunityNotesWall() {
       router.replace('/auth/login')
       return null
     }
+
     return uid
   }
+
+  async function loadAdminFlag(uid: string) {
+    // Admin is DB-truth (cannot be spoofed from client)
+    const { data, error } = await supabase.from('admins').select('user_id').eq('user_id', uid).maybeSingle()
+    if (error) {
+      setIsAdmin(false)
+      return
+    }
+    setIsAdmin(!!data?.user_id)
+  }
+
+  useEffect(() => {
+    if (!openMenuId) return
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      // close menu on outside click
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      if (target.closest('[data-note-menu]')) return
+      setOpenMenuId(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown, { passive: true })
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+    }
+  }, [openMenuId])
 
   async function loadNotes() {
     setLoading(true)
@@ -117,17 +171,6 @@ export default function CommunityNotesWall() {
     if (error) return
 
     setNotes(sortNotesByUpdatedAtDesc((data as NoteRow[]) ?? []))
-  }
-
-  async function fetchFeedRowByUser(userId: string) {
-    const { data, error } = await supabase
-      .from('community_notes_feed')
-      .select('id,user_id,body,created_at,updated_at,username,display_name,avatar_url')
-      .eq('user_id', userId)
-      .maybeSingle()
-
-    if (error) return null
-    return (data as NoteRow) ?? null
   }
 
   async function loadMyNote() {
@@ -154,15 +197,25 @@ export default function CommunityNotesWall() {
     ;(async () => {
       const uid = await loadMe()
       if (!uid) return
-      await Promise.all([loadNotes(), loadMyNote()])
+      await Promise.all([loadNotes(), loadMyNote(), loadAdminFlag(uid)])
 
       // Realtime: update only the changed note (avoids full reload + keeps UI snappy)
       ch = supabase
         .channel('community_notes_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'community_notes' }, async (payload) => {
-          const eventType = (payload as any).eventType as string
-          const next = (payload as any).new as { user_id?: string; updated_at?: string } | null
-          const prev = (payload as any).old as { user_id?: string; updated_at?: string } | null
+          const p = payload as RealtimePostgresChangesPayload<{ id: string; user_id: string; updated_at: string }>
+          const eventType = p.eventType
+
+          // ✅ DELETE events often contain only the primary key in `old` (no user_id). Handle by id first.
+          if (eventType === 'DELETE') {
+            const deletedId = p.old?.id
+            if (!deletedId) return
+            setNotes((prevList) => prevList.filter((n) => n.id !== deletedId))
+            return
+          }
+
+          const next = p.new ?? null
+          const prev = p.old ?? null
           const userId = next?.user_id ?? prev?.user_id
           const updatedAt = next?.updated_at ?? prev?.updated_at
           if (!userId) return
@@ -170,11 +223,6 @@ export default function CommunityNotesWall() {
           // keep my cooldown timer consistent if my note was updated elsewhere
           if (userId === uid && updatedAt) {
             setMyLastUpdatedAt(updatedAt)
-          }
-
-          if (eventType === 'DELETE') {
-            setNotes((prevList) => prevList.filter((n) => n.user_id !== userId))
-            return
           }
 
           // fetch the fully joined row (display_name/avatar) from the feed view
@@ -186,12 +234,14 @@ export default function CommunityNotesWall() {
 
           if (!row) return
 
+          const noteRow = row as NoteRow
+
           setNotes((prev) => {
-            const without = prev.filter((n) => n.user_id !== (row as any).user_id)
-            return sortNotesByUpdatedAtDesc([row as NoteRow, ...without])
+            const without = prev.filter((n) => n.user_id !== noteRow.user_id)
+            return sortNotesByUpdatedAtDesc([noteRow, ...without])
           })
 
-          setHighlightId((row as any).id)
+          setHighlightId(noteRow.id)
           window.setTimeout(() => setHighlightId(null), 1200)
         })
         .subscribe((status) => {
@@ -205,7 +255,6 @@ export default function CommunityNotesWall() {
     return () => {
       if (ch) supabase.removeChannel(ch)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Fallback polling (only if realtime isn't subscribed).
@@ -222,7 +271,6 @@ export default function CommunityNotesWall() {
       clearInterval(t)
       window.removeEventListener('focus', onFocus)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meId, rtStatus])
 
   async function handlePost() {
@@ -305,6 +353,45 @@ export default function CommunityNotesWall() {
     router.push(`/inbox/${data}`)
   }
 
+  async function handleAdminDelete() {
+    if (!isAdmin || !deleteTarget) return
+
+    const reason = deleteReason.trim()
+    if (reason.length < 3) {
+      alert('חובה לציין סיבה (לפחות 3 תווים).')
+      return
+    }
+
+    setDeleting(true)
+    const { error } = await supabase.rpc('admin_delete_community_note', {
+      p_note_id: deleteTarget.id,
+      p_reason: reason,
+    })
+    setDeleting(false)
+
+    if (error) {
+      const msg = (error.message || '').toLowerCase()
+      if (msg.includes('not_admin')) {
+        alert('אין לך הרשאה למחוק פתקים.')
+        setIsAdmin(false)
+        setDeleteTarget(null)
+        setDeleteReason('')
+        return
+      }
+      if (msg.includes('reason_required')) {
+        alert('חובה לציין סיבה למחיקה.')
+        return
+      }
+      alert('שגיאה במחיקה')
+      return
+    }
+
+    // optimistic UI: remove by id (realtime will also remove)
+    setNotes((prev) => prev.filter((n) => n.id !== deleteTarget.id))
+    setDeleteTarget(null)
+    setDeleteReason('')
+  }
+
   return (
     <section className="space-y-4">
       {/* If we haven't checked auth yet, keep UI minimal to avoid flashing private content */}
@@ -378,72 +465,117 @@ export default function CommunityNotesWall() {
             עדיין אין פתקים. תהיה הראשון להשאיר משהו 🙂 
           </div>
         ) : (
-          // Masonry columns (flex) so card heights vary naturally.
-          // We distribute in-order across columns to keep newest-first feel.
           <div className="flex gap-3" dir="rtl">
             {Array.from({ length: colsCount }).map((_, colIndex) => {
               const colNotes = notes.filter((_, i) => i % colsCount === colIndex)
               return (
                 <div key={colIndex} className="flex-1 space-y-3 min-w-0">
                   {colNotes.map((n) => {
-              const mine = meId && n.user_id === meId
-              return (
-                <div
-                  key={n.id}
-                  className={[
-                    'group relative text-right w-full rounded-2xl border border-black/10 bg-white/70 p-3 shadow-sm transition',
-                    'will-change-transform hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-black/20',
-                    mine ? 'opacity-95' : 'cursor-pointer',
-                    (lastPostedIdRef.current === n.id || highlightId === n.id)
-                      ? 'ring-2 ring-black/20 shadow-md scale-[1.01] bg-white/80'
-                      : '',
-                  ].join(' ')}
-                  dir="rtl"
-                  title={mine ? 'זה הפתק שלך' : 'לחץ על התוכן כדי לפתוח שיחה'}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="shrink-0">
-                      <Avatar src={n.avatar_url} name={n.display_name || n.username} size={34} />
-                    </div>
+                    const mine = meId && n.user_id === meId
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <Link
-                          href={`/u/${n.username}`}
-                          className="truncate text-sm font-bold hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                          title="לפרופיל"
-                        >
-                          {n.display_name || n.username}
-                        </Link>
-                        <div className="shrink-0 text-xs text-muted-foreground">
-                          {timeAgoHeShort(n.updated_at)}
+                    // TTL visible ONLY to the owner
+                    const ttlUpdatedAt = mine && myLastUpdatedAt ? myLastUpdatedAt : n.updated_at
+                    const expiresInSeconds = mine
+                      ? Math.max(0, NOTE_TTL_SECONDS - Math.floor((Date.now() - new Date(ttlUpdatedAt).getTime()) / 1000))
+                      : 0
+                    const expiresText = mine && expiresInSeconds > 0 ? secondsToHumanHe(expiresInSeconds) : null
+
+                    return (
+                      <div
+                        key={n.id}
+                        className={[
+                          'group relative text-right w-full rounded-2xl border border-black/10 bg-white/70 p-3 shadow-sm transition',
+                          'will-change-transform hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-black/20',
+                          mine ? 'opacity-95' : 'cursor-pointer',
+                          (lastPostedIdRef.current === n.id || highlightId === n.id)
+                            ? 'ring-2 ring-black/20 shadow-md scale-[1.01] bg-white/80'
+                            : '',
+                        ].join(' ')}
+                        dir="rtl"
+                        title={mine ? 'זה הפתק שלך' : 'לחץ על התוכן כדי לפתוח שיחה'}
+                      >
+                        {isAdmin ? (
+                          <div className="absolute left-2 top-2" data-note-menu>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setOpenMenuId((cur) => (cur === n.id ? null : n.id))
+                              }}
+                              className="flex h-8 w-8 items-center justify-center rounded-full text-base text-black hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20"
+                              aria-label="פעולות אדמין"
+                            >
+                              ⋯
+                            </button>
+
+                            {openMenuId === n.id ? (
+                              <div className="mt-1 w-40 overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
+                                <button
+                                  type="button"
+                                  className="w-full px-3 py-2 text-right text-sm hover:bg-red-50 hover:text-red-700"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setOpenMenuId(null)
+                                    setDeleteTarget(n)
+                                    setDeleteReason('')
+                                  }}
+                                >
+                                  מחק
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        <div className="flex items-start gap-3">
+                          <div className="shrink-0">
+                            <Avatar src={n.avatar_url} name={n.display_name || n.username} size={34} />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <Link
+                                href={`/u/${n.username}`}
+                                className="truncate text-sm font-bold hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                                title="לפרופיל"
+                              >
+                                {n.display_name || n.username}
+                              </Link>
+
+                              <div className="shrink-0 text-left">
+                                <div className="text-xs text-muted-foreground">{timeAgoHeShort(n.updated_at)}</div>
+                                {expiresText ? (
+                                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                                    יימחק בעוד {expiresText}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenChat(n)}
+                              disabled={!!mine}
+                              className={[
+                                'mt-1 w-full text-right text-sm leading-relaxed text-black/90',
+                                'whitespace-pre-wrap break-words',
+                                mine ? 'cursor-default' : 'cursor-pointer',
+                              ].join(' ')}
+                              title={mine ? 'זה הפתק שלך' : 'פתח שיחה'}
+                            >
+                              {n.body}
+                            </button>
+
+                            {!mine ? (
+                              <div className="mt-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+                                פתח שיחה →
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleOpenChat(n)}
-                        disabled={!!mine}
-                        className={[
-                          'mt-1 w-full text-right text-sm leading-relaxed text-black/90',
-                          'whitespace-pre-wrap break-words',
-                          mine ? 'cursor-default' : 'cursor-pointer',
-                        ].join(' ')}
-                        title={mine ? 'זה הפתק שלך' : 'פתח שיחה'}
-                      >
-                        {n.body}
-                      </button>
-
-                      {!mine ? (
-                        <div className="mt-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-                          פתח שיחה →
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              )
+                    )
                   })}
                 </div>
               )
@@ -451,6 +583,49 @@ export default function CommunityNotesWall() {
           </div>
         )}
       </div>
+
+      {/* Admin delete modal */}
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 sm:items-center" dir="rtl">
+          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl">
+            <div className="text-base font-black">מחיקת פתק</div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              הפתק: ״{clipOneLineNote(deleteTarget.body, 60)}״
+            </div>
+
+            <textarea
+              className="mt-3 w-full rounded-xl border border-black/10 bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-black/20"
+              rows={4}
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.target.value)}
+              placeholder="סיבה למחיקה…"
+            />
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                className="flex-1 rounded-xl border border-black/10 px-3 py-2 text-sm font-semibold"
+                onClick={() => {
+                  setDeleteTarget(null)
+                  setDeleteReason('')
+                }}
+                disabled={deleting}
+              >
+                ביטול
+              </button>
+
+              <button
+                type="button"
+                className="flex-1 rounded-xl bg-black px-3 py-2 text-sm font-bold text-white disabled:opacity-50"
+                disabled={deleting || deleteReason.trim().length < 3}
+                onClick={handleAdminDelete}
+              >
+                {deleting ? 'מוחק…' : 'מחק'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }
