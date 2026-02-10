@@ -596,7 +596,7 @@ export default function ChatClient({ conversationId }: { conversationId: string 
     const uid = data.user?.id
     if (!uid) {
       alert('כדי לשלוח הודעה צריך להתחבר 🙂')
-      router.push('/login')
+      router.push('/auth/login')
       return
     }
 

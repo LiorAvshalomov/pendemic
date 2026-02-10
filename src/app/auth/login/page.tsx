@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import AuthLayout from '@/components/AuthLayout'
 import { signIn } from '@/lib/auth'
@@ -18,6 +18,7 @@ const WITTY = [
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -40,7 +41,9 @@ export default function LoginPage() {
         setErr(error.message)
         return
       }
-      router.push('/')
+      const next = searchParams.get('next')
+      const safeNext = next && next.startsWith('/') ? next : '/'
+      router.replace(safeNext)
       router.refresh()
     } finally {
       setLoading(false)

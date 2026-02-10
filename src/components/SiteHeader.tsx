@@ -26,6 +26,7 @@ import {
   MessageCircle,
 } from 'lucide-react'
 import NotificationsBell from "@/components/NotificationsBell"
+import { broadcastAuthEvent, setAuthState } from '@/lib/auth/authEvents'
 
 
 type MiniUser = {
@@ -129,6 +130,12 @@ function formatDateTime(dt: string) {
 export default function SiteHeader() {
   const router = useRouter()
   const pathname = usePathname()
+  const isAuthPage =
+    (pathname ?? '').startsWith('/auth/login') ||
+    (pathname ?? '').startsWith('/auth/register') ||
+    (pathname ?? '').startsWith('/auth/signup') ||
+    pathname === '/login' ||
+    pathname === '/register'
   const [user, setUser] = useState<MiniUser | null>(null)
 
   const [isMobile, setIsMobile] = useState(false)
@@ -375,8 +382,11 @@ export default function SiteHeader() {
     if (!confirmed) return
 
     closeAll()
+    // Cross-tab: notify other tabs + set global state.
+    setAuthState('out')
+    broadcastAuthEvent('SIGNED_OUT')
     await supabase.auth.signOut()
-    router.refresh()
+    router.replace('/')
   }
 
 
@@ -705,7 +715,7 @@ export default function SiteHeader() {
                       התחבר
                     </Link>
                     <Link
-                      href="/auth/signup"
+                      href="/auth/register"
                       onClick={closeAll}
                       className="rounded-full bg-black hover:opacity-90 px-4 py-1.5 text-sm font-semibold text-white transition-all"
                     >
@@ -723,7 +733,7 @@ export default function SiteHeader() {
       <div className="h-14" aria-hidden="true" />
 
       {/* שורה 2: BRAND + CHANNELS + SEARCH - Desktop Only (hidden on inbox) */}
-      {!pathname.startsWith('/inbox') && (
+      {!pathname.startsWith('/inbox') && !isAuthPage && (
       <div className="bg-gradient-to-b from-neutral-50 to-white hidden lg:block border-b border-neutral-200">
         <div className="mx-auto max-w-6xl px-4">
           <div className="grid items-center gap-4 py-5" dir="rtl" style={{ gridTemplateColumns: '1fr auto 1fr' }}>
@@ -974,8 +984,8 @@ export default function SiteHeader() {
                   >
                     התחבר
                   </Link>
-                  <Link
-                    href="/auth/signup"
+                    <Link
+                    href="/auth/register"
                     onClick={closeAll}
                     className="w-full flex items-center justify-center gap-2 rounded-full bg-black px-4 py-3 text-sm font-semibold text-white hover:opacity-90"
                   >

@@ -275,7 +275,7 @@ export default function WritePage() {
       const { data } = await supabase.auth.getUser()
       const user = data.user
       if (!user) {
-        router.push('/login')
+        router.push('/auth/login')
         return
       }
       setUserId(user.id)

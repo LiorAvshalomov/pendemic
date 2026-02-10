@@ -11,11 +11,11 @@ export default function AuthLayout({
   mode: 'login' | 'signup'
 }) {
   return (
-    <div className="pd-auth-shell relative" dir="rtl">
+    <div className="pd-auth-shell relative h-full overflow-hidden" dir="rtl">
       <div className="pd-auth-noise" aria-hidden="true" />
       <FloatingStationery />
 
-      <main className="relative z-10 mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4 py-10">
+      <main className="relative z-10 mx-auto flex h-full max-w-6xl items-center justify-center px-4 py-10 overflow-y-auto">
         <div className="w-full max-w-[980px]">
           <AnimatedIntro />
 

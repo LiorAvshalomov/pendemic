@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 
-const AUTH_ROUTES = ['/login', '/register']
+const AUTH_ROUTES = ['/auth/login', '/auth/register', '/auth/signup', '/login', '/register']
 
 export default function AppBackground() {
   const pathname = usePathname() || ''

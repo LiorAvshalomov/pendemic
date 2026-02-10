@@ -38,7 +38,7 @@ export default function HomeWriteCTA() {
       <div className="font-black text-sm mb-1">רוצה לכתוב?</div>
       <div className="text-xs text-gray-600 mb-3">הצטרף לקהילה ושתף את הסיפורים שלך</div>
       <Link
-        href="/login"
+        href="/auth/login"
         className="inline-flex items-center justify-center rounded-xl bg-black text-white px-4 py-2 text-sm font-bold hover:opacity-90"
       >
         התחל לכתוב

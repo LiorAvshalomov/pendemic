@@ -1053,7 +1053,7 @@ async function submitReport() {
 
         {!userId ? (
           <div className="mt-2 text-xs text-muted-foreground">
-            <Link className="font-semibold hover:underline" href="/login">
+            <Link className="font-semibold hover:underline" href="/auth/login">
               התחבר
             </Link>{' '}
             כדי להגיב.

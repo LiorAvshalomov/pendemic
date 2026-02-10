@@ -5,6 +5,7 @@ import SiteNavbar from '@/components/SiteNavbar'
 import SiteHeader from '@/components/SiteHeader'
 import AppBackground from '@/components/AppBackground'
 import SiteFooter from '@/components/SiteFooter'
+import AuthSync from '@/components/auth/AuthSync'
 
 
 
@@ -35,12 +36,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${heebo.variable} antialiased bg-background text-foreground overflow-x-hidden`}
       >
-        <AppBackground />
-        <div className="min-h-screen flex flex-col">
-          <SiteHeader />
-          <main className="flex-1">{children}</main>
-          <SiteFooter />
-        </div>
+        <AuthSync>
+          <AppBackground />
+          <div className="min-h-screen flex flex-col">
+            <SiteHeader />
+            <main className="flex-1">{children}</main>
+            <SiteFooter />
+          </div>
+        </AuthSync>
       </body>
     </html>
   )

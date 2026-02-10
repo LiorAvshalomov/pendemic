@@ -71,7 +71,7 @@ export default function ContactForm() {
           כדי לשלוח הודעה דרך הטופס צריך להתחבר.
         </div>
         <div className="mt-3 flex gap-2">
-          <Link href="/login" className="rounded-full bg-black px-4 py-2 text-sm font-bold text-white">
+          <Link href="/auth/login" className="rounded-full bg-black px-4 py-2 text-sm font-bold text-white">
             התחבר/י
           </Link>
           <Link href="/register" className="rounded-full border px-4 py-2 text-sm font-bold">

@@ -1,8 +1,10 @@
 import InboxThreads from '@/components/InboxThreads'
+import RequireAuth from '@/components/auth/RequireAuth'
 
 export default function InboxLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-6xl px-3 h-[calc(100dvh-56px)] overflow-hidden" dir="rtl">
+    <RequireAuth>
+      <div className="mx-auto w-full max-w-6xl px-3 h-[calc(100dvh-56px)] overflow-hidden" dir="rtl">
       {/* Desktop split layout */}
       <div className="hidden md:grid md:grid-cols-[360px_1fr] md:gap-4 h-full min-h-0 py-2">
         {/* Sidebar */}
@@ -18,6 +20,7 @@ export default function InboxLayout({ children }: { children: React.ReactNode })
 
       {/* Mobile: render children as-is (page decides what to show) */}
       <div className="md:hidden h-full min-h-0 overflow-hidden py-2">{children}</div>
-    </div>
+      </div>
+    </RequireAuth>
   )
 }

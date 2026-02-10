@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-const AUTH_ROUTES = ['/login', '/register']
+const AUTH_ROUTES = ['/auth/login', '/auth/register', '/auth/signup', '/login', '/register']
 
 export default function SiteFooter() {
   const pathname = usePathname() || ''

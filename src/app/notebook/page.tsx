@@ -33,7 +33,7 @@ export default function NotebookPage() {
       const session = data.session
       if (error || !session?.user?.id) {
         alert('כדי להשתמש במחברת צריך להתחבר 🙂')
-        router.push('/login')
+        router.push('/auth/login')
         return
       }
 
@@ -65,7 +65,7 @@ export default function NotebookPage() {
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return
-      if (!session?.user?.id) router.push('/login')
+      if (!session?.user?.id) router.push('/auth/login')
     })
 
     return () => {
