@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import Avatar from '@/components/Avatar'
+import { resolveUserIdentity } from '@/lib/systemIdentity'
 
 type ConvRow = {
   conversation_id: string
@@ -111,8 +112,13 @@ export default function InboxThreads() {
         ) : (
           <div className="space-y-2">
             {rows.map((r) => {
-              const displayName =
-                (r.other_display_name ?? '').trim() || (r.other_username ?? '').trim() || 'שיחה'
+              const identity = resolveUserIdentity({
+                userId: r.other_user_id,
+                displayName: r.other_display_name,
+                username: r.other_username,
+                avatarUrl: r.other_avatar_url,
+              })
+              const displayName = identity.displayName
               const isActive = selectedConversationId === r.conversation_id
               const timeText = formatLastTime(r.last_created_at)
               const unread = Number.isFinite(r.unread_count) ? r.unread_count : 0
@@ -131,7 +137,7 @@ export default function InboxThreads() {
               return (
                 <Link key={r.conversation_id} href={`/inbox/${r.conversation_id}`} className={rowClassName}>
                   <div className="flex items-center gap-3">
-                    <Avatar src={r.other_avatar_url} name={displayName} size={44} shape="square" />
+                    <Avatar src={identity.avatarUrl} name={displayName} size={44} shape="square" />
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">

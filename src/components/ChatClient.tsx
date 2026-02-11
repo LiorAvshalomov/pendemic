@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import Avatar from '@/components/Avatar'
+import { resolveUserIdentity } from '@/lib/systemIdentity'
 
 type Msg = {
   id: string
@@ -28,6 +29,16 @@ type InboxThreadRow = {
   other_username: string
   other_display_name: string | null
   other_avatar_url: string | null
+}
+
+function getSystemUserId(): string | null {
+  const v = process.env.NEXT_PUBLIC_SYSTEM_USER_ID
+  return typeof v === 'string' && v.trim() ? v.trim() : null
+}
+
+function isSystemUser(userId: string | null | undefined): boolean {
+  const sid = getSystemUserId()
+  return !!sid && !!userId && userId === sid
 }
 
 function formatTime(iso: string) {
@@ -112,7 +123,7 @@ export default function ChatClient({ conversationId }: { conversationId: string 
 
   const [reportedMessage, setReportedMessage] = useState<Msg | null>(null)
 
-  const canReport = !!myId && !!other?.id && other.id !== myId
+  const canReport = !!myId && !!other?.id && other.id !== myId && !isSystemUser(other.id)
 
   const submitReport = useCallback(async () => {
     if (!canReport || !other?.id || !myId) return
@@ -623,7 +634,17 @@ export default function ChatClient({ conversationId }: { conversationId: string 
     }
   }
 
-  const otherDisplay = (other?.display_name ?? '').trim() || (other?.username ?? 'שיחה')
+  const identity = other?.id
+    ? resolveUserIdentity({
+        userId: other.id,
+        displayName: other.display_name,
+        username: other.username,
+        avatarUrl: other.avatar_url,
+      })
+    : { displayName: 'שיחה', avatarUrl: null, isSystem: false }
+
+  const isSystem = identity.isSystem
+  const otherDisplay = identity.displayName
   const headerSubText = isOtherTyping ? 'מקליד/ה…' : ''
 
   // divider shown if unread exists AND we decided it should be visible
@@ -642,14 +663,11 @@ export default function ChatClient({ conversationId }: { conversationId: string 
         {/* Right side: avatar + name */}
         <div className="flex items-center gap-3 min-w-0">
           <div className="absolute inset-y-2 right-0 w-1 rounded-l-full bg-[#D64545]/70" aria-hidden="true" />
-          <Avatar src={other?.avatar_url ?? null} name={otherDisplay} size={40} shape="square" />
+          <Avatar src={identity.avatarUrl} name={otherDisplay} size={40} shape="square" />
 
           <div className="min-w-0">
-            {other?.username ? (
-              <Link
-                href={`/u/${other.username}`}
-                className="truncate text-sm font-black hover:underline"
-              >
+            {!isSystem && other?.username ? (
+              <Link href={`/u/${other.username}`} className="truncate text-sm font-black hover:underline">
                 {otherDisplay}
               </Link>
             ) : (

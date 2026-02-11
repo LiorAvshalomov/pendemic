@@ -4,6 +4,7 @@ import Link from 'next/link'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Avatar from '@/components/Avatar'
+import { resolveUserIdentity } from '@/lib/systemIdentity'
 import SearchPostsBar from '@/components/SearchPostsBar'
 import { supabase } from '@/lib/supabaseClient'
 import {
@@ -130,6 +131,9 @@ function formatDateTime(dt: string) {
 export default function SiteHeader() {
   const router = useRouter()
   const pathname = usePathname()
+
+  // Used for UI overrides (showing "מערכת האתר" instead of the system user's profile).
+  // Not a secret; it is safe as NEXT_PUBLIC.
   const isAuthPage =
     (pathname ?? '').startsWith('/auth/login') ||
     (pathname ?? '').startsWith('/auth/register') ||
@@ -403,7 +407,14 @@ export default function SiteHeader() {
       ) : (
         <div className="space-y-2" dir="rtl">
           {threads.filter(t => Boolean(t.last_created_at || (t.last_body ?? '').trim())).map(t => {
-            const name = (t.other_display_name ?? '').trim() || t.other_username || 'משתמש'
+            const identity = resolveUserIdentity({
+              userId: t.other_user_id,
+              displayName: t.other_display_name,
+              username: t.other_username,
+              avatarUrl: t.other_avatar_url,
+            })
+            const name = identity.displayName
+            const avatarSrc = identity.avatarUrl
             const snippet = (t.last_body ?? '').trim()
             return (
               <Link
@@ -413,7 +424,7 @@ export default function SiteHeader() {
                 className="block rounded-xl border border-neutral-200 bg-white hover:bg-neutral-50 p-3 transition-colors"
               >
                 <div className="flex items-start gap-3">
-                  <Avatar src={t.other_avatar_url} name={name} size={34} />
+                  <Avatar src={avatarSrc} name={name} size={34} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-sm font-bold text-neutral-900 truncate">{name}</div>
