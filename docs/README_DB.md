@@ -1,154 +1,202 @@
-# Database Reference (Supabase)
+# PenDemic – Database Documentation
 
-This folder contains **read-only documentation snapshots** of the database schema.
-These files exist to help understand the database structure without connecting to
-Supabase directly.
+This folder contains a full export of the current Supabase/PostgreSQL database schema.
 
-⚠️ These files are **documentation only**.
-Do NOT treat them as migrations or live sources of truth.
+The goal of this documentation is:
 
----
-
-## 📌 General Rules
-
-- The database is the **source of truth**.
-- Client-side logic must NOT re-calculate business rules already handled by the DB.
-- Do NOT change schema, views, RPCs, or RLS unless explicitly instructed.
-- When modifying UI or API usage:
-  - First verify required fields exist in views or RPC payloads.
-  - Never assume fields that are not documented here.
+- Preserve full DB structure before production deployment
+- Allow AI tools (ChatGPT / Claude) to reason about the schema
+- Enable safe refactors
+- Provide audit visibility for RLS, RPC, indexes and moderation system
 
 ---
 
 ## 📂 Files Overview
 
-### `db/tables.csv`
+### tables.csv
 
-List of all tables and columns.
-Includes:
+Full list of tables and columns including:
 
 - schema
 - table name
 - column name
 - data type
-- nullability
-- defaults
+- nullable
+- default values
+- numeric precision
+- char limits
 
-Use this to:
-
-- verify column existence
-- understand table structure
-
----
-
-### `db/views.csv`
-
-All database views and their SQL definitions.
-
-Use this to:
-
-- understand what data is already pre-aggregated
-- avoid re-computing logic in the client
-- confirm which fields are exposed to the app
+Used to understand data model and relationships.
 
 ---
 
-### `db/rpc.csv`
+### views.csv
 
-All RPC (Postgres functions) used by the app.
+All SQL views including full SQL definition.
 
-Includes:
+Used for:
 
+- analytics
+- dashboards
+- derived data
+- performance optimizations
+
+---
+
+### rpc.csv
+
+All Postgres functions (RPCs), including:
+
+- schema
 - function name
 - arguments
-- return types
-- full function body
+- return type
+- security definer flag
+- full SQL body
 
-Use this to:
+Critical for:
 
-- understand server-side logic
-- confirm what logic runs inside the DB
-- avoid duplicating business rules in the client
-
----
-
-### `db/rls_policies.csv`
-
-Row Level Security (RLS) policies.
-
-Use this to:
-
-- understand who can read/write which rows
-- avoid frontend logic that contradicts RLS
-- debug permission-related issues
+- start_conversation
+- moderation logic
+- analytics RPCs
+- admin actions
 
 ---
 
-### `db/foreign_keys.csv`
+### rls_status.csv
 
-Foreign key relationships between tables.
+Shows:
 
-Use this to:
+- which tables have RLS enabled
+- which tables force RLS
 
-- understand table relations
-- reason about joins and cascades
-- avoid incorrect client-side assumptions
-
----
-
-### `db/indexes.csv`
-
-Indexes and uniqueness constraints.
-
-Use this to:
-
-- understand performance considerations
-- see which columns are indexed or unique
-- avoid inefficient query patterns
+Important for security validation before production.
 
 ---
 
-### `db/constraints.csv`
+### rls_policies.csv
 
-Primary keys, unique constraints, checks, and exclusions.
+Full list of RLS policies including:
 
-Use this to:
+- table
+- command (select/insert/update/delete)
+- roles
+- using clause
+- with_check clause
 
-- understand data integrity rules
-- avoid invalid inserts/updates
-- reason about edge cases
+Used to validate:
 
----
-
-## 🧠 How to Work With This Folder
-
-Before changing code:
-
-1. Identify the table/view/RPC involved.
-2. Check the relevant CSV file(s).
-3. Confirm the required fields already exist.
-4. Only then modify application code.
-
-If something is missing:
-
-- Do NOT invent it in the client.
-- Ask explicitly whether the DB should change.
+- user isolation
+- moderation enforcement
+- admin bypass rules
 
 ---
 
-## 🔒 Security Note
+### foreign_keys.csv
 
-- Never commit Supabase keys here.
-- Never connect tools or AI directly to production Supabase.
-- These files are intentionally **static snapshots**.
+All FK constraints including:
+
+- update rule
+- delete rule
+
+Used to validate cascading deletes and moderation safety.
 
 ---
 
-## ✅ Goal
+### indexes.csv
 
-This folder exists to:
+All indexes including full SQL definition.
 
-- prevent hidden assumptions
-- keep DB logic centralized
-- avoid client/DB drift
-- make changes safe and predictable
+Used for:
+
+- performance review
+- dashboard queries
+- filtering & time-range analytics
+
+---
+
+### triggers.csv
+
+All triggers and definitions.
+
+Important for:
+
+- auto timestamps
+- moderation hooks
+- cascade logic
+
+---
+
+### enums.csv
+
+All ENUM types used in the system.
+
+Example:
+
+- moderation status
+- post status
+- notification types
+
+---
+
+# ⚙️ Current Moderation Model
+
+The system supports:
+
+## 1. Restricted (Suspended)
+
+- Partial access
+- Cannot write content
+- Can contact system
+
+## 2. Banned
+
+- Full lock
+- Redirected to /banned
+- Only allowed to access /banned/contact
+
+## 3. Admin Post Soft Delete (Moderated)
+
+- Not user trash
+- Only admin can restore
+- Does not auto-delete after 14 days
+
+## 4. Hard Delete
+
+- Permanent removal
+- Cascades cleaned manually
+
+---
+
+# 🔐 Security Principles
+
+- All critical data protected by RLS
+- Admin routes validated server-side via ADMIN_USER_IDS
+- No client-side trust for moderation
+- Cross-tab session invalidation implemented
+- System user identity handled via NEXT_PUBLIC_SYSTEM_USER_ID
+
+---
+
+# 🚀 Production Checklist
+
+Before going live:
+
+- Verify RLS on all public tables
+- Verify no table has unintended public SELECT
+- Confirm moderation RPC behavior
+- Confirm admin routes require server validation
+- Confirm system user ID matches production value
+- Review indexes for analytics queries
+
+---
+
+# 🧠 Notes for AI Refactoring
+
+When refactoring:
+
+- Never remove RLS
+- Never bypass server-side admin validation
+- Avoid converting server components unnecessarily
+- Maintain mobile-first philosophy
+- Avoid introducing `any` in TypeScript
