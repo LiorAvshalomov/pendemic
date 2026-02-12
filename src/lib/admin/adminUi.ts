@@ -8,16 +8,18 @@
  * But older routes/components might still return `error: string`.
  */
 
-export function getAdminErrorMessage(payload: any, fallback = "שגיאה"): string {
-  const msg = payload?.error?.message
-  if (typeof msg === "string" && msg.trim().length > 0) {
-    return msg
+export function getAdminErrorMessage(payload: unknown, fallback = "שגיאה"): string {
+  if (!payload || typeof payload !== "object") return fallback
+
+  const obj = payload as Record<string, unknown>
+  const err = obj.error
+
+  if (typeof err === "object" && err !== null) {
+    const msg = (err as Record<string, unknown>).message
+    if (typeof msg === "string" && msg.trim().length > 0) return msg
   }
 
-  const legacy = payload?.error
-  if (typeof legacy === "string" && legacy.trim().length > 0) {
-    return legacy
-  }
+  if (typeof err === "string" && err.trim().length > 0) return err
 
   return fallback
 }

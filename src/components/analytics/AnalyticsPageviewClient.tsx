@@ -18,12 +18,16 @@ export default function AnalyticsPageviewClient() {
       }),
       signal: controller.signal,
       keepalive: true,
+      
     }).catch(() => {
       // no-op: analytics must never break UX
+      
     })
+    
 
     return () => controller.abort()
   }, [pathname])
+  
 
   return null
 }

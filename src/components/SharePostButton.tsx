@@ -15,10 +15,8 @@ export default function SharePostButton({ url, title }: { url: string; title: st
   async function onShare() {
     try {
       // Web Share API (בעיקר במובייל)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const nav: any = navigator
-      if (nav?.share) {
-        await nav.share({ title, url })
+      if ('share' in navigator && typeof navigator.share === 'function') {
+        await navigator.share({ title, url })
         return
       }
 

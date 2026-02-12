@@ -36,8 +36,6 @@ async function authedFetch(input: string, init: RequestInit = {}) {
 export default function PostOwnerMenu({
   postId,
   authorId,
-  postSlug,
-  returnUrl,
 }: {
   postId: string
   authorId: string
@@ -68,7 +66,7 @@ export default function PostOwnerMenu({
   useEffect(() => {
     if (!open) return
 
-    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+    const onPointerDown = (e: Event) => {
       const target = e.target as Node | null
       if (!target) return
       const wrap = wrapRef.current
@@ -85,7 +83,7 @@ export default function PostOwnerMenu({
 
     return () => {
       document.removeEventListener("mousedown", onPointerDown)
-      document.removeEventListener("touchstart", onPointerDown as any)
+      document.removeEventListener("touchstart", onPointerDown)
       document.removeEventListener("keydown", onKeyDown)
     }
   }, [open])
@@ -103,16 +101,6 @@ export default function PostOwnerMenu({
       alert(getErrorMessage(e))
     }
   }
-
-  const safeReturn = useMemo(() => {
-    if (returnUrl && returnUrl.startsWith("/")) return returnUrl
-    if (typeof window !== "undefined") {
-      const path = window.location.pathname + window.location.search
-      if (path.startsWith("/")) return path
-    }
-    if (postSlug) return `/post/${postSlug}`
-    return null
-  }, [returnUrl, postSlug])
 
   if (!isOwner) return null
 

@@ -5,10 +5,9 @@ import { supabase } from '@/lib/supabaseClient'
 
 export default function FollowButton({
   targetUserId,
-  targetUsername,
 }: {
   targetUserId: string
-  targetUsername: string
+  targetUsername?: string
 }) {
   const [myId, setMyId] = useState<string | null>(null)
   const [isFollowing, setIsFollowing] = useState(false)

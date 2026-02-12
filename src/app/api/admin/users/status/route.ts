@@ -35,20 +35,28 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: mErr.message }, { status: 500 })
   }
 
+  type ModRow = {
+    user_id: string; is_suspended: boolean; reason: string | null;
+    suspended_at: string | null; suspended_by: string | null;
+    is_banned: boolean; ban_reason: string | null;
+    banned_at: string | null; banned_by: string | null
+  }
+  const m = mod as ModRow | null
+
   return NextResponse.json({
     ok: true,
     user: {
       ...profile,
-      moderation: mod
+      moderation: m
         ? {
-            is_suspended: Boolean(mod.is_suspended),
-            reason: (mod.reason as string | null) ?? null,
-            suspended_at: (mod.suspended_at as string | null) ?? null,
-            suspended_by: (mod.suspended_by as string | null) ?? null,
-            is_banned: Boolean((mod as any).is_banned),
-            ban_reason: ((mod as any).ban_reason as string | null) ?? null,
-            banned_at: ((mod as any).banned_at as string | null) ?? null,
-            banned_by: ((mod as any).banned_by as string | null) ?? null,
+            is_suspended: Boolean(m.is_suspended),
+            reason: m.reason ?? null,
+            suspended_at: m.suspended_at ?? null,
+            suspended_by: m.suspended_by ?? null,
+            is_banned: Boolean(m.is_banned),
+            ban_reason: m.ban_reason ?? null,
+            banned_at: m.banned_at ?? null,
+            banned_by: m.banned_by ?? null,
           }
         : {
             is_suspended: false,

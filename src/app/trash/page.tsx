@@ -71,7 +71,6 @@ export default function TrashPage() {
     setLoading(false)
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (!userId) return
     void load(userId)

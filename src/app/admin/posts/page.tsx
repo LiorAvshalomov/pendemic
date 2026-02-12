@@ -380,7 +380,7 @@ export default function AdminPostsPage() {
           <div className="relative w-full max-w-lg rounded-xl border border-neutral-200 bg-white p-6 shadow-xl">
             <h2 className="text-base font-bold text-neutral-900">מחיקת פוסט</h2>
             <p className="mt-1 text-sm text-neutral-500">
-              המחיקה הזמנית היא הסתרה ע"י אדמין (לא נכנס ל־Trash של המשתמש). בעל הפוסט יקבל התראה.
+              המחיקה הזמנית היא הסתרה ע&quot;י אדמין (לא נכנס ל־Trash של המשתמש). בעל הפוסט יקבל התראה.
             </p>
 
             <div className="mt-4 rounded-lg bg-neutral-50 p-3">

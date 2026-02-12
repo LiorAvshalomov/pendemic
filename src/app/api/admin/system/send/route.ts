@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   const auth = await requireAdminFromRequest(req)
   if (!auth.ok) return auth.response
 
-  const body = await req.json().catch(() => ({} as any))
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
   const mode = (body?.mode ?? "user").toString() // 'user' | 'all'
   const username = (body?.username ?? "").toString().trim()
   const userId = (body?.user_id ?? "").toString().trim()
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await auth.admin.from("profiles").select("id")
     if (error) return adminError(error.message, 500, "db_error")
-    targetIds = (data ?? []).map((r: any) => r.id)
+    targetIds = (data ?? []).map((r) => (r as { id: string }).id)
   } else {
     if (userId) {
       targetIds = [userId]

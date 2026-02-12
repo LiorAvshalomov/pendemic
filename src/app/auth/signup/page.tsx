@@ -62,8 +62,8 @@ export default function SignupPage() {
       }
 
       setMsg('נרשמת בהצלחה 🎉 אם יש אימות מייל – בדוק/י את המייל ואז אפשר להתחבר.')
-    } catch (e: any) {
-      setErr(e?.message ?? 'שגיאה לא צפויה')
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'שגיאה לא צפויה')
     } finally {
       setLoading(false)
     }

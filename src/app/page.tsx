@@ -29,17 +29,6 @@ type PostRow = {
   | null
 }
 
-type ReactionVoteRow = {
-  post_id: string
-  reaction_key: string
-  created_at: string
-}
-
-type CommentRow = {
-  post_id: string
-  created_at: string
-}
-
 type TagRow = {
   id: number
   name_he: string
@@ -146,49 +135,6 @@ function channelBadgeColor(slug: string | null) {
   if (slug === 'release') return 'bg-rose-50 text-rose-700'
   if (slug === 'magazine') return 'bg-purple-50 text-purple-700'
   return 'bg-gray-100 text-gray-700'
-}
-
-function toIsoDateInTz(d: Date, timeZone: string): string {
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-  return fmt.format(d) // YYYY-MM-DD
-}
-
-function getOffsetForTz(d: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    timeZoneName: 'shortOffset',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).formatToParts(d)
-
-  const tzName = parts.find(p => p.type === 'timeZoneName')?.value ?? 'GMT+0'
-  // Examples: "GMT+2", "GMT+02:00", "GMT-3"
-  const m = tzName.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/)
-  if (!m) return '+00:00'
-  const sign = m[1] === '-' ? '-' : '+'
-  const hh = String(m[2]).padStart(2, '0')
-  const mm = String(m[3] ?? '00').padStart(2, '0')
-  return `${sign}${hh}:${mm}`
-}
-
-function getWeekRangeIsrael(now: Date): { startIso: string; endIso: string } {
-  const tz = 'Asia/Jerusalem'
-  const isoDate = toIsoDateInTz(now, tz) // YYYY-MM-DD (local)
-  const weekday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(now)
-  const dowMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
-  const dow = dowMap[weekday] ?? 0
-
-  const offset = getOffsetForTz(now, tz)
-  const localMidnight = new Date(`${isoDate}T00:00:00${offset}`)
-  const start = new Date(localMidnight.getTime() - dow * 24 * 60 * 60 * 1000)
-  const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
-
-  return { startIso: start.toISOString(), endIso: end.toISOString() }
 }
 
 function SectionHeader({ title, href }: { title: string; href: string }) {

@@ -31,8 +31,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: pErr.message }, { status: 500 })
   }
 
-  const modById = new Map<string, any>()
-  ;(mods ?? []).forEach((m) => modById.set(m.user_id as string, m))
+  type ModRow = {
+    user_id: string; is_banned: boolean; ban_reason: string | null;
+    banned_at: string | null; banned_by: string | null;
+    is_suspended: boolean; reason: string | null;
+    suspended_at: string | null; suspended_by: string | null
+  }
+  const modById = new Map<string, ModRow>()
+  ;((mods ?? []) as ModRow[]).forEach((m) => modById.set(m.user_id, m))
 
   const users = (profiles ?? []).map((p) => {
     const m = modById.get(p.id)
@@ -56,8 +62,8 @@ export async function GET(req: Request) {
   })
 
   users.sort((a, b) => {
-    const at = new Date((a.moderation as any).banned_at ?? 0).getTime()
-    const bt = new Date((b.moderation as any).banned_at ?? 0).getTime()
+    const at = new Date(a.moderation.banned_at ?? 0).getTime()
+    const bt = new Date(b.moderation.banned_at ?? 0).getTime()
     return bt - at
   })
 

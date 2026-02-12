@@ -82,7 +82,7 @@ export default function InboxThreads() {
   }, [])
 
   useEffect(() => {
-    void load()
+    void load() // eslint-disable-line react-hooks/set-state-in-effect -- async data fetch
 
     const scheduleRefresh = () => {
       if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current)

@@ -89,21 +89,19 @@ export default function CommunityNotesWall() {
   // used to animate "new note" replace without jumping
   const lastPostedIdRef = useRef<string | null>(null)
 
-  const [tick, setTick] = useState(0)
+  const [nowMs, setNowMs] = useState(() => Date.now())
   const remainingSeconds = useMemo(() => {
-    // include tick so the memo recalculates every second (countdown animation)
-    void tick
     if (!myLastUpdatedAt) return 0
     const last = new Date(myLastUpdatedAt).getTime()
-    const elapsed = (Date.now() - last) / 1000
+    const elapsed = (nowMs - last) / 1000
     return Math.max(0, Math.ceil(COOLDOWN_SECONDS - elapsed))
-  }, [myLastUpdatedAt, tick])
+  }, [myLastUpdatedAt, nowMs])
 
   const cooldown = remainingSeconds > 0
 
   // Tick for countdown (keeps it moving without refresh)
   useEffect(() => {
-    const t = setInterval(() => setTick((x) => x + 1), 1000)
+    const t = setInterval(() => setNowMs(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
 
@@ -255,6 +253,7 @@ export default function CommunityNotesWall() {
     return () => {
       if (ch) supabase.removeChannel(ch)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only init
   }, [])
 
   // Fallback polling (only if realtime isn't subscribed).

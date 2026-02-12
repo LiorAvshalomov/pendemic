@@ -20,7 +20,7 @@ export default function BannedContactPage() {
       return
     }
     if (!SYSTEM_USER_ID) {
-      setError('חסר SYSTEM_USER_ID במערכת (NEXT_PUBLIC_SYSTEM_USER_ID).')
+      setError('חסר SYSTEM_USER_ID במערכת (NEXT_PUBLIC_SYSTEM_USER_ID).') // eslint-disable-line react-hooks/set-state-in-effect -- early-return guard
       return
     }
 

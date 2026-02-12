@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation"
 import { useMemo } from "react"
 import AppBackground from "@/components/AppBackground"
+import AnalyticsPageviewClient from "@/components/analytics/AnalyticsPageviewClient"
 import SiteHeader from "@/components/SiteHeader"
 import SiteFooter from "@/components/SiteFooter"
 
@@ -37,6 +38,7 @@ export default function ClientChrome({ children }: Props) {
   if (auth) {
     return (
       <div className="min-h-screen flex flex-col">
+        <AnalyticsPageviewClient />
         <SiteHeader />
         <main className="flex-1 overflow-hidden">{children}</main>
       </div>
@@ -45,6 +47,7 @@ export default function ClientChrome({ children }: Props) {
 
   return (
     <>
+      <AnalyticsPageviewClient />
       <AppBackground />
       <div className="min-h-screen flex flex-col">
         <SiteHeader />

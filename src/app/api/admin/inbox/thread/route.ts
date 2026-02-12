@@ -46,9 +46,10 @@ export async function POST(req: Request) {
 
   if (bErr) return NextResponse.json({ error: bErr.message }, { status: 500 })
 
-  const setA = new Set((a ?? []).map((r) => String((r as any).conversation_id)).filter(Boolean))
-  const common = (b ?? [])
-    .map((r) => String((r as any).conversation_id))
+  type MemberRow = { conversation_id: string }
+  const setA = new Set(((a ?? []) as MemberRow[]).map((r) => String(r.conversation_id)).filter(Boolean))
+  const common = ((b ?? []) as MemberRow[])
+    .map((r) => String(r.conversation_id))
     .filter((cid) => cid && setA.has(cid))
 
   if (common.length > 0) {
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
   const { data: conv, error: cErr } = await auth.admin.from('conversations').insert({} as never).select('id').single()
   if (cErr || !conv?.id) return NextResponse.json({ error: cErr?.message ?? 'failed to create conversation' }, { status: 500 })
 
-  const conversationId = String((conv as any).id)
+  const conversationId = String((conv as { id: string }).id)
 
   const { error: mErr } = await auth.admin.from('conversation_members').insert([
     { conversation_id: conversationId, user_id: systemUserId },

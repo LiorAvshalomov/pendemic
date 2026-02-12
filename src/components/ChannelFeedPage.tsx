@@ -26,15 +26,6 @@ type PostRow = {
   | null
 }
 
-type SummaryRow = {
-  post_id: string
-  reaction_key: string | null
-  votes: number | null
-  gold: number | null
-  silver: number | null
-  bronze: number | null
-}
-
 type CardPost = {
   id: string
   slug: string
@@ -103,9 +94,9 @@ function CoverFrame({
   if (!src) {
     return <div className={`${rounded} border bg-neutral-100`} style={{ width: w, height: h }} />
   }
-  // eslint-disable-next-line @next/next/no-img-element
   return (
     <div className={`${rounded} overflow-hidden border bg-white`} style={{ width: w, height: h }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
         alt=""

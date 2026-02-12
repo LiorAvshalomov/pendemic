@@ -4,13 +4,12 @@ import Link from 'next/link'
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Avatar from '@/components/Avatar'
-import { resolveUserIdentity, SYSTEM_USER_ID } from '@/lib/systemIdentity'
+import { resolveUserIdentity } from '@/lib/systemIdentity'
 import SearchPostsBar from '@/components/SearchPostsBar'
 import { supabase } from '@/lib/supabaseClient'
 import { getModerationStatus } from '@/lib/moderation'
 import {
   Menu,
-  X,
   Search,
   Home,
   Edit,
@@ -142,8 +141,6 @@ export default function SiteHeader() {
     pathname === '/login' ||
     pathname === '/register'
   const [user, setUser] = useState<MiniUser | null>(null)
-
-  const [isMobile, setIsMobile] = useState(false)
 
   // dropdown states
   const [writeOpen, setWriteOpen] = useState(false)
@@ -300,7 +297,7 @@ export default function SiteHeader() {
 
   // Load user initially + whenever route changes
   useEffect(() => {
-    void loadUser()
+    void loadUser() // eslint-disable-line react-hooks/set-state-in-effect -- async data fetch
   }, [loadUser, pathname])
 
   // Reload when auth state changes

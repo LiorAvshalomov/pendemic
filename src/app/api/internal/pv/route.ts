@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { randomUUID } from "crypto"
+import { rateLimit } from "@/lib/rateLimit"
 
 type PageviewBody = {
   path?: string
@@ -53,6 +54,13 @@ export async function POST(req: NextRequest) {
 
   const admin = createClient(supabaseUrl, serviceRole, { auth: { persistSession: false } })
 
+  // Rate limit: 60 requests per 60 seconds per IP
+  const ip = getClientIp(req) ?? "unknown"
+  const rl = rateLimit(`pv:${ip}`, { maxRequests: 60, windowMs: 60_000 })
+  if (!rl.allowed) {
+    return NextResponse.json({ ok: false, error: "rate_limited" }, { status: 429 })
+  }
+
   const userAgent = req.headers.get("user-agent")
   if (isProbablyBot(userAgent)) return NextResponse.json({ ok: true, skipped: "bot" })
 
@@ -79,7 +87,6 @@ export async function POST(req: NextRequest) {
     if (!error && data?.user?.id) userId = data.user.id
   }
 
-  const ip = getClientIp(req)
   const nowIso = new Date().toISOString()
 
   // 1) Create the session row once (ignore duplicates)
@@ -131,16 +138,16 @@ export async function POST(req: NextRequest) {
   if (pvErr) {
     return NextResponse.json({ ok: false, error: "pageview_insert_failed" }, { status: 500 })
   }
-
+const isProd = process.env.NODE_ENV === "production";
   const res = NextResponse.json({ ok: true })
   if (isNewSession) {
-    res.cookies.set("pd_sid", sessionId, {
-      httpOnly: false,
-      sameSite: "lax",
-      secure: true,
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30,
-    })
+res.cookies.set("pd_sid", sessionId, {
+  httpOnly: true,
+  secure: isProd,
+  sameSite: "lax",
+  path: "/",
+  maxAge: 60 * 60 * 24 * 30,
+});
   }
 
   return res

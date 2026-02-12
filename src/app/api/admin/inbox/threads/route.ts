@@ -38,7 +38,12 @@ export async function GET(req: Request) {
 
   if (cmErr) return NextResponse.json({ error: cmErr.message }, { status: 500 })
 
-  const conversationIds = (cm ?? []).map((r) => String((r as any).conversation_id)).filter(Boolean)
+  type MemberRow = { conversation_id: string; user_id: string }
+  type ProfileRow = { id: string; username: string; display_name: string | null; avatar_url: string | null }
+  type MessageRow = { id: string; conversation_id: string; body: string | null; created_at: string | null }
+  type UnreadRow = { conversation_id: string; sender_id: string; read_at: string | null }
+
+  const conversationIds = ((cm ?? []) as MemberRow[]).map((r) => r.conversation_id).filter(Boolean)
   if (conversationIds.length === 0) {
     return NextResponse.json({ threads: [] })
   }
@@ -52,13 +57,10 @@ export async function GET(req: Request) {
   if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 })
 
   const otherByConv = new Map<string, string>()
-  for (const row of members ?? []) {
-    const convId = String((row as any).conversation_id)
-    const uid = String((row as any).user_id)
-    if (!convId || !uid) continue
-    if (uid === systemUserId) continue
-    // one-to-one chat assumed
-    if (!otherByConv.has(convId)) otherByConv.set(convId, uid)
+  for (const row of ((members ?? []) as MemberRow[])) {
+    if (!row.conversation_id || !row.user_id) continue
+    if (row.user_id === systemUserId) continue
+    if (!otherByConv.has(row.conversation_id)) otherByConv.set(row.conversation_id, row.user_id)
   }
 
   const otherUserIds = Array.from(new Set(Array.from(otherByConv.values())))
@@ -72,13 +74,12 @@ export async function GET(req: Request) {
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 })
 
   const profById = new Map<string, { username: string; display_name: string | null; avatar_url: string | null }>()
-  for (const p of profs ?? []) {
-    const id = String((p as any).id)
-    if (!id) continue
-    profById.set(id, {
-      username: String((p as any).username ?? ''),
-      display_name: ((p as any).display_name ?? null) as string | null,
-      avatar_url: ((p as any).avatar_url ?? null) as string | null,
+  for (const p of ((profs ?? []) as ProfileRow[])) {
+    if (!p.id) continue
+    profById.set(p.id, {
+      username: p.username ?? '',
+      display_name: p.display_name ?? null,
+      avatar_url: p.avatar_url ?? null,
     })
   }
 
@@ -93,12 +94,11 @@ export async function GET(req: Request) {
   if (msgErr) return NextResponse.json({ error: msgErr.message }, { status: 500 })
 
   const lastByConv = new Map<string, { body: string | null; created_at: string | null }>()
-  for (const m of msgs ?? []) {
-    const cid = String((m as any).conversation_id)
-    if (!cid || lastByConv.has(cid)) continue
-    lastByConv.set(cid, {
-      body: ((m as any).body ?? null) as string | null,
-      created_at: ((m as any).created_at ?? null) as string | null,
+  for (const m of ((msgs ?? []) as MessageRow[])) {
+    if (!m.conversation_id || lastByConv.has(m.conversation_id)) continue
+    lastByConv.set(m.conversation_id, {
+      body: m.body ?? null,
+      created_at: m.created_at ?? null,
     })
   }
 
@@ -114,10 +114,9 @@ export async function GET(req: Request) {
   if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 })
 
   const unreadCountByConv = new Map<string, number>()
-  for (const r of unreadRows ?? []) {
-    const cid = String((r as any).conversation_id)
-    if (!cid) continue
-    unreadCountByConv.set(cid, (unreadCountByConv.get(cid) ?? 0) + 1)
+  for (const r of ((unreadRows ?? []) as UnreadRow[])) {
+    if (!r.conversation_id) continue
+    unreadCountByConv.set(r.conversation_id, (unreadCountByConv.get(r.conversation_id) ?? 0) + 1)
   }
 
   const threads: Thread[] = []

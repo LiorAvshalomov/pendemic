@@ -8,26 +8,6 @@ type PixabayHit = {
   user: string
 }
 
-type CacheEntry<T> = { value: T; ts: number }
-const CACHE_TTL = 600_000 // 10 minutes
-const CACHE_MAX = 200
-
-const deeplCache = new Map<string, CacheEntry<string>>()
-const pixabayCache = new Map<string, CacheEntry<PixabayHit[]>>()
-
-function cacheGet<T>(map: Map<string, CacheEntry<T>>, key: string): T | undefined {
-  const entry = map.get(key)
-  if (!entry) return undefined
-  if (Date.now() - entry.ts > CACHE_TTL) { map.delete(key); return undefined }
-  return entry.value
-}
-
-function cacheSet<T>(map: Map<string, CacheEntry<T>>, key: string, value: T): void {
-  if (map.size >= CACHE_MAX) {
-    for (const k of map.keys()) { map.delete(k); break }
-  }
-  map.set(key, { value, ts: Date.now() })
-}
 
 async function translateToEnglish(text: string): Promise<string> {
   const key = process.env.DEEPL_API_KEY
@@ -153,7 +133,7 @@ export async function GET(req: Request) {
       author: pick.user,
       translatedQuery: translated,
     })
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: 'server_error' }, { status: 500 })
   }
 }

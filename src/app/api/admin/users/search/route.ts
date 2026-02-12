@@ -26,21 +26,26 @@ export async function GET(req: Request) {
 
   const ids = (profiles ?? []).map((p) => p.id)
 
-  let statusById = new Map<string, { is_suspended: boolean; reason: string | null; suspended_at: string | null; is_banned: boolean; ban_reason: string | null; banned_at: string | null }>()
+  const statusById = new Map<string, { is_suspended: boolean; reason: string | null; suspended_at: string | null; is_banned: boolean; ban_reason: string | null; banned_at: string | null }>()
   if (ids.length > 0) {
     const { data: mods } = await auth.admin
       .from('user_moderation')
       .select('user_id, is_suspended, reason, suspended_at, is_banned, ban_reason, banned_at')
       .in('user_id', ids)
 
-    ;(mods ?? []).forEach((m) => {
-      statusById.set(m.user_id as string, {
+    type ModRow = {
+      user_id: string; is_suspended: boolean; reason: string | null;
+      suspended_at: string | null; is_banned: boolean;
+      ban_reason: string | null; banned_at: string | null
+    }
+    ;((mods ?? []) as ModRow[]).forEach((m) => {
+      statusById.set(m.user_id, {
         is_suspended: Boolean(m.is_suspended),
-        reason: (m.reason as string | null) ?? null,
-        suspended_at: (m.suspended_at as string | null) ?? null,
-        is_banned: Boolean((m as any).is_banned),
-        ban_reason: ((m as any).ban_reason as string | null) ?? null,
-        banned_at: ((m as any).banned_at as string | null) ?? null,
+        reason: m.reason ?? null,
+        suspended_at: m.suspended_at ?? null,
+        is_banned: Boolean(m.is_banned),
+        ban_reason: m.ban_reason ?? null,
+        banned_at: m.banned_at ?? null,
       })
     })
   }

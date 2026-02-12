@@ -152,7 +152,7 @@ export default function ChatClient({ conversationId }: { conversationId: string 
     } finally {
       setReportSending(false)
     }
-  }, [canReport, other?.id, myId, conversationId, reportCategory, reportDetails, reportedMessage?.id])
+  }, [canReport, other?.id, myId, conversationId, reportCategory, reportDetails, reportedMessage])
 
   // NOTE: This is a private 1:1 chat UI. We intentionally do NOT show avatars inside message bubbles.
 
@@ -167,8 +167,8 @@ export default function ChatClient({ conversationId }: { conversationId: string 
   const isAtBottomRef = useRef(true)
   const didInitialScrollRef = useRef(false)
 
-  // auto-follow: אם המשתמש גלל למעלה, לא “נגרור” אותו לתחתית
-  const [autoFollow, setAutoFollow] = useState(true)
+  // auto-follow: אם המשתמש גלל למעלה, לא "נגרור" אותו לתחתית
+  const [, setAutoFollow] = useState(true)
   const autoFollowRef = useRef(true)
 
   // sticky day
@@ -768,7 +768,7 @@ export default function ChatClient({ conversationId }: { conversationId: string 
                     <div className="mb-1 text-xs font-bold text-neutral-700">סוג דיווח</div>
                     <select
                       value={reportCategory}
-                      onChange={(e) => setReportCategory(e.target.value as any)}
+                      onChange={(e) => setReportCategory(e.target.value as typeof reportCategory)}
                       className="w-full rounded-2xl border bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black/10"
                     >
                       <option value="harassment">הטרדה / אלימות מילולית</option>

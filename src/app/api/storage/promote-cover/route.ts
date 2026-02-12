@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireUserFromRequest } from '@/lib/auth/requireUserFromRequest'
 
 // Promote a private draft cover from `post-assets` to the public `post-covers` bucket.
 // Uses the service role key on the server to avoid Storage RLS errors.
 
 export async function POST(req: Request) {
   try {
+    // Authenticate the user
+    const auth = await requireUserFromRequest(req)
+    if (!auth.ok) return auth.response
+
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
 
     const postId = typeof body.postId === 'string' ? body.postId : ''
@@ -13,6 +18,17 @@ export async function POST(req: Request) {
 
     if (!postId || !sourcePath) {
       return NextResponse.json({ error: 'חסרים פרמטרים (postId, sourcePath)' }, { status: 400 })
+    }
+
+    // Verify the user owns this post
+    const { data: post } = await auth.supabase
+      .from('posts')
+      .select('id, author_id')
+      .eq('id', postId)
+      .maybeSingle()
+
+    if (!post || post.author_id !== auth.user.id) {
+      return NextResponse.json({ error: 'אין הרשאה לפעולה זו' }, { status: 403 })
     }
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -37,7 +53,7 @@ export async function POST(req: Request) {
     const upload = await supabase.storage.from('post-covers').upload(publicPath, download.data, {
       upsert: true,
       // Browser File/Blob may carry a .type, Node Blob usually doesn't; best-effort.
-      contentType: (download.data as any)?.type || undefined,
+      contentType: download.data.type || undefined,
     })
 
     if (upload.error) {
@@ -56,7 +72,7 @@ export async function POST(req: Request) {
 
     const { data: pub } = supabase.storage.from('post-covers').getPublicUrl(publicPath)
     return NextResponse.json({ publicUrl: pub.publicUrl ?? null })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'שגיאה' }, { status: 500 })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'שגיאה' }, { status: 500 })
   }
 }

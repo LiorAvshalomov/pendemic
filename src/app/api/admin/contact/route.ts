@@ -42,8 +42,8 @@ export async function GET(req: Request) {
 
   if (error) return adminError(error.message, 500, "db_error")
 
-  const rows = data ?? []
-  const ids = Array.from(new Set(rows.map((r: any) => r.user_id).filter(Boolean))) as string[]
+  const rows = (data ?? []) as { id: string; created_at: string; user_id: string; email: string | null; subject: string; message: string; status: string }[]
+  const ids = Array.from(new Set(rows.map((r) => r.user_id).filter(Boolean)))
 
   let profileMap = new Map<string, MiniProfile>()
   if (ids.length) {
@@ -53,10 +53,10 @@ export async function GET(req: Request) {
       .in("id", ids)
 
     if (profErr) return adminError(profErr.message, 500, "db_error")
-    profileMap = new Map((profs ?? []).map((p: any) => [p.id, p as MiniProfile]))
+    profileMap = new Map(((profs ?? []) as MiniProfile[]).map((p) => [p.id, p]))
   }
 
-  const enriched = rows.map((r: any) => ({
+  const enriched = rows.map((r) => ({
     ...r,
     user_profile: profileMap.get(r.user_id) ?? null,
   }))

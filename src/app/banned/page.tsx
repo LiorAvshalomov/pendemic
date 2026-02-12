@@ -6,7 +6,6 @@ import { supabase } from "@/lib/supabaseClient"
 import {
   getModerationReason,
   getModerationStatus,
-  setModerationReason,
   setSupportConversationId,
 } from "@/lib/moderation"
 

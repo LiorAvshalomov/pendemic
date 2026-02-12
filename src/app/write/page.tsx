@@ -49,17 +49,6 @@ const SUBCATEGORY_NAMES_BY_CHANNEL_NAME_HE: Record<string, string[]> = {
   'מגזין': ['חדשות', 'ספורט', 'תרבות ובידור', 'דעות', 'טכנולוגיה'],
 }
 
-function uniqById<T extends { id: number }>(rows: T[]) {
-  const seen = new Set<number>()
-  const out: T[] = []
-  for (const r of rows) {
-    if (seen.has(r.id)) continue
-    seen.add(r.id)
-    out.push(r)
-  }
-  return out
-}
-
 function clampExcerpt(s: string) {
   const trimmed = s.replace(/\s+/g, ' ').trimStart()
   return trimmed.length > EXCERPT_MAX ? trimmed.slice(0, EXCERPT_MAX) : trimmed
@@ -321,6 +310,7 @@ useEffect(() => {
   if (channelParam && !subcategoryParam) {
     setSubcategoryTagId(null)
   }
+// eslint-disable-next-line react-hooks/exhaustive-deps -- param-sync effect, stable function
 }, [presetKey, channels, channelParam, subcategoryParam, activeIdFromUrl])
 
 
@@ -486,6 +476,7 @@ useEffect(() => {
     }
 
     void loadDraft()
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- draft load on mount/id change only
   }, [effectivePostId, userId, channels, channelParam])
 
   const ensureDraft = useCallback(async (): Promise<{ id: string; slug: string } | null> => {
@@ -580,6 +571,7 @@ if (!effectiveChannelId) {
     params.set('draft', created.id)
     router.replace(`/write?${params.toString()}`)
         return { id: created.id, slug: created.slug }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- resolveChannelIdFromParam is stable
   }, [
     userId,
     isEditMode,

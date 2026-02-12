@@ -48,10 +48,17 @@ export async function GET(req: Request) {
   const { data: reports, error } = await q
   if (error) return adminError(error.message, 500, "db_error")
 
-  const rows = reports ?? []
+  type ReportRow = {
+    id: string; created_at: string; category: string; details: string | null;
+    status: string; resolved_at: string | null; reporter_id: string;
+    reported_user_id: string; conversation_id: string | null;
+    message_id: string | null; message_created_at: string | null;
+    message_excerpt: string | null
+  }
+  const rows = (reports ?? []) as ReportRow[]
   const ids = Array.from(
-    new Set(rows.flatMap((r: any) => [r.reporter_id, r.reported_user_id]).filter(Boolean))
-  ) as string[]
+    new Set(rows.flatMap((r) => [r.reporter_id, r.reported_user_id]).filter(Boolean))
+  )
 
   let profileMap = new Map<string, MiniProfile>()
   if (ids.length) {
@@ -61,10 +68,10 @@ export async function GET(req: Request) {
       .in("id", ids)
 
     if (profErr) return adminError(profErr.message, 500, "db_error")
-    profileMap = new Map((profs ?? []).map((p: any) => [p.id, p as MiniProfile]))
+    profileMap = new Map(((profs ?? []) as MiniProfile[]).map((p) => [p.id, p]))
   }
 
-  const enriched = rows.map((r: any) => {
+  const enriched = rows.map((r) => {
     const reporter = profileMap.get(r.reporter_id) ?? null
     const reported = profileMap.get(r.reported_user_id) ?? null
     return {

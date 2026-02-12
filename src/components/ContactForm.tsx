@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 
-type Profile = { id: string; email?: string | null }
-
 export default function ContactForm() {
   const [loading, setLoading] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
@@ -57,8 +55,8 @@ export default function ContactForm() {
       setMessage('')
       // השאר אימייל אם המשתמש כתב, אבל אפשר גם לאפס:
       // setEmail('')
-    } catch (err: any) {
-      setErrMsg(err?.message ?? 'משהו השתבש בשליחה')
+    } catch (err: unknown) {
+      setErrMsg(err instanceof Error ? err.message : 'משהו השתבש בשליחה')
     } finally {
       setLoading(false)
     }

@@ -14,7 +14,7 @@ export default function AnimatedIntro() {
     const key = 'pd_auth_intro_v1'
     const already = typeof window !== 'undefined' ? window.sessionStorage.getItem(key) : '1'
     if (!already) {
-      setShow(true)
+      setShow(true) // eslint-disable-line react-hooks/set-state-in-effect -- one-time animation
       window.sessionStorage.setItem(key, '1')
       const t = window.setTimeout(() => setShow(false), 1400)
       return () => window.clearTimeout(t)

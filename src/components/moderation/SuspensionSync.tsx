@@ -34,8 +34,8 @@ export default function SuspensionSync({ children }: { children: React.ReactNode
   const router = useRouter()
   const pathname = usePathname() || ''
 
-  const [isSuspended, setIsSuspended] = useState(false)
-  const [isBanned, setIsBanned] = useState(false)
+  const [, setIsSuspended] = useState(false)
+  const [, setIsBanned] = useState(false)
 
   const shouldGateSuspended = useMemo(() => {
     if (pathname === '/restricted') return false

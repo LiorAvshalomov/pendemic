@@ -81,7 +81,7 @@ export default function RestrictedPage() {
       <div className="rounded-3xl border border-black/5 bg-white/80 p-6 shadow-sm">
         <div className="text-2xl font-black">החשבון הוגבל זמנית</div>
         <p className="mt-2 text-sm text-neutral-700 leading-6">
-          נראה שהחשבון שלך הוגבל ע"י מערכת האתר. אפשר עדיין להתחבר ולקרוא תכנים, אבל פעולות כמו כתיבה, שמירה,
+          נראה שהחשבון שלך הוגבל ע&quot;י מערכת האתר. אפשר עדיין להתחבר ולקרוא תכנים, אבל פעולות כמו כתיבה, שמירה,
           התראות והגדרות אינן זמינות כרגע.
         </p>
 

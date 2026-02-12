@@ -643,7 +643,7 @@ const token = storeHighlightToken(ids)
     const reason = reasonFromPayload(payload)
     return (
       <div className="text-right leading-snug">
-        <div className="font-semibold">הפוסט ״{t}״ נמחק ע"י מערכת האתר</div>
+        <div className="font-semibold">הפוסט ״{t}״ נמחק ע&quot;י מערכת האתר</div>
         {reason ? <div className="text-neutral-600 mt-0.5">סיבה: {reason}</div> : null}
       </div>
     )

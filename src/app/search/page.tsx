@@ -198,7 +198,6 @@ export default function SearchPage() {
     setSubcatId(urlSubcatId)
     setAuthor(urlAuthor)
     if (urlSort === 'comments' || urlSort === 'reactions' || urlSort === 'recent') setSort(urlSort)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlQ, urlChannel, urlSubcatId, urlAuthor, urlSort])
 
   function buildUrl(next: Partial<{ q: string; channel: string; subcat: string; sort: SortKey; page: number; author: string }>) {

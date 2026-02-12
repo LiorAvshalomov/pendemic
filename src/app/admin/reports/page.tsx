@@ -18,7 +18,6 @@ import {
   FileText,
   User,
   X,
-  RefreshCw,
 } from 'lucide-react'
 import AdminReportDrawer from '@/components/admin/AdminReportDetailClient'
 

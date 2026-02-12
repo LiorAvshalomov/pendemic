@@ -103,7 +103,7 @@ export default function AdminSystemPage() {
 
         <div className="mt-5 flex items-center justify-between">
           <div className="text-xs text-neutral-400">
-            טיפ: כדי שזה יראה יפה למשתמשים, אנחנו מרנדרים "מערכת האתר" וכוללים את הכותרת/הטקסט מתוך payload.
+            טיפ: כדי שזה יראה יפה למשתמשים, אנחנו מרנדרים &quot;מערכת האתר&quot; וכוללים את הכותרת/הטקסט מתוך payload.
           </div>
           <button
             type="button"
