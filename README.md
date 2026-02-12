@@ -32,6 +32,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
+hey
 Open [http://localhost:3000](http://localhost:3000).
 
 ### Required Environment Variables
@@ -54,18 +55,19 @@ DEEPL_API_KEY=<key>                           # Hebrew-to-English translation fo
 ```
 
 **Security notes:**
+
 - `SUPABASE_SERVICE_ROLE_KEY` is server-only. Never prefix with `NEXT_PUBLIC_`.
 - `.env.local` is in `.gitignore`. Never commit secrets.
 - Only `NEXT_PUBLIC_*` vars are shipped to the browser.
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start dev server |
-| `npm run build` | Production build |
+| Command         | Description             |
+| --------------- | ----------------------- |
+| `npm run dev`   | Start dev server        |
+| `npm run build` | Production build        |
 | `npm run start` | Start production server |
-| `npm run lint` | Run ESLint |
+| `npm run lint`  | Run ESLint              |
 
 ## Project Structure
 
@@ -95,6 +97,7 @@ src/
 ## Admin Panel
 
 Accessible at `/admin` (requires `ADMIN_USER_IDS` env var). Features:
+
 - **Dashboard**: Analytics charts (pageviews, sessions, users)
 - **Users**: Search, suspend, ban, delete
 - **Posts**: List, soft-delete, restore, purge
@@ -104,12 +107,14 @@ Accessible at `/admin` (requires `ADMIN_USER_IDS` env var). Features:
 - **System**: Broadcast notifications to users
 
 All admin API routes are gated by `requireAdminFromRequest` which verifies:
+
 1. Valid Bearer token
 2. User ID in `ADMIN_USER_IDS` allowlist
 
 ## Analytics
 
 Pageviews are tracked via `POST /api/internal/pv`:
+
 - Bot detection (user-agent filtering)
 - Rate limited (60 req/min per IP)
 - Session tracking via `pd_sid` cookie
@@ -119,6 +124,7 @@ Pageviews are tracked via `POST /api/internal/pv`:
 ## Health Check
 
 `GET /api/health` returns:
+
 ```json
 { "status": "ok", "timestamp": "...", "services": { "supabase": "connected" } }
 ```
