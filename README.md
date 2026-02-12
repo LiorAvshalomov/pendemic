@@ -19,7 +19,7 @@ A Hebrew-first writing and publishing platform. Mobile-first, RTL-native, with r
 - npm
 - A Supabase project
 
-### Setup
+#### Setup
 
 ```bash
 # Install dependencies
