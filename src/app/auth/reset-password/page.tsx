@@ -70,14 +70,14 @@ export default function ResetPasswordPage() {
     async function initSessionFromUrl() {
       setErr(null)
 
-      // If user landed here via a recovery link, make sure the gate is enabled.
-      setResetGate()
-
       // If Supabase sent an error in the hash, show it nicely.
+      // IMPORTANT: Don't clear the reset gate here automatically.
+      // A user might refresh after the URL was cleaned; we still want to keep them blocked
+      // from navigating the site until they complete (or restart) the reset flow.
       if (hashError) {
+        setResetGate()
         setErr(hashError)
         setState('error')
-        clearResetGate()
         return
       }
 
@@ -91,9 +91,9 @@ export default function ResetPasswordPage() {
         window.history.replaceState({}, document.title, url.toString())
         if (cancelled) return
         if (error) {
+          setResetGate()
           setErr(error.message)
           setState('error')
-          clearResetGate()
           return
         }
         setResetGate()
@@ -112,9 +112,9 @@ export default function ResetPasswordPage() {
           window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
           if (cancelled) return
           if (error) {
+            setResetGate()
             setErr(error.message)
             setState('error')
-            clearResetGate()
             return
           }
           setResetGate()
@@ -123,10 +123,24 @@ export default function ResetPasswordPage() {
         }
       }
 
-      // If we got here, we don't have a usable token.
+      // Refresh / revisit behavior:
+      // After consuming the recovery code/hash we intentionally clean the URL.
+      // On refresh, there may be no code/hash anymore – but the session can still exist.
+      const { data } = await supabase.auth.getSession()
+      if (cancelled) return
+
+      if (data.session?.user?.id) {
+        // We have a session (likely recovery). Enforce reset gate and show form.
+        setResetGate()
+        setState('ready')
+        return
+      }
+
+      // No token and no session => invalid/expired link OR session storage not available.
+      // UX: show message but KEEP the gate so the user cannot browse the site "for free".
+      setResetGate()
       setErr('הקישור לא תקין או פג תוקף. בקש/י איפוס מחדש.')
       setState('error')
-      clearResetGate()
     }
 
     void initSessionFromUrl()
@@ -158,7 +172,6 @@ export default function ResetPasswordPage() {
       }
 
       // Password was updated. Clear gate and sign out the recovery session.
-      // This avoids "free access" via recovery link and forces a clean login with the new password.
       clearResetGate()
       await supabase.auth.signOut()
 
@@ -189,10 +202,24 @@ export default function ResetPasswordPage() {
         {state === 'error' ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             {err ?? 'שגיאה לא צפויה'}
-            <div className="mt-2">
+            <div className="mt-2 flex flex-col gap-2">
               <Link href="/auth/forgot-password" className="font-semibold text-blue-700 hover:underline">
                 בקש/י קישור איפוס חדש
               </Link>
+
+              <button
+                type="button"
+                className="text-left text-sm font-semibold text-black/70 underline hover:text-black"
+                onClick={async () => {
+                  // Allow user to exit the gate if they want to abandon reset.
+                  clearResetGate()
+                  await supabase.auth.signOut()
+                  router.replace('/')
+                  router.refresh()
+                }}
+              >
+                ביטול וחזרה לאתר
+              </button>
             </div>
           </div>
         ) : null}
