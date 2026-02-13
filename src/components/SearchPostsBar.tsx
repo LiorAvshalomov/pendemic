@@ -36,13 +36,23 @@ export default function SearchPostsBar() {
         style={{ width: 240 }}
       />
 
-      <button
-        type="button"
-        onClick={apply}
-        className="h-10 shrink-0 rounded-full bg-black px-4 text-xs font-semibold text-white hover:opacity-90"
-      >
-        חפש
-      </button>
+     <button
+  type="button"
+  onClick={apply}
+  className="
+    h-10 shrink-0 rounded-full bg-black px-4
+    text-sm  font-semibold text-white
+    cursor-pointer
+    transition
+    hover:bg-neutral-900
+    shadow-sm hover:shadow-md
+    active:scale-[0.98]
+    active:opacity-90
+    focus:outline-none focus:ring-4 
+  "
+>
+  חפש
+</button>
     </div>
   )
 }

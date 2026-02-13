@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { formatDateTimeHe, formatRelativeHe } from '@/lib/time'
+import { getPostDisplayDate } from '@/lib/posts'
 import HomeWriteCTA from '@/components/HomeWriteCTA'
 import StickySidebar from '@/components/StickySidebar'
 
@@ -41,6 +42,7 @@ type CardPost = {
   title: string
   excerpt: string | null
   created_at: string
+  published_at: string | null
   cover_image_url: string | null
   subcategory_tag_id: number | null
   channel_slug: string | null
@@ -149,7 +151,7 @@ function SectionHeader({ title, href }: { title: string; href: string }) {
 
 function FeaturedPost({ post }: { post: CardPost }) {
   return (
-    <article className="group bg-slate-100/70 rounded-2xl overflow-hidden shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-[1px] border border-black/10">
+    <article className="group bg-slate-100/70 font-sans rounded-2xl overflow-hidden shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-[1px] border border-black/10">
       <div className="lg:grid lg:grid-cols-2">
         {/* Image */}
         <div className="order-1 lg:order-2">
@@ -180,7 +182,7 @@ function FeaturedPost({ post }: { post: CardPost }) {
                 <div className="flex items-center justify-between text-xs text-gray-500">
 
                   <div className="min-w-0 text-right">
-                    <span title={formatDateTimeHe(post.created_at)}>{formatRelativeHe(post.created_at)}</span>
+                    <span title={formatDateTimeHe(getPostDisplayDate(post))}>{formatRelativeHe(getPostDisplayDate(post))}</span>
                     {post.subcategory ? (
                       <>
                         <span className="mx-2">•</span>
@@ -244,7 +246,7 @@ function SimplePostCard({ post }: { post: CardPost }) {
         <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
 
           <div className="min-w-0">
-            <span title={formatDateTimeHe(post.created_at)}>{formatRelativeHe(post.created_at)}</span>
+            <span title={formatDateTimeHe(getPostDisplayDate(post))}>{formatRelativeHe(getPostDisplayDate(post))}</span>
             {post.subcategory ? (
               <>
                 <span className="mx-2">•</span>
@@ -333,7 +335,7 @@ function ListRowCompact({ post }: { post: CardPost }) {
           <div className="min-w-0 flex-1 text-right">
             <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
               <div className="text-xs text-gray-500">
-                <span title={formatDateTimeHe(post.created_at)}>{formatRelativeHe(post.created_at)}
+                <span title={formatDateTimeHe(getPostDisplayDate(post))}>{formatRelativeHe(getPostDisplayDate(post))}
 
                 </span>
                 {post.subcategory ? (
@@ -472,7 +474,7 @@ function RecentMiniRow({ post }: { post: CardPost }) {
                 </div>
               )}
 
-              <span title={formatDateTimeHe(post.created_at)}>{formatRelativeHe(post.created_at)}</span>
+              <span title={formatDateTimeHe(getPostDisplayDate(post))}>{formatRelativeHe(getPostDisplayDate(post))}</span>
             </div>
           </div>
         </div>
@@ -857,8 +859,6 @@ export default async function HomePage(props: HomePageProps = {}) {
         return t ? [t] : []
       })
       .map(t => ({ name_he: t.name_he, slug: t.slug }))
-
-    const createdAt = p.published_at ?? p.created_at
     const subcategory = p.subcategory_tag_id != null ? (tagsMap.get(p.subcategory_tag_id) ?? null) : null
 
     return {
@@ -866,7 +866,8 @@ export default async function HomePage(props: HomePageProps = {}) {
       slug: p.slug,
       title: p.title,
       excerpt: p.excerpt,
-      created_at: createdAt,
+      created_at: p.created_at,
+      published_at: p.published_at,
       cover_image_url: p.cover_image_url,
       subcategory_tag_id: p.subcategory_tag_id,
       channel_slug: channel?.slug ?? null,
