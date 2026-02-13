@@ -1,4 +1,28 @@
 /** @type {import('next').NextConfig} */
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+let supabaseOrigin = ''
+try {
+  supabaseOrigin = supabaseUrl ? new URL(supabaseUrl).origin : ''
+} catch {}
+
+const connectSrc = [
+  "'self'",
+  supabaseOrigin,
+  supabaseOrigin ? supabaseOrigin.replace('https://', 'wss://') : '',
+  'https://api-free.deepl.com',
+  'https://pixabay.com',
+].filter(Boolean).join(' ')
+
+const imgSrc = [
+  "'self'",
+  'data:',
+  'blob:',
+  'https://api.dicebear.com',
+  'https://pixabay.com',
+  'https://images.pexels.com',
+  supabaseOrigin,
+].filter(Boolean).join(' ')
+
 const nextConfig = {
   images: {
     remotePatterns: [
@@ -54,19 +78,19 @@ const nextConfig = {
             value: 'max-age=63072000; includeSubDomains; preload',
           },
           {
-            key: 'Content-Security-Policy',
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: https://api.dicebear.com https://pixabay.com https://images.pexels.com https://dowhdgcvxgzaikmpnchv.supabase.co",
-              "font-src 'self'",
-              "connect-src 'self' https://dowhdgcvxgzaikmpnchv.supabase.co wss://dowhdgcvxgzaikmpnchv.supabase.co https://api-free.deepl.com https://pixabay.com",
-              "frame-ancestors 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-            ].join('; '),
-          },
+  key: 'Content-Security-Policy',
+  value: [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
+    `img-src ${imgSrc}`,
+    "font-src 'self'",
+    `connect-src ${connectSrc}`,
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; '),
+},
         ],
       },
     ]
