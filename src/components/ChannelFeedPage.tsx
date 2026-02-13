@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { formatDateTimeHe, formatRelativeHe } from '@/lib/time'
+import { getPostDisplayDate } from '@/lib/posts'
 import StickySidebar from '@/components/StickySidebar'
 
 type PostRow = {
@@ -284,7 +285,7 @@ function ListRow({ post }: { post: CardPost }) {
             )}
 
             <span className="mx-2">•</span>
-            <span title={formatDateTimeHe(post.created_at)}>{formatRelativeHe(post.created_at)}</span>
+            <span title={formatDateTimeHe(getPostDisplayDate(post))}>{formatRelativeHe(getPostDisplayDate(post))}</span>
 
             {post.channel_name && post.channel_slug ? (
               <>
@@ -343,7 +344,7 @@ function RecentMiniRow({ post }: { post: CardPost }) {
           </>
         ) : null}
         <span className="mx-1">•</span>
-        <span title={formatDateTimeHe(post.created_at)}>{formatRelativeHe(post.created_at)}</span>
+        <span title={formatDateTimeHe(getPostDisplayDate(post))}>{formatRelativeHe(getPostDisplayDate(post))}</span>
       </div>
     </div>
   )
@@ -481,7 +482,8 @@ export default async function ChannelFeedPage({
       slug: p.slug,
       title: p.title,
       excerpt: p.excerpt,
-      created_at: p.published_at ?? p.created_at,
+      created_at: p.created_at,
+      published_at: p.published_at,
       cover_image_url: p.cover_image_url,
       channel_slug: channel?.slug ?? null,
       channel_name: channel?.name_he ?? null,
@@ -496,8 +498,8 @@ export default async function ChannelFeedPage({
   })
 
   const cardPosts = cardPostsAll.filter(p => p.channel_slug === channelSlug)
-  const byRecent = [...cardPosts].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-  const byScore = [...cardPosts].sort((a, b) => b.score - a.score || new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  const byRecent = [...cardPosts].sort((a, b) => new Date(getPostDisplayDate(b)).getTime() - new Date(getPostDisplayDate(a)).getTime())
+  const byScore = [...cardPosts].sort((a, b) => b.score - a.score || new Date(getPostDisplayDate(b)).getTime() - new Date(getPostDisplayDate(a)).getTime())
 
   // --- TOP BLOCK (3 posts) ---
   const used = new Set<string>()
@@ -511,7 +513,7 @@ export default async function ChannelFeedPage({
       const av = a.votesByKey[reactionKey] ?? 0
       const bv = b.votesByKey[reactionKey] ?? 0
       if (bv !== av) return bv - av
-      return (b.score - a.score) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      return (b.score - a.score) || (new Date(getPostDisplayDate(b)).getTime() - new Date(getPostDisplayDate(a)).getTime())
     })
     return arr[0] ?? null
   }
@@ -528,7 +530,7 @@ export default async function ChannelFeedPage({
   const writersMonth = (() => {
     const map = new Map<string, { username: string | null; name: string; score: number; gold: number; silver: number; bronze: number }>()
     for (const p of cardPosts) {
-      if (p.created_at < monthAgo) continue
+      if (getPostDisplayDate(p) < monthAgo) continue
       const key = p.author_username ?? p.author_name ?? 'anon'
       const prev = map.get(key) ?? { username: p.author_username, name: p.author_name, score: 0, gold: 0, silver: 0, bronze: 0 }
       prev.gold += p.medals.gold

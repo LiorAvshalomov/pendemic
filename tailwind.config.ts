@@ -9,7 +9,11 @@ export default {
   "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
 ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+  sans: ["var(--font-heebo)", "sans-serif"],
+},
+    },
   },
   plugins: [typography],
 } satisfies Config

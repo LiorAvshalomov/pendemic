@@ -22,7 +22,6 @@ import {
   FileText,
   Newspaper,
   ChevronDown,
-  Sparkles,
   NotebookPen,
   MessageCircle,
 } from 'lucide-react'
@@ -489,15 +488,23 @@ export default function SiteHeader() {
                 </Link>
 
                 {/* לוגו מוקטן - רק במובייל */}
-                <Link href="/" className="lg:hidden flex items-center gap-2 group" onClick={closeAll}>
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-neutral-800 via-neutral-700 to-neutral-600 flex items-center justify-center shadow-sm group-hover:shadow-md group-hover:scale-110 transition-all duration-300">
-                    <Sparkles size={17} strokeWidth={2.5} className="text-white group-hover:rotate-12 transition-transform" />
-                  </div>
-                  <div>
-                    <div className="text-xl font-extrabold text-neutral-900">PenDemic</div>
-                    <div className="text-[9px] text-neutral-600 font-semibold">מקום לכתיבה ולפריקה</div>
-                  </div>
-                </Link>
+                <Link
+  href="/"
+  className="lg:hidden inline-flex w-fit items-center gap-3 text-right select-none active:scale-[0.99] active:opacity-90"
+
+  onClick={closeAll}
+>
+  <span className="text-lg font-bold tracking-tight text-[#1E2A44]">
+    Tyuta
+  </span>
+
+  <span className="h-4 w-px bg-[#1E2A44]/20" />
+
+  <span className="text-xs font-semibold text-[#1E2A44]/65">
+    המקום לכל הגרסאות שלך
+  </span>
+</Link>
+                
 
                 {/* פתקים - רק בדסקטופ */}
                 {user ? (
@@ -749,24 +756,25 @@ export default function SiteHeader() {
 
       {/* שורה 2: BRAND + CHANNELS + SEARCH - Desktop Only (hidden on inbox) */}
       {!pathname.startsWith('/inbox') && !isAuthPage && (
-      <div className="bg-gradient-to-b from-neutral-50 to-white hidden lg:block border-b border-neutral-200">
+      <div className=" from-neutral-50 to-white hidden lg:block border-b border-neutral-200 w-full bg-[#FBF7EF]/50 backdrop-blur shadow-[0_1px_0_rgba(0,0,0,0.25]"> 
         <div className="mx-auto max-w-6xl px-4">
           <div className="grid items-center gap-4 py-5" dir="rtl" style={{ gridTemplateColumns: '1fr auto 1fr' }}>
             {/* Right: brand */}
             <div className="min-w-0">
-              <Link href="/" className="flex items-center gap-2 group" onClick={closeAll}>
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-neutral-800 via-neutral-700 to-neutral-600 flex items-center justify-center shadow-sm group-hover:shadow-md group-hover:shadow-neutral-400/50 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                  <Sparkles size={18} strokeWidth={2.5} className="text-white group-hover:rotate-12 transition-transform duration-300" />
-                </div>
-                <div>
-                  <div className="text-xl font-extrabold text-neutral-900 group-hover:text-neutral-700 transition-colors duration-300">
-                    PenDemic
-                  </div>
-                  <div className="text-[10px] text-neutral-600 font-semibold group-hover:text-neutral-800 transition-colors duration-300">
-                    מקום לכתיבה ולפריקה
-                  </div>
-                </div>
-              </Link>
+             <Link
+  href="/"
+  className="group inline-flex w-fit items-center gap-3 text-right transition-all duration-300"
+>
+  <span className="relative text-lg font-bold tracking-tight text-[#1E2A44] transition-transform duration-300 group-hover:-translate-y-[2px]">
+    Tyuta
+  </span>
+
+  <span className="h-4 w-px bg-[#1E2A44]/20" />
+
+  <span className="text-sm font-medium text-[#1E2A44]/60 transition-colors duration-300 group-hover:text-[#1E2A44]/80">
+    המקום לכל הגרסאות שלך
+  </span>
+</Link>
             </div>
 
             {/* Center: channels */}
@@ -793,11 +801,11 @@ export default function SiteHeader() {
             className="lg:hidden fixed top-14 left-0 right-0 bottom-0 z-50 bg-white shadow-lg overflow-y-auto animate-in slide-in-from-top duration-300"
             dir="rtl"
           >
-            <div className="mx-auto max-w-6xl px-4 py-4 space-y-4">
+            <div className="mx-auto max-w-6xl px-4 py-4 space-y-4 ">
               {/* אין כפתור סגירה כאן – הסגירה נעשית דרך ה־navbar */}
               {/* חיפוש במובייל */}
-              <form
-                className="relative"
+              <form 
+                className="relative "
                 onSubmit={(e) => {
                   e.preventDefault()
                   const q = mobileSearch.trim()
@@ -806,13 +814,13 @@ export default function SiteHeader() {
                   router.push(`/search?q=${encodeURIComponent(q)}`)
                 }}
               >
-                <Search size={18} strokeWidth={2.5} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+                <Search size={18} strokeWidth={2.5} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none " />
                 <input
                   type="search"
                   value={mobileSearch}
                   onChange={(e) => setMobileSearch(e.target.value)}
-                  placeholder="חפש פוסטים..."
-                  className="w-full rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 pr-10 pl-4 py-2.5 text-sm font-semibold outline-none focus:border-neutral-400 focus:bg-white focus:ring-4 focus:ring-neutral-100 transition-all duration-300"
+                  placeholder="חפש פוסטים..."  
+                  className="w-full  rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 pr-10 pl-4 py-2.5 text-sm font-semibold outline-none focus:border-neutral-400 focus:bg-white focus:ring-4 focus:ring-neutral-100 transition-all duration-300"
                 />
               </form>
 

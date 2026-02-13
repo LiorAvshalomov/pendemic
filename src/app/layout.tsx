@@ -16,20 +16,31 @@ const geistMono = Geist_Mono({
 })
 
 const heebo = Heebo({
-  variable: "--font-editor-hebrew",
+  variable: "--font-editor-hebrew", 
   subsets: ["hebrew", "latin"],
-  weight: ["400", "700"],
+  weight: ["300", "400", "500", "600", "700"],
+  display: "swap"
 })
 
+
+
 export const metadata: Metadata = {
-  title: "PenDemic",
-  description: "PenDemic",
+  title: "Tyuta - המקום לכל הגרסאות שלך",
+  description: "Tyuta - המקום לכל הגרסאות שלך",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/favicon-96x96.png", sizes: "96x96", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+  manifest: "/site.webmanifest",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="he" dir="rtl">
-      <body className={`${geistSans.variable} ${geistMono.variable} ${heebo.variable} antialiased bg-background text-foreground overflow-x-hidden`}>
+    <html lang="he" dir="rtl" className={heebo.variable}>
+      <body className={`${heebo.variable} ${geistSans.variable} ${geistMono.variable}  antialiased bg-background text-foreground overflow-x-hidden`}>
         <AuthSync>
           <SuspensionSync>
             <ClientChrome>{children}</ClientChrome>

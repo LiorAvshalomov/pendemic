@@ -138,7 +138,7 @@ function DesktopPostCard({
                 src={post.cover_image_url}
                 alt={post.title}
                 fill
-                className="object-cover transition-transform duration-300 group-hover:scale-105"
+                className="object-cover transition-transform duration-300 group-hover:scale-105" 
                 sizes="144px"
               />
             ) : (
