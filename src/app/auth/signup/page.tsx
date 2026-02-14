@@ -9,7 +9,6 @@ import { PASSWORD_HINT_HE, validatePassword } from '@/lib/password'
 const WITTY = [
   'פותחים דף חדש.',
   'ברגע אחד קטן מתחילים.',
-  'מחברת אחת. אמת אחת.',
   'לפעמים מספיק רק שורה אחת.',
   'גם טיוטה היא התחלה.',
   'היום זה יום טוב להתחיל.',
@@ -26,10 +25,16 @@ export default function SignupPage() {
   const [err, setErr] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
 
-  const normalizedUsername = useMemo(() => slugifyUsername(username), [username])
+  // Keep username slug stable and enforce the same 25-char limit used in UI.
+  const normalizedUsername = useMemo(() => slugifyUsername(username).slice(0, 25), [username])
 
-  const [lineIdx, setLineIdx] = useState(() => Math.floor(Math.random() * WITTY.length))
+  // NOTE: must be deterministic on the first render to avoid SSR hydration mismatch.
+  const [lineIdx, setLineIdx] = useState(0)
+  const [mounted, setMounted] = useState(false)
   useEffect(() => {
+    // Start from a random line, but only after mount (client-side).
+    setMounted(true)
+    setLineIdx(Math.floor(Math.random() * WITTY.length))
     const t = window.setInterval(() => setLineIdx(i => (i + 1) % WITTY.length), 4200)
     return () => window.clearInterval(t)
   }, [])
@@ -43,7 +48,9 @@ export default function SignupPage() {
     const un = normalizedUsername
 
     if (!dn) return setErr('אנא הזן/י שם תצוגה')
+    if (dn.length > 25) return setErr('שם תצוגה יכול להיות עד 25 תווים')
     if (!un || un.length < 3) return setErr('שם משתמש חייב להיות לפחות 3 תווים (a-z, 0-9, _)')
+    if (un.length > 25) return setErr('שם משתמש יכול להיות עד 25 תווים')
     if (!email.trim() || !password) return setErr('אנא מלא/י אימייל וסיסמה')
 
     const pwCheck = validatePassword(password)
@@ -80,7 +87,8 @@ export default function SignupPage() {
         <div className="space-y-1">
           <h2 className="pd-auth-title text-2xl font-extrabold">הרשמה</h2>
           <p className="pd-auth-subtitle text-sm">
-            <span key={lineIdx} className="pd-witty inline-block">{WITTY[lineIdx]}</span>
+            {/* Render a deterministic line on the server / first paint, then rotate after mount */}
+            <span className="pd-witty inline-block">{mounted ? WITTY[lineIdx] : WITTY[0]}</span>
           </p>
         </div>
 
@@ -91,9 +99,11 @@ export default function SignupPage() {
               className="pd-auth-input w-full rounded-2xl px-4 py-3 text-sm"
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
-              placeholder="למשל: ליאור / אנונימי"
+              placeholder="למשל: lior / ליאור / אנונימי"
+              maxLength={25}
               required
             />
+            
           </div>
 
           <div className="space-y-1">
@@ -102,12 +112,11 @@ export default function SignupPage() {
               className="pd-auth-input w-full rounded-2xl px-4 py-3 text-sm"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              placeholder="pen_writer_12"
+              placeholder="book_writer_12"
+              maxLength={25}
               required
             />
-            <div className="text-xs text-black/55">
-              נשמר כ: <b className="text-black/70">{normalizedUsername || '—'}</b>
-            </div>
+            
           </div>
 
           <div className="space-y-1">
@@ -116,6 +125,7 @@ export default function SignupPage() {
               className="pd-auth-input w-full rounded-2xl px-4 py-3 text-sm"
               type="email"
               autoComplete="email"
+              placeholder='example@gmail.com'
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
@@ -130,6 +140,7 @@ export default function SignupPage() {
               autoComplete="new-password"
               value={password}
               onChange={e => setPassword(e.target.value)}
+              placeholder='( a-z, 0-9, _ )'
               required
             />
             <div className="text-xs text-black/55">{PASSWORD_HINT_HE}</div>
@@ -144,7 +155,7 @@ export default function SignupPage() {
           ) : null}
 
           <p className="text-xs leading-5 text-black/60">
-            בלחיצה על <span className="font-semibold text-black/75">"יצירת משתמש"</span> את/ה מאשר/ת שקראת והסכמת ל־{' '}
+            בלחיצה על <span className="font-semibold text-black/75">&quot;יצירת משתמש&quot;</span> את/ה מאשר/ת שקראת והסכמת ל־{' '}
             <Link href="/terms" className="font-semibold text-blue-700 hover:underline">
               תנאי השימוש
             </Link>{' '}

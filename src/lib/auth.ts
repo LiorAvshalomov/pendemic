@@ -6,7 +6,8 @@ export function slugifyUsername(input: string) {
     .toLowerCase()
     .replace(/\s+/g, '_')
     .replace(/[^a-z0-9_]/g, '')
-    .slice(0, 20)
+    // Keep usernames short to avoid layout breaks across the product.
+    .slice(0, 25)
 }
 
 export async function signIn(email: string, password: string) {
