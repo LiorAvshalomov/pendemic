@@ -9,11 +9,9 @@ import { PASSWORD_HINT_HE, validatePassword } from '@/lib/password'
 import { event as gaEvent } from '@/lib/gtag'
 
 const WITTY = [
-  'תן/י לזה לצאת בעדינות.',
   'שורה אחת יכולה לשנות יום.',
   'פותחים דף חדש.',
   'ברגע אחד קטן מתחילים.',
-  'מחברת אחת. אמת אחת.',
   'לפעמים מספיק רק שורה אחת.',
   'גם טיוטה היא התחלה.',
   'היום זה יום טוב להתחיל.',
