@@ -1,9 +1,11 @@
 import type { Metadata } from "next"
+import Script from "next/script"
 import { Geist, Geist_Mono, Heebo } from "next/font/google"
 import "./globals.css"
 import AuthSync from "@/components/auth/AuthSync"
 import SuspensionSync from "@/components/moderation/SuspensionSync"
 import ClientChrome from "@/components/ClientChrome"
+import PageTracker from "@/components/analytics/PageTracker"
 
 const SITE_URL = "https://tyuta.net"
 
@@ -101,6 +103,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="he" dir="rtl" className={heebo.variable}>
+      <head>
+        {process.env.NODE_ENV === "production" && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_ID}`}
+              strategy="afterInteractive"
+            />
+            <Script id="ga-init" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                window.gtag = gtag;
+                gtag('js', new Date());
+                gtag('config', '${process.env.NEXT_PUBLIC_GA_ID}', {
+                  page_path: window.location.pathname,
+                });
+              `}
+            </Script>
+          </>
+        )}
+      </head>
       <body className={`${heebo.variable} ${geistSans.variable} ${geistMono.variable}  antialiased bg-background text-foreground overflow-x-hidden`}>
         <JsonLd data={organizationSchema} />
         <JsonLd data={websiteSchema} />
@@ -109,6 +132,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <ClientChrome>{children}</ClientChrome>
           </SuspensionSync>
         </AuthSync>
+        <PageTracker />
       </body>
     </html>
   )
