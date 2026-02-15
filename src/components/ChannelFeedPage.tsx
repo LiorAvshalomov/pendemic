@@ -318,7 +318,7 @@ function ListRow({ post }: { post: CardPost }) {
           </div>
 
           {post.excerpt ? (
-            <div className="mt-2 text-sm leading-6 text-foreground/80 line-clamp-2">{post.excerpt}</div>
+            <div className="mt-2 text-sm leading-6 text-foreground/80 line-clamp-2 lg:line-clamp-none lg:overflow-visible lg:text-clip">{post.excerpt}</div>
           ) : null}
 
           {post.tags.length ? (
@@ -339,19 +339,23 @@ function ListRow({ post }: { post: CardPost }) {
 
 function RecentMiniRow({ post }: { post: CardPost }) {
   return (
-    <div className="block rounded border bg-white p-2 hover:shadow-sm">
+    <div className="flex flex-col rounded border bg-white p-2 hover:shadow-sm">
       <Link href={`/post/${post.slug}`} className="block">
         <div className="flex flex-row-reverse items-stretch gap-2">
           <CoverFrame src={post.cover_image_url} w={72} h={72} rounded="rounded"/>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 flex flex-col">
             <div className="text-xs font-bold leading-snug line-clamp-2">{post.title}</div>
             <MedalsCompact medals={post.medals} />
-            {post.excerpt ? <div className="mt-1 text-[11px] text-muted-foreground line-clamp-2">{post.excerpt}</div> : null}
+            {post.excerpt ? (
+              <div className="mt-1 text-[11px] text-muted-foreground line-clamp-2">{post.excerpt}</div>
+            ) : (
+              <div className="mt-1 h-[18px]" aria-hidden="true" />
+            )}
           </div>
         </div>
       </Link>
 
-      <div className="mt-1 text-[11px] text-muted-foreground">
+      <div className="mt-auto pt-1 text-[11px] text-muted-foreground">
         {post.author_name}
         {post.channel_name ? (
           <>

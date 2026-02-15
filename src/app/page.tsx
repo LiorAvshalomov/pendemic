@@ -250,7 +250,7 @@ function FeaturedPost({ post }: { post: CardPost }) {
 
 function SimplePostCard({ post }: { post: CardPost }) {
   return (
-    <article className="group bg-slate-100/70 rounded-xl overflow-hidden shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-[1px] border border-black/10">
+    <article className="group bg-slate-100/70 rounded-xl overflow-hidden shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-[1px] border border-black/10 flex flex-col">
       <Link href={`/post/${post.slug}`} className="block">
         <div className="relative aspect-[4/3] bg-gray-100">
           {post.cover_image_url ? (
@@ -260,7 +260,7 @@ function SimplePostCard({ post }: { post: CardPost }) {
         </div>
       </Link>
 
-      <div className="p-4 text-right">
+      <div className="p-4 text-right flex-1 flex flex-col">
         <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
 
           <div className="min-w-0">
@@ -288,8 +288,10 @@ function SimplePostCard({ post }: { post: CardPost }) {
           <p className="mt-2 text-xs sm:text-sm text-gray-600 leading-relaxed line-clamp-2">
             {truncateText(post.excerpt, 90)}
           </p>
-        ) : null}
-        <div className={`${post.excerpt ? "mt-3" : "mt-4"} flex items-center justify-start gap-2 text-xs text-gray-700`}>
+        ) : (
+          <div className="mt-2 h-[28px]" aria-hidden="true" />
+        )}
+        <div className="mt-auto pt-3 flex items-center justify-start gap-2 text-xs text-gray-700">
           {post.author_username ? (
             <Link href={`/u/${post.author_username}`} className="group/author inline-flex items-center gap-2">
               <Avatar url={post.author_avatar_url} name={post.author_name} size={24} />
@@ -330,7 +332,7 @@ function ListRowCompact({ post }: { post: CardPost }) {
           Specific interactive elements opt-in with pointer-events-auto. */}
       <div className="relative z-20 pointer-events-none">
         {/* In RTL, flex-row-reverse keeps the image on the LEFT (as requested) */}
-        <div className="flex flex-row-reverse items-start gap-4">
+        <div className="flex flex-row-reverse items-stretch gap-4">
           <div className="w-[136px] sm:w-[168px] shrink-0">
             <Link href={`/post/${post.slug}`} className="block pointer-events-auto">
               {/*
@@ -350,7 +352,7 @@ function ListRowCompact({ post }: { post: CardPost }) {
             </Link>
           </div>
 
-          <div className="min-w-0 flex-1 text-right">
+          <div className="min-w-0 flex-1 text-right flex flex-col">
             <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
               <div className="text-xs text-gray-500">
                 <span title={formatDateTimeHe(post.created_at)}>{formatRelativeHe(post.created_at)}
@@ -380,16 +382,16 @@ function ListRowCompact({ post }: { post: CardPost }) {
             </div>
 
 
-            <div className="mt-1.5 min-h-[24px]">
-              {post.excerpt ? (
-                <p className="text-xs sm:text-sm text-gray-600 leading-relaxed line-clamp-2">
-                  {truncateText(post.excerpt, 90)}
-                </p>
-              ) : null}
-            </div>
+            {post.excerpt ? (
+              <p className="mt-1.5 text-xs sm:text-sm text-gray-600 leading-relaxed line-clamp-2 lg:line-clamp-none lg:overflow-visible lg:text-clip">
+                {post.excerpt}
+              </p>
+            ) : (
+              <div className="mt-1.5 h-[24px]" aria-hidden="true" />
+            )}
 
             {/* Author row UNDER excerpt */}
-            <div className="mt-1.5 flex items-center justify-start gap-2 text-xs text-gray-700">
+            <div className="mt-auto pt-1.5 flex items-center justify-start gap-2 text-xs text-gray-700">
               {post.author_username ? (
                 <Link
                   href={`/u/${post.author_username}`}
@@ -439,7 +441,7 @@ function RecentMiniRow({ post }: { post: CardPost }) {
 
       <div className="relative z-20 pointer-events-none">
         {/* In RTL, flex-row-reverse keeps the image on the LEFT (as requested) */}
-        <div className="flex flex-row-reverse items-start gap-3">
+        <div className="flex flex-row-reverse items-stretch gap-3">
           <div className="w-[94px] shrink-0">
             <Link href={`/post/${post.slug}`} className="block pointer-events-auto">
               <div className="relative aspect-square rounded-xl overflow-hidden bg-gray-100">
@@ -455,7 +457,7 @@ function RecentMiniRow({ post }: { post: CardPost }) {
             </Link>
           </div>
 
-          <div className="min-w-0 flex-1 text-right">
+          <div className="min-w-0 flex-1 text-right flex flex-col">
             <div className="text-sm font-black leading-snug">
               <Link href={`/post/${post.slug}`} className="transition-colors hover:text-sky-700 line-clamp-2 block pointer-events-auto">
                 {truncateText(post.title, 48)}
@@ -463,14 +465,14 @@ function RecentMiniRow({ post }: { post: CardPost }) {
             </div>
             <MedalsCompact medals={post.allTimeMedals} />
 
-            <div className="mt-1 min-h-[18px]">
-              {post.excerpt ? (
-                <p className="text-xs text-gray-600 leading-snug line-clamp-1">
-                  {truncateText(post.excerpt, 25)}
-                </p>
-              ) : null}
-            </div>
-            <div className="mt-1 text-[12px] text-gray-500 flex items-center justify-between flex-nowrap min-w-0">
+            {post.excerpt ? (
+              <p className="mt-1 text-xs text-gray-600 leading-snug line-clamp-1">
+                {truncateText(post.excerpt, 25)}
+              </p>
+            ) : (
+              <div className="mt-1 h-[18px]" aria-hidden="true" />
+            )}
+            <div className="mt-auto pt-1 text-[12px] text-gray-500 flex items-center justify-between flex-nowrap min-w-0">
               {post.author_username ? (
                 <Link
                   href={`/u/${post.author_username}`}
