@@ -78,6 +78,30 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Notify post author before hard-deleting the row (best effort)
+  try {
+    const notifPayload: Record<string, unknown> = {
+      post_id: post.id,
+      post_title: post.title,
+      post_slug: post.slug,
+      reason,
+      hard_delete: true,
+    }
+
+    await auth.admin.from('notifications').insert({
+      user_id: post.author_id,
+      actor_id: null,
+      type: 'post_deleted',
+      entity_type: 'post',
+      entity_id: post.id,
+      payload: notifPayload,
+      is_read: false,
+      created_at: new Date().toISOString(),
+    })
+  } catch {
+    // best effort — don't fail the purge
+  }
+
   const { error: delErr } = await auth.admin.from('posts').delete().eq('id', postId)
   if (delErr) return adminError(delErr.message, 500, 'db_error')
 
