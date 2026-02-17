@@ -874,7 +874,7 @@ if (!effectiveChannelId) {
     )
     if (!res.ok) {
       setIsCoverLoading(false)
-      setErrorMsg('לא הצלחתי להביא תמונה')
+      setErrorMsg('לא הצלחתי להביא תמונה תנסה/י לכתוב כותרת ברורה ללא סימנים')
       return
     }
     const json = (await res.json()) as { storagePath?: string | null; signedUrl?: string | null; url?: string }
