@@ -854,7 +854,7 @@ if (!effectiveChannelId) {
 
   const chooseAutoCover = async () => {
     if (!title.trim()) {
-      toast('כדי לבחור קאבר אוטומטי צריך כותרת', 'error')
+      toast('כדי לבחור קאבר אוטומטי צריך כותרת (ללא סימנים)', 'error')
       return
     }
     const postId = isEditMode ? effectivePostId : (await ensureDraft())?.id
@@ -1227,6 +1227,8 @@ if (!effectiveChannelId) {
                   </button>
                 ) : null}
               </div>
+
+              
 
               {coverSource ? (
                 <div className="mt-2 text-xs text-muted-foreground">

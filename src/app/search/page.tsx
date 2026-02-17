@@ -140,6 +140,7 @@ export default function SearchPage() {
         .is('deleted_at', null)
         .eq('channel_id', channelId)
         .not('subcategory_tag_id', 'is', null)
+        .limit(5000)
 
       if (!alive) return
       if (postsErr) {

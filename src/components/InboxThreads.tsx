@@ -69,6 +69,7 @@ export default function InboxThreads() {
         'conversation_id, other_user_id, other_username, other_display_name, other_avatar_url, last_body, last_created_at, unread_count'
       )
       .order('last_created_at', { ascending: false, nullsFirst: false })
+      .limit(100)
 
     if (error) {
       console.error('InboxThreads load error:', error)

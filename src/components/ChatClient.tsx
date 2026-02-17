@@ -189,6 +189,9 @@ export default function ChatClient({ conversationId }: { conversationId: string 
   // seen cache
   const seenIdsRef = useRef<Set<string>>(new Set())
   const sendingRef = useRef(false)
+  const [hasOlderMessages, setHasOlderMessages] = useState(true)
+  const messagesRef = useRef<Msg[]>([])
+  messagesRef.current = messages
 
   const computeIsAtBottom = useCallback(() => {
     const el = listRef.current
@@ -210,14 +213,15 @@ export default function ChatClient({ conversationId }: { conversationId: string 
       .from('messages')
       .select('id, conversation_id, sender_id, body, created_at, read_at')
       .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
+      .limit(200)
 
     if (error) {
       console.error('fetchMessages error:', error)
       return []
     }
 
-    const list = (data ?? []) as Msg[]
+    const list = ((data ?? []) as Msg[]).reverse()
     const s = new Set(seenIdsRef.current)
     for (const m of list) s.add(m.id)
     seenIdsRef.current = s
@@ -225,6 +229,35 @@ export default function ChatClient({ conversationId }: { conversationId: string 
     setMessages(prev => mergeMessagesById(prev, list))
     return list
   }, [conversationId])
+
+  /** Load older messages before the earliest currently loaded. Ready for future "load more" UI. */
+  const fetchOlderMessages = useCallback(async () => {
+    if (!hasOlderMessages) return
+    const oldest = messagesRef.current[0]?.created_at
+    if (!oldest) return
+
+    const { data, error } = await supabase
+      .from('messages')
+      .select('id, conversation_id, sender_id, body, created_at, read_at')
+      .eq('conversation_id', conversationId)
+      .lt('created_at', oldest)
+      .order('created_at', { ascending: false })
+      .limit(200)
+
+    if (error) {
+      console.error('fetchOlderMessages error:', error)
+      return
+    }
+
+    const list = ((data ?? []) as Msg[]).reverse()
+    if (list.length < 200) setHasOlderMessages(false)
+
+    const s = new Set(seenIdsRef.current)
+    for (const m of list) s.add(m.id)
+    seenIdsRef.current = s
+
+    setMessages(prev => mergeMessagesById(prev, list))
+  }, [conversationId, hasOlderMessages])
 
   const markReadNow = useCallback(async () => {
     const { data } = await supabase.auth.getUser()
@@ -286,6 +319,7 @@ export default function ChatClient({ conversationId }: { conversationId: string 
   // reset per conversation
   useEffect(() => {
     setMessages([])
+    setHasOlderMessages(true)
     setLoading(true)
     setUnreadUiVisible(false)
     setStickyDay(null)
@@ -391,6 +425,7 @@ export default function ChatClient({ conversationId }: { conversationId: string 
 
       const list = await fetchMessages()
       if (!mounted) return
+      if (list.length < 200) setHasOlderMessages(false)
 
       setLoading(false)
 
