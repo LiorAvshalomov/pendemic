@@ -13,7 +13,7 @@ const SUPABASE_URLS = [
   // Database A
   'https://dowhdgcvxgzaikmpnchv.supabase.co',
   // Database B
-  'https://asqtprzdoseiikrktgrs.supabase.co',
+  'https://ckhhngglsipovvvgailq.supabase.co',
 ].filter(Boolean)
 
 const supabaseOrigins = Array.from(
@@ -68,7 +68,7 @@ const nextConfig: NextConfig = {
 
       // Supabase Storage (public objects)
       { protocol: 'https', hostname: 'dowhdgcvxgzaikmpnchv.supabase.co', pathname: '/storage/v1/object/public/**' },
-      { protocol: 'https', hostname: 'asqtprzdoseiikrktgrs.supabase.co', pathname: '/storage/v1/object/public/**' },
+      { protocol: 'https', hostname: 'ckhhngglsipovvvgailq.supabase.co', pathname: '/storage/v1/object/public/**' },
     ],
   },
 
