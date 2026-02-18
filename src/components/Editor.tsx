@@ -1274,7 +1274,7 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
         </div>
       )}
 
-      <EditorContent editor={editor} />
+      <EditorContent editor={editor} className="prose max-w-none whitespace-pre-wrap break-words"/>
     </div>
   )
 }
