@@ -127,7 +127,7 @@ function SidebarPostItem({
           {trunc(post.title ?? 'ללא כותרת', isMobile ? 35 : 25)}
         </div>
 
-        <div className="mt-0.5 min-h-[2rem] text-[13px] leading-5 text-neutral-700">
+        <div className="mt-0.5 min-h-[2rem] text-[13px] leading-5 text-neutral-700 ">
           {post.excerpt ? trunc(post.excerpt, isMobile ? 50 : 30) : ''}
         </div>
 
@@ -597,7 +597,10 @@ export default function PostPage() {
         </div>
         </div>
         {post.excerpt ? (
-          <p className="mt-2 text-right text-[16px] leading-8 text-neutral-700">{post.excerpt}</p>
+          <p
+  className="mt-2 text-right text-[16px] leading-8 text-neutral-700 whitespace-normal"
+  style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+>{post.excerpt}</p>
         ) : null}
 
         <div className="mt-10 flex items-start justify-start gap-3" dir="rtl">

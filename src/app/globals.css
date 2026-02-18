@@ -346,3 +346,8 @@ html {
   height: auto !important;
   aspect-ratio: 16 / 9;
 }
+
+.ProseMirror {
+  word-break: break-word;
+  white-space: pre-wrap;
+}
