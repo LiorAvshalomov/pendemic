@@ -19,6 +19,7 @@ type SubcategoryOption = { id: number; name_he: string }
 type TagId = number
 
 const MAX_TAGS = 3
+const CONTENT_MAX = 15_000
 
 type DraftRow = {
   id: string
@@ -52,6 +53,12 @@ const SUBCATEGORY_NAMES_BY_CHANNEL_NAME_HE: Record<string, string[]> = {
   'פריקה': ['וידויים','מחשבות', 'שירים'],
   'סיפורים': ['סיפורים אמיתיים', 'סיפורים קצרים', 'סיפור בהמשכים'],
   'מגזין': ['חדשות', 'ספורט', 'תרבות ובידור', 'דעות', 'טכנולוגיה'],
+}
+
+function extractTextFromDoc(node: JSONContent): string {
+  if (node.type === 'text') return node.text ?? ''
+  if (!node.content) return ''
+  return node.content.map(extractTextFromDoc).join('')
 }
 
 function clampExcerpt(s: string) {
@@ -227,6 +234,8 @@ export default function WritePage() {
     if (initialSnapshot === null) return false
     return initialSnapshot !== currentSnapshot
   }, [isEditMode, initialSnapshot, currentSnapshot])
+
+  const contentLength = useMemo(() => extractTextFromDoc(contentJson).length, [contentJson])
 
   // New post that hasn't created a draft yet: warn if user typed anything
   const hasUnsavedNewPost = useMemo(() => {
@@ -935,6 +944,11 @@ if (!effectiveChannelId) {
       return
     }
 
+    if (contentLength > CONTENT_MAX) {
+      setErrorMsg(`הטקסט ארוך מדי (${contentLength.toLocaleString('he-IL')} תווים). המגבלה היא ${CONTENT_MAX.toLocaleString('he-IL')} תווים.`)
+      return
+    }
+
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
     setSavePending(false)
 
@@ -1370,8 +1384,13 @@ if (!effectiveChannelId) {
         <section className="mt-5 rounded-3xl border bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-sm font-medium">הטקסט</h2>
-            <div className="text-xs text-muted-foreground">
-              {autosaveEnabled ? 'הטקסט נשמר אוטומטית' : 'השינויים לא נשמרים עד שלוחצים שמור'}
+            <div className="flex items-center gap-3">
+              <div className={`text-xs font-medium tabular-nums ${contentLength > CONTENT_MAX ? 'text-red-600 font-semibold' : contentLength >= CONTENT_MAX * 0.9 ? 'text-amber-600' : 'text-muted-foreground'}`}>
+                {contentLength.toLocaleString('he-IL')}/{CONTENT_MAX.toLocaleString('he-IL')}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {autosaveEnabled ? 'הטקסט נשמר אוטומטית' : 'השינויים לא נשמרים עד שלוחצים שמור'}
+              </div>
             </div>
           </div>
           <Editor value={contentJson} onChange={setContentJson} postId={effectivePostId} userId={userId} chaptersEnabled={chaptersEnabled} userPosts={chapterUserPosts} />
