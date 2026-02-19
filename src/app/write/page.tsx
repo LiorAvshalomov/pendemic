@@ -276,6 +276,10 @@ export default function WritePage() {
   const subcatReqSeq = useRef(0)
   const tagsReqSeq = useRef(0)
   const publishingRef = useRef(false)
+  const titleInputRef = useRef<HTMLInputElement>(null)
+  const contentSectionRef = useRef<HTMLElement>(null)
+  const [highlightTitle, setHighlightTitle] = useState(false)
+  const [highlightContent, setHighlightContent] = useState(false)
   // --- Auth guard
   useEffect(() => {
     const run = async () => {
@@ -940,12 +944,18 @@ if (!effectiveChannelId) {
     try {
 
     if (title.trim().length > TITLE_MAX) {
-      setErrorMsg(`הכותרת יכולה להכיל עד ${TITLE_MAX} תווים`)
+      toast(`הכותרת יכולה להכיל עד ${TITLE_MAX} תווים`, 'error')
+      titleInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setHighlightTitle(true)
+      setTimeout(() => setHighlightTitle(false), 2500)
       return
     }
 
     if (contentLength > CONTENT_MAX) {
-      setErrorMsg(`הטקסט ארוך מדי (${contentLength.toLocaleString('he-IL')} תווים). המגבלה היא ${CONTENT_MAX.toLocaleString('he-IL')} תווים.`)
+      toast(`הטקסט ארוך מדי (${contentLength.toLocaleString('he-IL')} תווים). המגבלה היא ${CONTENT_MAX.toLocaleString('he-IL')} תווים.`, 'error')
+      contentSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setHighlightContent(true)
+      setTimeout(() => setHighlightContent(false), 2500)
       return
     }
 
@@ -1259,11 +1269,12 @@ if (!effectiveChannelId) {
                 </div>
               </div>
               <input
+                ref={titleInputRef}
                 value={title}
                 onChange={e => setTitle(e.target.value.slice(0, TITLE_MAX))}
                 maxLength={TITLE_MAX}
                 placeholder="תן שם לכותרת..."
-                className="mt-2 w-full rounded-2xl border px-4 py-3 text-base outline-none focus:ring-2 focus:ring-black/10"
+                className={`mt-2 w-full rounded-2xl border px-4 py-3 text-base outline-none transition-shadow duration-500 focus:ring-2 focus:ring-black/10 ${highlightTitle ? 'ring-2 ring-red-400 shadow-[0_0_0_4px_rgb(248_113_113_/_0.15)]' : ''}`}
               />
 
               <div className="mt-4 flex items-center justify-between gap-3">
@@ -1381,7 +1392,7 @@ if (!effectiveChannelId) {
           </div>
         </section>
 
-        <section className="mt-5 rounded-3xl border bg-white p-4 shadow-sm">
+        <section ref={contentSectionRef} className={`mt-5 rounded-3xl border bg-white p-4 shadow-sm transition-shadow duration-500 ${highlightContent ? 'ring-2 ring-red-400 shadow-[0_0_0_4px_rgb(248_113_113_/_0.15)]' : ''}`}>
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-sm font-medium">הטקסט</h2>
             <div className="flex items-center gap-3">

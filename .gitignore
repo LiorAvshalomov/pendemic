@@ -18,8 +18,11 @@
 /out/
 
 # db files
-/docs
-/docs/db
+db/
+supabase/
+
+.claude/
+.vscode/
 
 # production
 /build
@@ -43,3 +46,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.claude/settings.local.json
+/.claude
+.claude/settings.local.json
