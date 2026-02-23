@@ -91,6 +91,7 @@ const nextConfig: NextConfig = {
               `img-src ${imgSrc}`,
               "font-src 'self'",
               `connect-src ${connectSrc}`,
+              "frame-src https://www.youtube.com https://www.youtube-nocookie.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

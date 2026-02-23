@@ -1,7 +1,9 @@
 import React from 'react'
+import { RICHTEXT_TYPOGRAPHY } from '@/lib/richtextStyles'
 
 type Mark = {
   type: 'bold' | 'italic' | string
+  attrs?: Record<string, unknown>
 }
 
 type Attrs = {
@@ -56,6 +58,15 @@ function toYouTubeNoCookieEmbed(src: string): string | null {
   }
 }
 
+/** Allow only http/https URLs and internal /path or #anchor refs. */
+function sanitizeHref(href: unknown): string | null {
+  if (typeof href !== 'string') return null
+  const h = href.trim()
+  if (h.startsWith('/') || h.startsWith('#')) return h
+  if (/^https?:\/\//i.test(h)) return h
+  return null
+}
+
 function renderText(node: RichNode, key: string) {
   const text = node.text ?? ''
   const marks = node.marks ?? []
@@ -76,6 +87,30 @@ function renderText(node: RichNode, key: string) {
   for (const mark of marks) {
     if (mark.type === 'bold') out = <strong key={`${key}-b`}>{out}</strong>
     if (mark.type === 'italic') out = <em key={`${key}-i`}>{out}</em>
+    if (mark.type === 'underline') out = <u key={`${key}-u`}>{out}</u>
+    if (mark.type === 'highlight') {
+      const color = typeof mark.attrs?.['color'] === 'string' ? mark.attrs['color'] : undefined
+      out = <mark key={`${key}-hl`} style={color ? { backgroundColor: color } : undefined}>{out}</mark>
+    }
+    if (mark.type === 'textStyle') {
+      const color = typeof mark.attrs?.['color'] === 'string' ? mark.attrs['color'] : undefined
+      if (color) out = <span key={`${key}-ts`} style={{ color }}>{out}</span>
+    }
+    if (mark.type === 'link') {
+      const href = sanitizeHref(mark.attrs?.['href'])
+      if (href) {
+        const isExternal = /^https?:\/\//i.test(href)
+        out = (
+          <a
+            key={`${key}-a`}
+            href={href}
+            {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+          >
+            {out}
+          </a>
+        )
+      }
+    }
   }
 
   return <React.Fragment key={key}>{out}</React.Fragment>
@@ -210,12 +245,12 @@ export default function RichText({ content }: Props) {
       ? content
       : { type: 'doc', content: [{ type: 'paragraph', content: [] }] }
 
-return (
-  <div
-    dir="rtl"
-    className="w-full max-w-[72ch] ml-auto text-right break-words text-[16px] leading-8 text-neutral-900 dark:text-foreground [&_p]:my-2 [&_p]:leading-5 [&_h2]:text-3xl [&_h2]:font-black [&_h2]:mt-10 [&_h2]:mb-4 [&_h3]:text-2xl [&_h3]:font-bold [&_h3]:mt-8 [&_h3]:mb-3 [&_h4]:text-xl [&_h4]:font-bold [&_h4]:mt-7 [&_h4]:mb-2 [&_ul]:my-4 [&_ul]:pr-6 [&_ul]:list-disc [&_ol]:my-4 [&_ol]:pr-6 [&_ol]:list-decimal [&_li]:my-1 [&_li]:leading-7 [&_a]:text-blue-700 dark:[&_a]:text-blue-400 [&_a]:underline-offset-4 hover:[&_a]:underline [&_blockquote]:my-6 [&_blockquote]:border-r-4 [&_blockquote]:border-neutral-300 dark:[&_blockquote]:border-neutral-600/50 [&_blockquote]:pr-4 [&_blockquote]:text-neutral-700 dark:[&_blockquote]:text-muted-foreground [&_img]:my-4 [&_img]:max-w-full [&_img]:rounded-2xl"
-  >
-    {renderNode(normalized, 'root')}
-  </div>
+  return (
+    <div
+      dir="rtl"
+      className={`richtext-viewer w-full max-w-[72ch] ml-auto whitespace-pre-wrap ${RICHTEXT_TYPOGRAPHY}`}
+    >
+      {renderNode(normalized, 'root')}
+    </div>
   )
 }

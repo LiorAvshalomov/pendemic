@@ -27,7 +27,7 @@ type Author = {
   avatar_url: string | null
 }
 
-type Channel = { name_he: string | null }
+type Channel = { name_he: string | null; slug: string | null }
 
 type PostRow = {
   id: string
@@ -41,6 +41,7 @@ type PostRow = {
   created_at: string
   author_id: string
   channel_id: number | null
+  subcategory_tag_id: number | null
   author: Author[] | Author | null
   channel: Channel[] | Channel | null
 }
@@ -195,6 +196,8 @@ export default function PostPage() {
   const [hotInChannel, setHotInChannel] = useState<SidebarPost[]>([])
   const [myUserId, setMyUserId] = useState<string | null>(null)
   const [medals, setMedals] = useState<{ gold: number; silver: number; bronze: number }>({ gold: 0, silver: 0, bronze: 0 })
+  const [subcategoryName, setSubcategoryName] = useState<string | null>(null)
+  const [postTags, setPostTags] = useState<string[]>([])
 
   // report post
   type ReportReasonCode = 'abusive_language' | 'spam_promo' | 'hate_incitement' | 'privacy_exposure' | 'other'
@@ -306,6 +309,45 @@ export default function PostPage() {
   }, [loading, post])
 
   useEffect(() => {
+    setSubcategoryName(null)
+    setPostTags([])
+    if (!post?.id) return
+
+    let cancelled = false
+
+    const fetchTaxonomy = async () => {
+      const subcatId = post.subcategory_tag_id
+
+      // Subcategory name
+      if (subcatId) {
+        const { data } = await supabase.from('tags').select('name_he').eq('id', subcatId).single()
+        if (!cancelled) setSubcategoryName(data?.name_he ?? null)
+      }
+
+      // Post tags
+      const { data: ptRows } = await supabase
+        .from('post_tags')
+        .select('tag_id')
+        .eq('post_id', post.id)
+
+      const tagIds = (ptRows ?? []).map((r: { tag_id: number }) => r.tag_id).filter(Boolean)
+      if (tagIds.length === 0 || cancelled) return
+
+      const { data: tagsData } = await supabase
+        .from('tags')
+        .select('id, name_he')
+        .in('id', tagIds)
+
+      if (!cancelled) {
+        setPostTags((tagsData ?? []).map((t: { id: number; name_he: string | null }) => t.name_he).filter((n): n is string => Boolean(n)))
+      }
+    }
+
+    fetchTaxonomy()
+    return () => { cancelled = true }
+  }, [post?.id, post?.subcategory_tag_id])
+
+  useEffect(() => {
     if (!slug) return
 
     let cancelled = false
@@ -333,7 +375,8 @@ export default function PostPage() {
           created_at,
           author_id,
           channel_id,
-          channel:channels ( name_he ),
+          subcategory_tag_id,
+          channel:channels ( name_he, slug ),
           author:profiles!posts_author_id_fkey ( id, username, display_name, avatar_url )
         `
         )
@@ -805,7 +848,35 @@ export default function PostPage() {
         <RichText content={post.content_json as RichNode} />
       </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 mt-2 [&_button]:h-10 [&_button]:rounded-xl [&_button]:border [&_button]:border-neutral-200 dark:[&_button]:border-border [&_button]:transition-all [&_button]:duration-100 [&_button:hover]:bg-neutral-100/70 dark:[&_button:hover]:bg-muted/70 [&_button:active]:scale-[0.98]">
+      {(subcategoryName || postTags.length > 0) && (() => {
+        const ch = post.channel ? (Array.isArray(post.channel) ? post.channel[0] : post.channel) : null
+        const channelSlug = ch?.slug ?? null
+        return (
+          <div dir="rtl" className="mt-6 pt-4 border-t border-neutral-200 dark:border-border flex flex-wrap items-center gap-2">
+            {subcategoryName && (
+              <>
+                {channelSlug && post.subcategory_tag_id ? (
+                  <Link
+                    href={`/search?channel=${channelSlug}&subcat=${post.subcategory_tag_id}`}
+                    className="inline-flex items-center rounded-full px-2.5 py-0.5 text-sm font-semibold border border-border bg-muted/30 hover:bg-muted/60 hover:border-foreground/30 transition-colors no-underline"
+                  >
+                    {subcategoryName}
+                  </Link>
+                ) : (
+                  <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-sm font-semibold border border-border bg-muted/30">
+                    {subcategoryName}
+                  </span>
+                )}
+              </>
+            )}
+            {postTags.map((tag) => (
+              <span key={tag} className="text-sm text-muted-foreground">#{tag}</span>
+            ))}
+          </div>
+        )
+      })()}
+
+          <div className="flex flex-wrap items-center justify-between gap-2 mt-4 [&_button]:h-10 [&_button]:rounded-xl [&_button]:border [&_button]:border-neutral-200 dark:[&_button]:border-border [&_button]:transition-all [&_button]:duration-100 [&_button:hover]:bg-neutral-100/70 dark:[&_button:hover]:bg-muted/70 [&_button:active]:scale-[0.98]">
             <div className="flex items-center gap-2">
               <SavePostButton postId={post.id} />
               {author?.id && myUserId && author.id !== myUserId && authorUsername ? (

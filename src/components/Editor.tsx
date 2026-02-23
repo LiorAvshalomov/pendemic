@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { EditorContent, JSONContent, useEditor, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react'
+import { RICHTEXT_TYPOGRAPHY } from '@/lib/richtextStyles'
 import type { NodeViewProps } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 
@@ -508,6 +509,7 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
   const [showStyle, setShowStyle] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [ytError, setYtError] = useState('')
+  const [, forceUpdate] = useState(0)
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const chaptersContainerRef = useRef<HTMLDivElement>(null)
@@ -770,6 +772,18 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showChapters])
+
+  // Keep toolbar in sync with cursor/selection changes
+  useEffect(() => {
+    if (!editor) return
+    const sync = () => forceUpdate(n => n + 1)
+    editor.on('selectionUpdate', sync)
+    editor.on('transaction', sync)
+    return () => {
+      editor.off('selectionUpdate', sync)
+      editor.off('transaction', sync)
+    }
+  }, [editor])
 
   const updateChapters = useCallback((newItems: ChapterItem[]) => {
     chaptersRef.current = newItems
@@ -1281,7 +1295,7 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
         </div>
       )}
 
-      <EditorContent editor={editor} className="prose max-w-none whitespace-pre-wrap break-words"/>
+      <EditorContent editor={editor} className={`${RICHTEXT_TYPOGRAPHY} whitespace-pre-wrap [&_[data-highlight]]:text-neutral-900 [&_mark[data-color]]:text-neutral-900`}/>
     </div>
   )
 }
