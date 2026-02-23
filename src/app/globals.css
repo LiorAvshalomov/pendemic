@@ -385,13 +385,14 @@ html {
   border-right-color: oklch(1 0 0 / 25%);
 }
 
-/* Highlight (mark): TipTap inlines light-colored backgrounds. Force dark text so
-   yellow/pink/green/blue highlights remain readable on dark editor background.
-   No !important needed: TipTap never puts `color` in mark's own inline style, so
-   this class rule already beats any inherited color from ancestor spans.
-   Inline color spans INSIDE the mark still win (their own inline style overrides). */
-.dark .ProseMirror mark {
-  color: oklch(0.145 0 0);
+/* Highlight (mark): TipTap renders <mark style="background-color:…; color: inherit">.
+   The inline `color: inherit` (specificity 1000) beats any plain CSS rule, so we need
+   !important here to guarantee dark readable text on colored highlight backgrounds.
+   This only affects .ProseMirror descendants — viewer uses its own [&_mark] class rule. */
+.dark .ProseMirror mark,
+.dark .ProseMirror mark[data-color],
+.dark .ProseMirror [data-highlight] {
+  color: oklch(0.145 0 0) !important;
 }
 
 /* Highlight swatch buttons in the editor toolbar share the same light-bg problem:
