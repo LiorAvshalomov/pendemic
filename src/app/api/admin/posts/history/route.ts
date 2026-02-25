@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { requireAdminFromRequest } from '@/lib/admin/requireAdminFromRequest'
 import { adminError, adminOk } from '@/lib/admin/adminHttp'
 
-const VALID_ACTIONS = new Set(['soft_delete', 'admin_soft_hide', 'hard_delete', 'admin_hard_delete'])
+const VALID_ACTIONS    = new Set(['soft_delete', 'admin_soft_hide', 'hard_delete', 'admin_hard_delete'])
 const VALID_ACTOR_KINDS = new Set(['user', 'admin', 'system'])
 
 type ProfileRow = {
@@ -23,29 +23,59 @@ export async function GET(req: NextRequest) {
 
   const sb = auth.admin as unknown as SupabaseClient
 
-  const url = new URL(req.url)
-  const action     = url.searchParams.get('action')     ?? ''
-  const actorKind  = url.searchParams.get('actor_kind') ?? ''
-  const q          = (url.searchParams.get('q') ?? '').trim()
-  const from       = url.searchParams.get('from')       ?? ''
-  const to         = url.searchParams.get('to')         ?? ''
+  const url       = new URL(req.url)
+  const action    = url.searchParams.get('action')     ?? ''
+  const actorKind = url.searchParams.get('actor_kind') ?? ''
+  const q         = (url.searchParams.get('q')      ?? '').trim()
+  const author    = (url.searchParams.get('author')  ?? '').trim()
+  const from      = url.searchParams.get('from')       ?? ''
+  const to        = url.searchParams.get('to')         ?? ''
 
   const rawLimit  = parseInt(url.searchParams.get('limit')  ?? '50', 10)
   const rawOffset = parseInt(url.searchParams.get('offset') ?? '0',  10)
   const limit  = Math.min(Math.max(Number.isFinite(rawLimit)  ? rawLimit  : 50, 1), 100)
   const offset = Math.max(Number.isFinite(rawOffset) ? rawOffset : 0, 0)
 
-  // q-filter is applied in-process (JSONB full-text via PostgREST is limited).
-  // We over-fetch by 4× limit when q is active so pagination stays reasonable.
-  const fetchLimit = q ? Math.min(limit * 4, 400) : limit
+  // ── Author pre-filter ────────────────────────────────────────────────────────
+  // Resolve display_name ILIKE → matching author IDs before querying events.
+  // Returns null when author param is absent (no filter), empty set when no match
+  // (caller should short-circuit and return 0 results).
+  let matchingAuthorIds: Set<string> | null = null
+
+  if (author) {
+    const { data: profMatches, error: profErr } = await sb
+      .from('profiles')
+      .select('id')
+      .ilike('display_name', `%${author}%`)
+      .limit(500)
+
+    if (profErr) return adminError(profErr.message, 500, 'db_error')
+
+    matchingAuthorIds = new Set(
+      (Array.isArray(profMatches) ? profMatches : [])
+        .filter(isRecord)
+        .map(p => p.id)
+        .filter((id): id is string => typeof id === 'string'),
+    )
+
+    // No profiles match → no events can match either
+    if (matchingAuthorIds.size === 0) {
+      return adminOk({ events: [], total: 0 })
+    }
+  }
+
+  // ── Build deletion_events query ──────────────────────────────────────────────
+  // Over-fetch when in-process filters (q / author) are active.
+  const needsInProcessFilter = q.length > 0 || matchingAuthorIds !== null
+  const fetchLimit = needsInProcessFilter ? Math.min(limit * 8, 800) : limit
 
   let query = sb
     .from('deletion_events')
     .select('*', { count: 'exact' })
     .order('created_at', { ascending: false })
 
-  if (action && VALID_ACTIONS.has(action))         query = query.eq('action', action)
-  if (actorKind && VALID_ACTOR_KINDS.has(actorKind)) query = query.eq('actor_kind', actorKind)
+  if (action    && VALID_ACTIONS.has(action))          query = query.eq('action',     action)
+  if (actorKind && VALID_ACTOR_KINDS.has(actorKind))   query = query.eq('actor_kind', actorKind)
   if (from) query = query.gte('created_at', from)
   if (to) {
     const toEnd = new Date(to)
@@ -53,7 +83,7 @@ export async function GET(req: NextRequest) {
     query = query.lt('created_at', toEnd.toISOString())
   }
 
-  if (!q) {
+  if (!needsInProcessFilter) {
     query = query.range(offset, offset + fetchLimit - 1)
   }
 
@@ -62,19 +92,29 @@ export async function GET(req: NextRequest) {
 
   let events = (Array.isArray(data) ? data : []) as Record<string, unknown>[]
 
-  // In-process q filter on snapshot title/slug
+  // ── In-process filters ───────────────────────────────────────────────────────
   if (q) {
     const ql = q.toLowerCase()
     events = events.filter((ev) => {
-      const snap = isRecord(ev.post_snapshot) ? ev.post_snapshot : {}
+      const snap  = isRecord(ev.post_snapshot) ? ev.post_snapshot : {}
       const title = typeof snap.title === 'string' ? snap.title.toLowerCase() : ''
       const slug  = typeof snap.slug  === 'string' ? snap.slug.toLowerCase()  : ''
       return title.includes(ql) || slug.includes(ql)
     })
-    events = events.slice(offset, offset + limit)
   }
 
-  // Collect unique user IDs for batch profile fetch
+  if (matchingAuthorIds !== null) {
+    events = events.filter((ev) => {
+      const snap     = isRecord(ev.post_snapshot) ? ev.post_snapshot : {}
+      const authorId = typeof snap.author_id === 'string' ? snap.author_id : null
+      return authorId !== null && matchingAuthorIds!.has(authorId)
+    })
+  }
+
+  const filteredTotal = needsInProcessFilter ? events.length : (count ?? 0)
+  events = events.slice(offset, offset + limit)
+
+  // ── Batch profile enrichment ─────────────────────────────────────────────────
   const profileIds = new Set<string>()
   for (const ev of events) {
     if (typeof ev.actor_user_id === 'string') profileIds.add(ev.actor_user_id)
@@ -105,5 +145,5 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  return adminOk({ events: enriched, total: count ?? 0 })
+  return adminOk({ events: enriched, total: filteredTotal })
 }
