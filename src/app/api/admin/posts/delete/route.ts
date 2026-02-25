@@ -15,6 +15,9 @@ type PostRow = {
   published_at: string | null
   deleted_at: string | null
   moderated_at: string | null
+  channel_id: string | null
+  is_anonymous: boolean | null
+  created_at: string | null
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -46,7 +49,7 @@ export async function POST(req: NextRequest) {
   // Load post (need author + title + previous state)
   const { data: postRaw, error: postErr } = await sb
     .from("posts")
-    .select("id, author_id, title, slug, status, published_at, deleted_at, moderated_at")
+    .select("id, author_id, title, slug, status, published_at, deleted_at, moderated_at, channel_id, is_anonymous, created_at")
     .eq("id", postId)
     .maybeSingle()
 
@@ -106,7 +109,31 @@ export async function POST(req: NextRequest) {
     return adminOk({ warning: `Post hidden, but notification failed: ${notifErr.message}` })
   }
 
-  // Audit log (optional table; ignore if missing)
+  // Audit: deletion_events (immutable history)
+  try {
+    await sb.from("deletion_events").insert({
+      action: "admin_soft_hide",
+      actor_user_id: auth.user.id,
+      actor_kind: "admin",
+      target_post_id: post.id,
+      post_snapshot: {
+        title: post.title,
+        slug: post.slug,
+        author_id: post.author_id,
+        channel_id: post.channel_id,
+        status: post.status,
+        published_at: post.published_at,
+        is_anonymous: post.is_anonymous,
+        created_at: post.created_at,
+      },
+      reason,
+      created_at: now,
+    })
+  } catch {
+    // best effort
+  }
+
+  // Audit: moderation_actions (legacy, keep for backward compat)
   try {
     await sb.from("moderation_actions").insert({
       actor_id: auth.user.id,

@@ -9,6 +9,11 @@ type PostLite = {
   author_id: string
   title: string | null
   slug: string | null
+  channel_id: string | null
+  status: string | null
+  published_at: string | null
+  is_anonymous: boolean | null
+  created_at: string | null
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -35,7 +40,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error: postErr } = await auth.admin
     .from('posts')
-    .select('id, author_id, title, slug')
+    .select('id, author_id, title, slug, channel_id, status, published_at, is_anonymous, created_at')
     .eq('id', postId)
     .maybeSingle()
 
@@ -102,10 +107,32 @@ export async function POST(req: NextRequest) {
     // best effort — don't fail the purge
   }
 
-  const { error: delErr } = await auth.admin.from('posts').delete().eq('id', postId)
-  if (delErr) return adminError(delErr.message, 500, 'db_error')
+  // Audit logs BEFORE delete — any FK to posts.id must resolve while row still exists
+  const auditTs = new Date().toISOString()
 
-  // Optional audit trail
+  try {
+    await auth.admin.from('deletion_events').insert({
+      action: 'admin_hard_delete',
+      actor_user_id: auth.user.id,
+      actor_kind: 'admin',
+      target_post_id: post.id,
+      post_snapshot: {
+        title: post.title,
+        slug: post.slug,
+        author_id: post.author_id,
+        channel_id: post.channel_id,
+        status: post.status,
+        published_at: post.published_at,
+        is_anonymous: post.is_anonymous,
+        created_at: post.created_at,
+      },
+      reason,
+      created_at: auditTs,
+    })
+  } catch {
+    // best effort — don't block the purge
+  }
+
   try {
     await auth.admin.from('moderation_actions').insert({
       actor_id: auth.user.id,
@@ -113,11 +140,14 @@ export async function POST(req: NextRequest) {
       post_id: post.id,
       action: 'post_purged',
       reason,
-      created_at: new Date().toISOString(),
+      created_at: auditTs,
     } as never)
   } catch {
-    // ignore
+    // ignore if table/column schema differs
   }
+
+  const { error: delErr } = await auth.admin.from('posts').delete().eq('id', postId)
+  if (delErr) return adminError(delErr.message, 500, 'db_error')
 
   return adminOk({})
 }

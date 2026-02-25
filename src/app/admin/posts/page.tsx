@@ -11,6 +11,7 @@ import ErrorBanner from '@/components/admin/ErrorBanner'
 import EmptyState from '@/components/admin/EmptyState'
 import { TableSkeleton } from '@/components/admin/AdminSkeleton'
 import { FileText, Search, RefreshCw, Trash2, RotateCcw, ExternalLink, MoreHorizontal } from 'lucide-react'
+import DeletionHistoryTab from '@/components/admin/DeletionHistoryTab'
 
 type AuthorProfile = {
   id: string
@@ -54,14 +55,15 @@ function authorLabel(p: PostRow): string {
   return fmtName(a, p.author_id)
 }
 
-type FilterVal = 'all' | 'active' | 'deleted' | 'published' | 'draft'
+type FilterVal = 'all' | 'active' | 'deleted' | 'published' | 'draft' | 'history'
 
 const FILTER_OPTIONS: { value: FilterVal; label: string }[] = [
-  { value: 'active', label: 'פעילים' },
+  { value: 'active',   label: 'פעילים' },
   { value: 'published', label: 'פורסמו' },
-  { value: 'draft', label: 'טיוטות' },
-  { value: 'deleted', label: 'נמחקו' },
-  { value: 'all', label: 'הכל' },
+  { value: 'draft',    label: 'טיוטות' },
+  { value: 'deleted',  label: 'נמחקו' },
+  { value: 'all',      label: 'הכל' },
+  { value: 'history',  label: 'היסטוריה' },
 ]
 
 export default function AdminPostsPage() {
@@ -71,13 +73,14 @@ export default function AdminPostsPage() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
 
-  const [modal, setModal] = useState<{ post: PostRow; reason: string } | null>(null)
+  const [modal, setModal] = useState<{ post: PostRow; reason: string; mode: 'soft' | 'hard' } | null>(null)
   const [busy, setBusy] = useState(false)
 
   // Mobile action menu
   const [mobileMenu, setMobileMenu] = useState<string | null>(null)
 
   async function load() {
+    if (filter === 'history') return
     setLoading(true)
     setErr(null)
     try {
@@ -200,6 +203,11 @@ export default function AdminPostsPage() {
 
       <FilterTabs value={filter} onChange={setFilter} options={FILTER_OPTIONS} />
 
+      {filter === 'history' ? (
+        <DeletionHistoryTab />
+      ) : (
+        <>
+
       {err && <ErrorBanner message={err} onRetry={load} />}
 
       {loading ? (
@@ -279,7 +287,7 @@ export default function AdminPostsPage() {
                     {!isRemoved ? (
                       <button
                         type="button"
-                        onClick={() => setModal({ post: p, reason: '' })}
+                        onClick={() => setModal({ post: p, reason: '', mode: 'soft' })}
                         className="inline-flex items-center gap-1 rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-800"
                       >
                         <Trash2 size={12} />
@@ -297,7 +305,7 @@ export default function AdminPostsPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setModal({ post: p, reason: '' })}
+                          onClick={() => setModal({ post: p, reason: '', mode: 'hard' })}
                           className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
                         >
                           <Trash2 size={12} />
@@ -331,7 +339,7 @@ export default function AdminPostsPage() {
                           <button
                             type="button"
                             className="block w-full px-3 py-2 text-right text-xs font-medium text-red-600 hover:bg-red-50"
-                            onClick={() => { setModal({ post: p, reason: '' }); setMobileMenu(null) }}
+                            onClick={() => { setModal({ post: p, reason: '', mode: 'soft' }); setMobileMenu(null) }}
                           >
                             מחק
                           </button>
@@ -347,7 +355,7 @@ export default function AdminPostsPage() {
                             <button
                               type="button"
                               className="block w-full px-3 py-2 text-right text-xs font-medium text-red-600 hover:bg-red-50"
-                              onClick={() => { setModal({ post: p, reason: '' }); setMobileMenu(null) }}
+                              onClick={() => { setModal({ post: p, reason: '', mode: 'hard' }); setMobileMenu(null) }}
                             >
                               מחק לצמיתות
                             </button>
@@ -369,6 +377,9 @@ export default function AdminPostsPage() {
         </div>
       )}
 
+        </>
+      )}
+
       {/* Delete Modal */}
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl">
@@ -378,9 +389,13 @@ export default function AdminPostsPage() {
             aria-hidden="true"
           />
           <div className="relative w-full max-w-lg rounded-xl border border-neutral-200 bg-white p-6 shadow-xl">
-            <h2 className="text-base font-bold text-neutral-900">מחיקת פוסט</h2>
+            <h2 className="text-base font-bold text-neutral-900">
+              {modal.mode === 'hard' ? 'מחיקה לצמיתות' : 'מחיקת פוסט'}
+            </h2>
             <p className="mt-1 text-sm text-neutral-500">
-              המחיקה הזמנית היא הסתרה ע&quot;י אדמין (לא נכנס ל־Trash של המשתמש). בעל הפוסט יקבל התראה.
+              {modal.mode === 'hard'
+                ? 'פעולה בלתי הפיכה — הפוסט וכל התוכן הקשור ימחקו לצמיתות.'
+                : 'המחיקה הזמנית היא הסתרה ע\u0022י אדמין (לא נכנס ל־Trash של המשתמש). בעל הפוסט יקבל התראה.'}
             </p>
 
             <div className="mt-4 rounded-lg bg-neutral-50 p-3">
@@ -410,22 +425,24 @@ export default function AdminPostsPage() {
               >
                 ביטול
               </button>
+              {modal.mode === 'soft' && (
+                <button
+                  type="button"
+                  onClick={doSoftDelete}
+                  className={
+                    'rounded-lg px-4 py-2 text-sm font-medium text-white ' +
+                    (!canSubmitDelete || isAlreadyRemoved
+                      ? 'cursor-not-allowed bg-neutral-300'
+                      : 'bg-neutral-900 hover:bg-neutral-800')
+                  }
+                  disabled={!canSubmitDelete || isAlreadyRemoved}
+                >
+                  מחק זמנית
+                </button>
+              )}
               <button
                 type="button"
-                onClick={doSoftDelete}
-                className={
-                  'rounded-lg px-4 py-2 text-sm font-medium text-white ' +
-                  (!canSubmitDelete || isAlreadyRemoved
-                    ? 'cursor-not-allowed bg-neutral-300'
-                    : 'bg-neutral-900 hover:bg-neutral-800')
-                }
-                disabled={!canSubmitDelete || isAlreadyRemoved}
-              >
-                מחק זמנית
-              </button>
-              <button
-                type="button"
-                disabled={!canSubmitDelete || isAlreadyRemoved}
+                disabled={!canSubmitDelete}
                 onClick={doHardDelete}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40"
               >
