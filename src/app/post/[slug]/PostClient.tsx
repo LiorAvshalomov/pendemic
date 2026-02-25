@@ -662,7 +662,7 @@ export default function PostPage() {
           </Link>
 
           <div className="min-w-0 text-right">
-            <div className="text-[15px] font-extrabold text-neutral-950 dark:text-foreground">
+            <div className="flex items-center gap-2 text-[15px] font-extrabold text-neutral-950 dark:text-foreground">
               {authorUsername ? (
                 <Link href={`/u/${authorUsername}`} className="hover:underline">
                   {authorName}
@@ -670,6 +670,12 @@ export default function PostPage() {
               ) : (
                 authorName
               )}
+              {author?.id ? (
+                <>
+                  <span className="text-muted-foreground/50 font-normal text-sm select-none">·</span>
+                  <FollowButton targetUserId={author.id} variant="text" />
+                </>
+              ) : null}
             </div>
 
             <div className="mt-1 text-[13px] text-neutral-600 dark:text-muted-foreground">
@@ -856,46 +862,62 @@ export default function PostPage() {
         <RichText content={post.content_json as RichNode} />
       </div>
 
-      {(subcategoryName || postTags.length > 0) && (() => {
+      {(() => {
         const ch = post.channel ? (Array.isArray(post.channel) ? post.channel[0] : post.channel) : null
         const channelSlug = ch?.slug ?? null
+        const hasTaxonomy = !!(subcategoryName || postTags.length > 0)
         return (
-          <div dir="rtl" className="mt-6 pt-4 border-t border-neutral-200 dark:border-border flex flex-wrap items-center gap-2">
-            {subcategoryName && (
-              <>
-                {channelSlug && post.subcategory_tag_id ? (
-                  <Link
-                    href={`/search?channel=${channelSlug}&subcat=${post.subcategory_tag_id}`}
-                    className="inline-flex items-center rounded-full px-2.5 py-0.5 text-sm font-semibold border border-border bg-muted/30 hover:bg-muted/60 hover:border-foreground/30 transition-colors no-underline"
-                  >
-                    {subcategoryName}
-                  </Link>
-                ) : (
-                  <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-sm font-semibold border border-border bg-muted/30">
-                    {subcategoryName}
-                  </span>
-                )}
-              </>
-            )}
-            {postTags.map((tag) => (
-              <span key={tag} className="text-sm text-muted-foreground">#{tag}</span>
-            ))}
-          </div>
-        )
-      })()}
+          <div className="flex w-full items-center justify-between gap-3 mt-4 pt-4 border-t border-border/60" dir="rtl">
+            {/* RIGHT in RTL (first in DOM): taxonomy */}
+            {hasTaxonomy && (() => {
+              const subcatNode = subcategoryName
+                ? channelSlug && post.subcategory_tag_id
+                  ? (
+                    <Link
+                      href={`/search?channel=${channelSlug}&subcat=${post.subcategory_tag_id}`}
+                      className="font-semibold hover:underline"
+                    >
+                      {subcategoryName}
+                    </Link>
+                  ) : (
+                    <span className="font-semibold">{subcategoryName}</span>
+                  )
+                : null
 
-          <div className="flex flex-wrap items-center justify-between gap-2 mt-4 [&_button]:h-10 [&_button]:rounded-xl [&_button]:border [&_button]:border-neutral-200 dark:[&_button]:border-border [&_button]:transition-all [&_button]:duration-100 [&_button:hover]:bg-neutral-100/70 dark:[&_button:hover]:bg-muted/70 [&_button:active]:scale-[0.98]">
-            <div className="flex items-center gap-2">
+              const tagsNode = postTags.length > 0
+                ? postTags.map((tag) => (
+                    <span key={tag} className="text-muted-foreground/70">#{tag}</span>
+                  ))
+                : null
+
+              return (
+                <div className="min-w-0 flex-1 text-sm text-muted-foreground">
+                  {/* Mobile: stacked 2 lines */}
+                  <div className="flex flex-col gap-0.5 sm:hidden">
+                    {subcatNode && <div>{subcatNode}</div>}
+                    {tagsNode && <div className="flex flex-wrap  gap-x-2 gap-y-1">{tagsNode}</div>}
+                  </div>
+
+                  {/* Desktop: single inline line */}
+                  <div className="hidden sm:flex sm:items-center sm:flex-wrap sm:gap-2">
+                    {subcatNode}
+                    {subcategoryName && postTags.length > 0 && (
+                      <span className="text-muted-foreground/50 select-none">·</span>
+                    )}
+                    {tagsNode}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* LEFT in RTL (second in DOM): actions */}
+            <div className="shrink-0 flex items-center gap-2 [&_button]:h-10 [&_button]:rounded-xl [&_button]:border [&_button]:border-neutral-200 dark:[&_button]:border-border [&_button]:transition-all [&_button]:duration-100 [&_button:hover]:bg-neutral-100/70 dark:[&_button:hover]:bg-muted/70 [&_button:active]:scale-[0.98]">
               <SavePostButton postId={post.id} />
-              {author?.id && myUserId && author.id !== myUserId && authorUsername ? (
-                <FollowButton targetUserId={author.id} targetUsername={authorUsername} />
-              ) : null}
-            </div>
-
-            <div className="flex items-center gap-2">
               <SharePostButton url={typeof window !== 'undefined' ? window.location.href : ''} title={post.title ?? ''} />
             </div>
           </div>
+        )
+      })()}
 
       {/* אינטראקציות – מופרד לחלוטין מהטקסט */}
       
@@ -909,7 +931,7 @@ export default function PostPage() {
         </div>
         <div className="rounded-3xl border border-neutral-200 dark:border-border bg-neutral-100/70 dark:bg-card p-1 sm:p-2">
           {commentsReady ? (
-            <PostComments postId={post.id} postSlug={slug} postTitle={post.title ?? ''} />
+            <PostComments postId={post.id} postSlug={slug} postTitle={post.title ?? ''} postAuthorId={post.author_id} />
           ) : (
             <div ref={setSentinelNode} className="min-h-[120px]" />
           )}

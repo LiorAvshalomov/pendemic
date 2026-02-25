@@ -25,7 +25,7 @@ type CommentRow = {
   author: AuthorMini | null
 }
 
-type Props = { postId: string; postSlug: string; postTitle: string }
+type Props = { postId: string; postSlug: string; postTitle: string; postAuthorId?: string }
 
 type DeleteTarget = {
   id: string
@@ -74,7 +74,15 @@ function clipOneLine(s: string, maxChars: number) {
   return oneLine.slice(0, Math.max(0, maxChars - 1)).trimEnd() + '…'
 }
 
-export default function PostComments({ postId, postSlug, postTitle }: Props) {
+function AuthorBadge() {
+  return (
+    <span className="ms-2 inline-flex items-center rounded-full border border-sky-200 bg-sky-100 px-2 py-0.5 text-[11px] leading-none font-medium text-sky-700 dark:border-sky-400/30 dark:bg-sky-500/15 dark:text-sky-300">
+      מחבר
+    </span>
+  )
+}
+
+export default function PostComments({ postId, postSlug, postTitle, postAuthorId }: Props) {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
 
@@ -1178,6 +1186,7 @@ async function submitReport() {
             const username = a?.username ?? null
             const avatar = a?.avatar_url ?? null
             const isMine = !!userId && c.author_id === userId
+            const isAuthor = !!postAuthorId && c.author_id === postAuthorId
             const isTemp = String(c.id).startsWith('temp-')
             const isEditing = editingId === c.id
             const liked = myLiked.has(c.id)
@@ -1189,7 +1198,7 @@ async function submitReport() {
                 <div className="flex items-center gap-3">
                   <Avatar src={avatar} name={name} />
                   <div className="leading-tight">
-                    <div className="text-sm font-semibold">
+                    <div className="flex items-center text-sm font-semibold">
                       {username ? (
                         <Link className="hover:underline" href={`/u/${username}`}>
                           {name}
@@ -1197,6 +1206,7 @@ async function submitReport() {
                       ) : (
                         name
                       )}
+                      {isAuthor ? <AuthorBadge /> : null}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {formatHe(c.created_at)}
@@ -1354,11 +1364,15 @@ async function submitReport() {
                         </span>
                       )}
                       {tooltipId === c.id && likes > 0 && likerNames[c.id] && (
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 rounded-lg bg-neutral-900 px-3 py-2 text-[11px] text-white shadow-lg z-20 pointer-events-none flex flex-col space-y-0.5" dir="rtl">
-                          {likerNames[c.id].names.map((name, i) => (
-                            <span key={i}>{name}</span>
-                          ))}
-                          {likerNames[c.id].total > 5 && <span className="text-neutral-400 text-[10px]">ועוד {likerNames[c.id].total - 5}+</span>}
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-20 pointer-events-none w-max max-w-[85vw] rounded-xl border border-neutral-200 bg-white/95 p-2 shadow-md dark:border-white/10 dark:bg-neutral-900/90 dark:shadow-lg" dir="rtl">
+                          <div className="flex flex-col gap-1">
+                            {likerNames[c.id].names.map((name, i) => (
+                              <span key={i} className="whitespace-nowrap text-[11px] text-neutral-800 dark:text-neutral-100">{name}</span>
+                            ))}
+                            {likerNames[c.id].total > 5 && (
+                              <span className="whitespace-nowrap text-[10px] text-neutral-400 dark:text-neutral-500">ועוד {likerNames[c.id].total - 5}+</span>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1384,6 +1398,7 @@ async function submitReport() {
                       const rUsername = ra?.username ?? null
                       const rAvatar = ra?.avatar_url ?? null
                       const rMine = !!userId && r.author_id === userId
+                      const rIsAuthor = !!postAuthorId && r.author_id === postAuthorId
                       const rTemp = String(r.id).startsWith('temp-')
                       const rEditing = editingId === r.id
                       const rLiked = myLiked.has(r.id)
@@ -1440,7 +1455,7 @@ async function submitReport() {
                             <div className="flex items-center gap-3">
                               <Avatar src={rAvatar} name={rName} />
                               <div className="leading-tight">
-                                <div className="text-sm font-semibold">
+                                <div className="flex items-center text-sm font-semibold">
                                   {rUsername ? (
                                     <Link className="hover:underline" href={`/u/${rUsername}`}>
                                       {rName}
@@ -1448,6 +1463,7 @@ async function submitReport() {
                                   ) : (
                                     rName
                                   )}
+                                  {rIsAuthor ? <AuthorBadge /> : null}
                                 </div>
                                 <div className="text-xs text-muted-foreground">{formatHe(r.created_at)}</div>
                               </div>
@@ -1548,11 +1564,15 @@ async function submitReport() {
                                   </span>
                                 )}
                                 {tooltipId === r.id && rLikes > 0 && likerNames[r.id] && (
-                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 rounded-lg bg-neutral-900 px-3 py-2 text-[11px] text-white shadow-lg z-20 pointer-events-none flex flex-col space-y-0.5" dir="rtl">
-                                    {likerNames[r.id].names.map((name, i) => (
-                                      <span key={i}>{name}</span>
-                                    ))}
-                                    {likerNames[r.id].total > 5 && <span className="text-neutral-400 text-[10px]">ועוד {likerNames[r.id].total - 5}+</span>}
+                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-20 pointer-events-none w-max max-w-[85vw] rounded-xl border border-neutral-200 bg-white/95 p-2 shadow-md dark:border-white/10 dark:bg-neutral-900/90 dark:shadow-lg" dir="rtl">
+                                    <div className="flex flex-col gap-1">
+                                      {likerNames[r.id].names.map((name, i) => (
+                                        <span key={i} className="whitespace-nowrap text-[11px] text-neutral-800 dark:text-neutral-100">{name}</span>
+                                      ))}
+                                      {likerNames[r.id].total > 5 && (
+                                        <span className="whitespace-nowrap text-[10px] text-neutral-400 dark:text-neutral-500">ועוד {likerNames[r.id].total - 5}+</span>
+                                      )}
+                                    </div>
                                   </div>
                                 )}
                               </div>
