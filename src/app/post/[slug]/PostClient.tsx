@@ -17,6 +17,7 @@ import FollowButton from '@/components/FollowButton'
 import SavePostButton from '@/components/SavePostButton'
 import SharePostButton from '@/components/SharePostButton'
 import { formatDateTimeHe, formatRelativeHe } from '@/lib/time'
+import AuthorHover from '@/components/AuthorHover'
 
 type RichNode = ComponentProps<typeof RichText>['content']
 
@@ -135,15 +136,21 @@ function SidebarPostItem({
         <div className="mt-1 flex items-center justify-start gap-2 text-[11px] text-neutral-600 dark:text-muted-foreground whitespace-nowrap">
           {showAuthor ? (
             authorUsername ? (
-              <Link
-                href={`/u/${authorUsername}`}
-                className="font-extrabold text-neutral-900 dark:text-foreground hover:text-neutral-950 dark:hover:text-foreground hover:underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {authorName}
-              </Link>
+              <AuthorHover username={authorUsername}>
+                <Link
+                  href={`/u/${authorUsername}`}
+                  className="inline-flex items-center gap-1.5 font-extrabold text-neutral-900 dark:text-foreground hover:text-neutral-950 dark:hover:text-foreground hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Avatar src={pAuthor?.avatar_url ?? null} name={authorName} size={16} />
+                  {authorName}
+                </Link>
+              </AuthorHover>
             ) : (
-              <span className="font-extrabold text-neutral-900 dark:text-foreground">{authorName}</span>
+              <span className="inline-flex items-center gap-1.5 font-extrabold text-neutral-900 dark:text-foreground">
+                <Avatar src={pAuthor?.avatar_url ?? null} name={authorName} size={16} />
+                {authorName}
+              </span>
             )
           ) : null}
           {showAuthor ? <span className="text-neutral-400 dark:text-muted-foreground">·</span> : null}
@@ -655,18 +662,28 @@ export default function PostPage() {
         ) : null}
 
         <div className="mt-10 flex items-start justify-start gap-3" dir="rtl">
-          <Link href={`/u/${authorUsername}`} >
-          <div className="shrink-0">
-            <Avatar src={author?.avatar_url ?? null} name={authorName} size={52} />
-          </div>
-          </Link>
+          {authorUsername ? (
+            <AuthorHover username={authorUsername}>
+              <Link href={`/u/${authorUsername}`}>
+                <div className="shrink-0">
+                  <Avatar src={author?.avatar_url ?? null} name={authorName} size={52} />
+                </div>
+              </Link>
+            </AuthorHover>
+          ) : (
+            <div className="shrink-0">
+              <Avatar src={author?.avatar_url ?? null} name={authorName} size={52} />
+            </div>
+          )}
 
           <div className="min-w-0 text-right">
             <div className="flex items-center gap-2 text-[15px] font-extrabold text-neutral-950 dark:text-foreground">
               {authorUsername ? (
-                <Link href={`/u/${authorUsername}`} className="hover:underline">
-                  {authorName}
-                </Link>
+                <AuthorHover username={authorUsername}>
+                  <Link href={`/u/${authorUsername}`} className="hover:underline">
+                    {authorName}
+                  </Link>
+                </AuthorHover>
               ) : (
                 authorName
               )}

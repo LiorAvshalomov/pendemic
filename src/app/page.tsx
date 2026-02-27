@@ -9,6 +9,7 @@ import HomeWriteCTA from '@/components/HomeWriteCTA'
 import StickySidebar from '@/components/StickySidebar'
 import { truncateText } from '@/lib/validation'
 import Avatar from '@/components/Avatar'
+import AuthorHover from '@/components/AuthorHover'
 
 
 type PostRow = {
@@ -166,14 +167,22 @@ function FeaturedPost({ post }: { post: CardPost }) {
           {/* Author FIRST (as you asked) */}
           <div className="flex items-start justify-between gap-3 mb-3">
             <div className="flex items-center gap-3 min-w-0">
-              <Link href={`/u/${post.author_username}`}>
-              <Avatar src={post.author_avatar_url} name={post.author_name} size={40} />
-              </Link>
+                {post.author_username ? (
+                <AuthorHover username={post.author_username}>
+                  <Link href={`/u/${post.author_username}`}>
+                    <Avatar src={post.author_avatar_url} name={post.author_name} size={40} />
+                  </Link>
+                </AuthorHover>
+              ) : (
+                <Avatar src={post.author_avatar_url} name={post.author_name} size={40} />
+              )}
               <div className="min-w-0">
                 {post.author_username ? (
-                  <Link href={`/u/${post.author_username}`} className="font-bold text-sm hover:text-sky-700 dark:hover:text-sky-400 transition-colors">
-                    {post.author_name}
-                  </Link>
+                  <AuthorHover username={post.author_username}>
+                    <Link href={`/u/${post.author_username}`} className="font-bold text-sm hover:text-sky-700 dark:hover:text-sky-400 transition-colors">
+                      {post.author_name}
+                    </Link>
+                  </AuthorHover>
                 ) : (
                   <span className="font-bold text-sm">{post.author_name}</span>
                 )}
@@ -313,10 +322,12 @@ function SimplePostCard({ post }: { post: CardPost }) {
         )}
         <div className="mt-auto pt-3 flex items-center justify-start gap-2 text-xs text-foreground">
           {post.author_username ? (
-            <Link href={`/u/${post.author_username}`} className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-neutral-200/70 dark:hover:bg-muted transition-colors duration-200 cursor-pointer">
-              <Avatar src={post.author_avatar_url} name={post.author_name} size={24} />
-              <span className="font-semibold transition-colors group-hover/author:text-sky-700 dark:group-hover/author:text-sky-400">{post.author_name}</span>
-            </Link>
+            <AuthorHover username={post.author_username}>
+              <Link href={`/u/${post.author_username}`} className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-neutral-200/70 dark:hover:bg-muted transition-colors duration-200 cursor-pointer">
+                <Avatar src={post.author_avatar_url} name={post.author_name} size={24} />
+                <span className="font-semibold transition-colors group-hover/author:text-sky-700 dark:group-hover/author:text-sky-400">{post.author_name}</span>
+              </Link>
+            </AuthorHover>
           ) : (
             <div className="inline-flex items-center gap-2">
               <Avatar src={post.author_avatar_url} name={post.author_name} size={24} />
@@ -440,13 +451,15 @@ function ListRowCompact({ post }: { post: CardPost }) {
             {/* Author row UNDER excerpt */}
             <div className="mt-auto pt-1.5 flex items-center justify-start gap-2 text-xs text-foreground">
               {post.author_username ? (
-                <Link
-                  href={`/u/${post.author_username}`}
-                  className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-neutral-200/70 dark:hover:bg-muted transition-colors duration-200 pointer-events-auto cursor-pointer"
-                >
-                  <Avatar src={post.author_avatar_url} name={post.author_name} size={24} />
-                  <span className="font-semibold transition-colors group-hover/author:text-neutral-900 dark:group-hover/author:text-foreground">{post.author_name}</span>
-                </Link>
+                <AuthorHover username={post.author_username}>
+                  <Link
+                    href={`/u/${post.author_username}`}
+                    className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-neutral-200/70 dark:hover:bg-muted transition-colors duration-200 pointer-events-auto cursor-pointer"
+                  >
+                    <Avatar src={post.author_avatar_url} name={post.author_name} size={24} />
+                    <span className="font-semibold transition-colors group-hover/author:text-neutral-900 dark:group-hover/author:text-foreground">{post.author_name}</span>
+                  </Link>
+                </AuthorHover>
               ) : (
                 <div className="inline-flex items-center gap-2">
                   <Avatar src={post.author_avatar_url} name={post.author_name} size={24} />
@@ -511,17 +524,23 @@ function RecentMiniRow({ post }: { post: CardPost }) {
             )}
             <div className="mt-auto pt-1 text-[12px] text-muted-foreground flex items-center justify-between flex-nowrap min-w-0">
               {post.author_username ? (
-                <Link
-                  href={`/u/${post.author_username}`}
-                  className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-neutral-200/70 dark:hover:bg-muted transition-colors duration-200 pointer-events-auto min-w-0 overflow-hidden cursor-pointer"
-                >
-                  <Avatar src={post.author_avatar_url} name={post.author_name} size={22} />
-                  <span className="font-semibold transition-colors group-hover/author:text-neutral-900 dark:group-hover/author:text-foreground truncate whitespace-nowrap overflow-hidden text-ellipsis max-w-[80px]">{truncateText(post.author_name, 8)}</span>
-                </Link>
+                <AuthorHover username={post.author_username}>
+                  <Link
+                    href={`/u/${post.author_username}`}
+                    className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-neutral-200/70 dark:hover:bg-muted transition-colors duration-200 pointer-events-auto min-w-0 overflow-hidden cursor-pointer"
+                  >
+                    <Avatar src={post.author_avatar_url} name={post.author_name} size={22} />
+                    {/* 15 char limit on desktop sidebar; full name on mobile */}
+                    <span className="font-semibold transition-colors group-hover/author:text-neutral-900 dark:group-hover/author:text-foreground truncate whitespace-nowrap max-w-[80px] lg:max-w-[none]">
+                      <span className="hidden lg:inline">{truncateText(post.author_name, 15)}</span>
+                      <span className="lg:hidden">{post.author_name}</span>
+                    </span>
+                  </Link>
+                </AuthorHover>
               ) : (
                 <div className="inline-flex items-center gap-2 min-w-0 overflow-hidden">
                   <Avatar src={post.author_avatar_url} name={post.author_name} size={22} />
-                  <span className="font-semibold truncate whitespace-nowrap overflow-hidden text-ellipsis max-w-[80px]">{truncateText(post.author_name, 8)}</span>
+                  <span className="font-semibold truncate whitespace-nowrap max-w-[80px]">{post.author_name}</span>
                 </div>
               )}
 
@@ -1157,22 +1176,24 @@ export default async function HomePage(props: HomePageProps = {}) {
                       <div className="space-y-3">
                         {writerScores.map((w, idx) => (
                           <div key={`${w.username ?? w.name}`} className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-7 h-7 rounded-full bg-muted border border-border flex items-center justify-center text-xs font-black text-foreground">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className="w-7 h-7 shrink-0 rounded-full bg-muted border border-border flex items-center justify-center text-xs font-black text-foreground">
                                 {idx + 1}
                               </div>
 
                               {w.username ? (
-                                <Link href={`/u/${w.username}`} className="group/writer inline-flex items-center gap-2 min-w-0">
-                                  <Avatar src={w.avatar_url} name={w.name} size={36} />
-                                  <span className="text-sm font-bold transition-colors group-hover/writer:text-sky-700 dark:group-hover/writer:text-sky-400 truncate whitespace-nowrap overflow-hidden text-ellipsis max-w-[72px]">
-                                    {truncateText(w.name, 8)}
-                                  </span>
-                                </Link>
+                                <AuthorHover username={w.username}>
+                                  <Link href={`/u/${w.username}`} className="group/writer inline-flex items-center gap-2 min-w-0">
+                                    <Avatar src={w.avatar_url} name={w.name} size={36} />
+                                    <span className="text-sm font-bold transition-colors group-hover/writer:text-sky-700 dark:group-hover/writer:text-sky-400 min-w-0 break-words leading-tight">
+                                      {w.name}
+                                    </span>
+                                  </Link>
+                                </AuthorHover>
                               ) : (
-                                <div className="inline-flex items-center gap-2 min-w-0">
+                                <div className="inline-flex items-center gap-2 min-w-0 flex-1">
                                   <Avatar src={w.avatar_url} name={w.name} size={36} />
-                                  <span className="text-sm font-bold truncate whitespace-nowrap overflow-hidden text-ellipsis max-w-[72px]">{truncateText(w.name, 8)}</span>
+                                  <span className="text-sm font-bold min-w-0 break-words leading-tight">{w.name}</span>
                                 </div>
                               )}
                             </div>
@@ -1279,22 +1300,24 @@ export default async function HomePage(props: HomePageProps = {}) {
                       <div className="space-y-3">
                         {writerScores.map((w, idx) => (
                           <div key={`${w.username ?? w.name}`} className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-7 h-7 rounded-full bg-muted border border-border flex items-center justify-center text-xs font-black text-foreground">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className="w-7 h-7 shrink-0 rounded-full bg-muted border border-border flex items-center justify-center text-xs font-black text-foreground">
                                 {idx + 1}
                               </div>
 
                               {w.username ? (
-                                <Link href={`/u/${w.username}`} className="group/writer inline-flex items-center gap-2 min-w-0">
-                                  <Avatar src={w.avatar_url} name={w.name} size={36} />
-                                  <span className="text-sm font-bold transition-colors group-hover/writer:text-sky-700 dark:group-hover/writer:text-sky-400 truncate whitespace-nowrap overflow-hidden text-ellipsis max-w-[72px]">
-                                    {truncateText(w.name, 8)}
-                                  </span>
-                                </Link>
+                                <AuthorHover username={w.username}>
+                                  <Link href={`/u/${w.username}`} className="group/writer inline-flex items-center gap-2 min-w-0">
+                                    <Avatar src={w.avatar_url} name={w.name} size={36} />
+                                    <span className="text-sm font-bold transition-colors group-hover/writer:text-sky-700 dark:group-hover/writer:text-sky-400 min-w-0 break-words leading-tight">
+                                      {w.name}
+                                    </span>
+                                  </Link>
+                                </AuthorHover>
                               ) : (
-                                <div className="inline-flex items-center gap-2 min-w-0">
+                                <div className="inline-flex items-center gap-2 min-w-0 flex-1">
                                   <Avatar src={w.avatar_url} name={w.name} size={36} />
-                                  <span className="text-sm font-bold truncate whitespace-nowrap overflow-hidden text-ellipsis max-w-[72px]">{truncateText(w.name, 8)}</span>
+                                  <span className="text-sm font-bold min-w-0 break-words leading-tight">{w.name}</span>
                                 </div>
                               )}
                             </div>

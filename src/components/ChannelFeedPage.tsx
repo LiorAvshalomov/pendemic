@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { formatDateTimeHe, formatRelativeHe } from '@/lib/time'
 import { getPostDisplayDate } from '@/lib/posts'
 import StickySidebar from '@/components/StickySidebar'
+import AuthorHover from '@/components/AuthorHover'
 
 type PostRow = {
   id: string
@@ -166,9 +167,11 @@ function FeaturedTopCard({ post }: { post: CardPost }) {
           <div className="mt-1 text-sm text-muted-foreground">
             מאת:{' '}
             {post.author_username ? (
-              <Link href={`/u/${post.author_username}`} className="text-blue-700 hover:underline">
-                {post.author_name}
-              </Link>
+              <AuthorHover username={post.author_username}>
+                <Link href={`/u/${post.author_username}`} className="text-blue-700 hover:underline">
+                  {post.author_name}
+                </Link>
+              </AuthorHover>
             ) : (
               <span>{post.author_name}</span>
             )}
@@ -289,9 +292,11 @@ function ListRow({ post }: { post: CardPost }) {
           <div className="mt-1 text-xs text-muted-foreground">
             מאת:{' '}
             {post.author_username ? (
-              <Link href={`/u/${post.author_username}`} className="text-blue-700 hover:underline">
-                {post.author_name}
-              </Link>
+              <AuthorHover username={post.author_username}>
+                <Link href={`/u/${post.author_username}`} className="text-blue-700 hover:underline">
+                  {post.author_name}
+                </Link>
+              </AuthorHover>
             ) : (
               <span>{post.author_name}</span>
             )}
@@ -704,9 +709,11 @@ export default async function ChannelFeedPage({
                     <div key={w.username ?? w.name} className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         {w.username ? (
-                          <Link href={`/u/${w.username}`} className="font-bold hover:underline">
-                            {w.name}
-                          </Link>
+                          <AuthorHover username={w.username}>
+                            <Link href={`/u/${w.username}`} className="font-bold hover:underline">
+                              {w.name}
+                            </Link>
+                          </AuthorHover>
                         ) : (
                           <div className="font-bold">{w.name}</div>
                         )}

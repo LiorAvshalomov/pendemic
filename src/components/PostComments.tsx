@@ -8,6 +8,7 @@ import { adminFetch } from '@/lib/admin/adminFetch'
 import { mapSupabaseError } from '@/lib/mapSupabaseError'
 import { event as gaEvent } from '@/lib/gtag'
 import Avatar from '@/components/Avatar'
+import AuthorHover from '@/components/AuthorHover'
 
 type AuthorMini = {
   username: string | null
@@ -1206,13 +1207,23 @@ async function submitReport() {
             const headerRow = (
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <Avatar src={avatar} name={name} />
+                  {username ? (
+                    <AuthorHover username={username}>
+                      <Link href={`/u/${username}`} className="shrink-0 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                        <Avatar src={avatar} name={name} />
+                      </Link>
+                    </AuthorHover>
+                  ) : (
+                    <Avatar src={avatar} name={name} />
+                  )}
                   <div className="leading-tight">
                     <div className="flex items-center text-sm font-semibold">
                       {username ? (
-                        <Link className="hover:underline" href={`/u/${username}`}>
-                          {name}
-                        </Link>
+                        <AuthorHover username={username}>
+                          <Link className="hover:underline" href={`/u/${username}`}>
+                            {name}
+                          </Link>
+                        </AuthorHover>
                       ) : (
                         name
                       )}
@@ -1463,13 +1474,23 @@ async function submitReport() {
 
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex items-center gap-3">
-                              <Avatar src={rAvatar} name={rName} />
+                              {rUsername ? (
+                                <AuthorHover username={rUsername}>
+                                  <Link href={`/u/${rUsername}`} className="shrink-0 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                                    <Avatar src={rAvatar} name={rName} />
+                                  </Link>
+                                </AuthorHover>
+                              ) : (
+                                <Avatar src={rAvatar} name={rName} />
+                              )}
                               <div className="leading-tight">
                                 <div className="flex items-center text-sm font-semibold">
                                   {rUsername ? (
-                                    <Link className="hover:underline" href={`/u/${rUsername}`}>
-                                      {rName}
-                                    </Link>
+                                    <AuthorHover username={rUsername}>
+                                      <Link className="hover:underline" href={`/u/${rUsername}`}>
+                                        {rName}
+                                      </Link>
+                                    </AuthorHover>
                                   ) : (
                                     rName
                                   )}
