@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import AuthorHover from '@/components/AuthorHover'
 
 type ChannelRow = { id: number; slug: string; name_he: string }
 type TagRow = { id: number; slug: string; name_he: string; channel_id: number | null; type: string; is_active: boolean }
@@ -457,13 +458,15 @@ export default function SearchPage() {
                   {p.subcategory?.name_he ? <span className="rounded-full border px-2 py-0.5">{p.subcategory.name_he}</span> : null}
 
                   {p.author?.username ? (
-                    <Link
-                      href={`/u/${p.author.username}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="rounded-full border px-2 py-0.5 hover:bg-muted"
-                    >
-                      {p.author.display_name || p.author.username}
-                    </Link>
+                    <AuthorHover username={p.author.username}>
+                      <Link
+                        href={`/u/${p.author.username}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="rounded-full border px-2 py-0.5 hover:bg-muted"
+                      >
+                        {p.author.display_name || p.author.username}
+                      </Link>
+                    </AuthorHover>
                   ) : null}
                 </div>
 

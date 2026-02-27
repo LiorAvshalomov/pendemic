@@ -3,6 +3,7 @@
 import { supabase } from '@/lib/supabaseClient'
 import { adminFetch } from '@/lib/admin/adminFetch'
 import Avatar from '@/components/Avatar'
+import AuthorHover from '@/components/AuthorHover'
 import { timeAgoHeShort } from '@/lib/time'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
@@ -544,19 +545,25 @@ export default function CommunityNotesWall() {
 
                         <div className="flex items-start gap-3">
                           <div className="shrink-0">
-                            <Avatar src={n.avatar_url} name={n.display_name || n.username} size={34} />
+                            <AuthorHover username={n.username}>
+                              <Link href={`/u/${n.username}`}>
+                                <Avatar src={n.avatar_url} name={n.display_name || n.username} size={34} />
+                              </Link>
+                            </AuthorHover>
                           </div>
 
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between gap-2">
-                              <Link
-                                href={`/u/${n.username}`}
-                                className="truncate text-sm font-bold hover:underline"
-                                onClick={(e) => e.stopPropagation()}
-                                title="לפרופיל"
-                              >
-                                {n.display_name || n.username}
-                              </Link>
+                              <AuthorHover username={n.username}>
+                                <Link
+                                  href={`/u/${n.username}`}
+                                  className="truncate text-sm font-bold hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title="לפרופיל"
+                                >
+                                  {n.display_name || n.username}
+                                </Link>
+                              </AuthorHover>
 
                               <div className="shrink-0 text-left">
                                 <div className="text-xs text-muted-foreground">{timeAgoHeShort(n.updated_at)}</div>
