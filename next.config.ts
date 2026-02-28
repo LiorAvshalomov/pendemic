@@ -55,6 +55,7 @@ const imgSrc = [
 
 const nextConfig: NextConfig = {
   images: {
+    minimumCacheTTL: 86400,
     remotePatterns: [
       // DiceBear (fallback avatars)
       { protocol: 'https', hostname: 'api.dicebear.com' },

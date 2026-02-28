@@ -193,17 +193,18 @@ export default function ProfileSettingsPage() {
 
       const { data } = supabase.storage.from('avatars').getPublicUrl(path)
       const baseUrl = data.publicUrl
-      // Cache-bust so the user sees the new image immediately
-      const url = `${baseUrl}?v=${Date.now()}`
 
+      // Store the stable URL (no query params) so the DB stays clean across uploads.
       const { error: pErr } = await supabase
         .from('profiles')
-        .update({ avatar_url: url })
+        .update({ avatar_url: baseUrl })
         .eq('id', uid)
 
       if (pErr) throw pErr
 
-      setProfile(prev => (prev ? { ...prev, avatar_url: url } : prev))
+      // Cache-bust only in local UI state so the user sees the new avatar immediately
+      // without polluting the stored URL with an ever-changing ?v= param.
+      setProfile(prev => (prev ? { ...prev, avatar_url: `${baseUrl}?v=${Date.now()}` } : prev))
       return true
     } catch (e: unknown) {
       const m = e instanceof Error ? e.message : String(e)

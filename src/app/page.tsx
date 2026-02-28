@@ -153,7 +153,7 @@ function FeaturedPost({ post }: { post: CardPost }) {
                   alt={post.title}
                   fill
                   priority
-                  sizes="(max-width: 768px) 100vw, 50vw"
+                  sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 600px"
                   quality={85}
                   className="object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
                 />
@@ -265,7 +265,7 @@ function SimplePostCard({ post }: { post: CardPost }) {
       <Link href={`/post/${post.slug}`} className="block">
         <div className="relative aspect-[4/3] bg-muted">
           {post.cover_image_url ? (
-            <Image src={post.cover_image_url} alt={post.title} fill sizes="(max-width: 768px) 100vw, 33vw" quality={85} className="object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]" />
+            <Image src={post.cover_image_url} alt={post.title} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 260px" quality={85} className="object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]" />
           ) : null}
         </div>
       </Link>

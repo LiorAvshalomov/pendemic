@@ -63,10 +63,16 @@ export async function POST(req: Request) {
     const ext = (sourcePath.split('.').pop() || 'jpg').toLowerCase()
     const publicPath = `${postId}/cover.${ext}`
 
+    const mimeByExt: Record<string, string> = {
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+      webp: 'image/webp', gif: 'image/gif', avif: 'image/avif',
+    }
+    const contentType = download.data.type || mimeByExt[ext] || 'image/jpeg'
+
     const upload = await supabase.storage.from('post-covers').upload(publicPath, download.data, {
       upsert: true,
-      // Browser File/Blob may carry a .type, Node Blob usually doesn't; best-effort.
-      contentType: download.data.type || undefined,
+      cacheControl: '31536000',
+      contentType,
     })
 
     if (upload.error) {
