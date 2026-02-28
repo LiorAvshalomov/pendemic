@@ -162,16 +162,34 @@ export default function InboxThreads() {
     window.addEventListener('tyuta:thread-read', onThreadRead)
     window.addEventListener('tyuta:inbox-refresh', onThreadRead)
 
-    // BroadcastChannel: instant update from ChatClient without waiting for realtime round-trip
+    // BroadcastChannel: instant updates from ChatClient (messages + typing) — mounted once, no activeConversationId dependency
     const bc = new BroadcastChannel('tyuta-inbox')
     bc.onmessage = (e: MessageEvent) => {
       const d = e.data as {
         type: string
         conversationId: string
-        last_body: string
-        last_created_at: string
-        isOwn: boolean
+        // message fields
+        last_body?: string
+        last_created_at?: string
+        isOwn?: boolean
+        // typing fields
+        userId?: string
       }
+
+      if (d.type === 'typing') {
+        // Ignore own typing events
+        if (d.userId && d.userId === meIdRef.current) return
+        const id = d.conversationId
+        setTypingMap(prev => ({ ...prev, [id]: { isTyping: true, updatedAt: Date.now() } }))
+        const timers = typingTimersRef.current
+        if (timers.has(id)) window.clearTimeout(timers.get(id))
+        timers.set(id, window.setTimeout(() => {
+          setTypingMap(prev => prev[id]?.isTyping ? { ...prev, [id]: { ...prev[id], isTyping: false } } : prev)
+          timers.delete(id)
+        }, 2500))
+        return
+      }
+
       if (d.type !== 'message') return
       setRows(prev => {
         const idx = prev.findIndex(r => r.conversation_id === d.conversationId)
@@ -186,8 +204,8 @@ export default function InboxThreads() {
         updated.splice(idx, 1)
         return [{
           ...old,
-          last_body: d.last_body,
-          last_created_at: d.last_created_at,
+          last_body: d.last_body ?? old.last_body,
+          last_created_at: d.last_created_at ?? old.last_created_at,
           unread_count: d.isOwn ? old.unread_count : old.unread_count + 1,
         }, ...updated]
       })
@@ -274,18 +292,26 @@ export default function InboxThreads() {
                         </div>
                       </div>
 
-                      <div
-                        className={[
-                          'mt-1 truncate text-xs',
-                          isTypingNow
-                            ? 'italic text-[#3B6CE3] dark:text-[#7a9ff5]'
-                            : hasUnread
+                      {isTypingNow ? (
+                        <div
+                          dir="rtl"
+                          className="mt-1 min-w-0 truncate text-xs italic text-[#3B6CE3] dark:text-[#7a9ff5]"
+                          style={{ unicodeBidi: 'isolate' }}
+                        >
+                          מקליד/ה…
+                        </div>
+                      ) : (
+                        <div
+                          className={[
+                            'mt-1 min-w-0 truncate text-xs',
+                            hasUnread
                               ? 'text-neutral-900 font-semibold dark:text-foreground'
                               : 'text-muted-foreground',
-                        ].join(' ')}
-                      >
-                        {isTypingNow ? 'מקליד/ה…' : lastBody}
-                      </div>
+                          ].join(' ')}
+                        >
+                          {lastBody}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Link>

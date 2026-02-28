@@ -1016,6 +1016,8 @@ export default function ChatClient({ conversationId }: { conversationId: string 
     if (now - typingSentAtRef.current < 700) return
     typingSentAtRef.current = now
 
+    // Notify same-tab InboxThreads immediately via BroadcastChannel (no Supabase round-trip)
+    inboxBCRef.current?.postMessage({ type: 'typing', conversationId, userId: myId })
     await supabase.channel(`typing-${conversationId}`).send({ type: 'broadcast', event: 'typing', payload: { user_id: myId } })
   }, [conversationId, myId])
 
