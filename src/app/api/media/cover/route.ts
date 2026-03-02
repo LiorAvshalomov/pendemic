@@ -5,8 +5,9 @@ import { NextRequest, NextResponse } from 'next/server'
  *
  * Server-side proxy for Supabase public cover images.
  * Re-serves the upstream file with a 1-year Cache-Control header so that
- * Next.js Image Optimization caches the transformed variant for a full year
- * (Supabase storage otherwise returns max-age=3600, causing constant re-transforms).
+ * browsers and CDNs cache covers for a full year
+ * (Supabase storage otherwise returns max-age=3600).
+ * Covers are NOT transformed — `<Image unoptimized>` is used at call sites.
  *
  * Security guards:
  *  - path must start with "post-covers/"
@@ -26,13 +27,16 @@ const rateMap = new Map<string, RateEntry>()
 
 function isAllowed(ip: string): boolean {
   const now = Date.now()
-  // Opportunistic cleanup: evict windows that have fully expired.
-  // Keeps the Map bounded to the number of distinct IPs active in the last minute.
-  for (const [key, entry] of rateMap) {
-    if (now - entry.windowStart > WINDOW_MS) rateMap.delete(key)
+  // Probabilistic cleanup (1% of requests): evict stale windows without
+  // paying O(n) on every request. Map stays bounded to ~100 active IPs.
+  if (Math.random() < 0.01) {
+    for (const [key, entry] of rateMap) {
+      if (now - entry.windowStart > WINDOW_MS) rateMap.delete(key)
+    }
   }
   const entry = rateMap.get(ip)
-  if (!entry) {
+  if (!entry || now - entry.windowStart > WINDOW_MS) {
+    // No entry, or the previous window has fully elapsed — start a fresh window.
     rateMap.set(ip, { count: 1, windowStart: now })
     return true
   }

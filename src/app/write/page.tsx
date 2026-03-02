@@ -1188,6 +1188,10 @@ if (!effectiveChannelId) {
 
     gaEvent('post_published', { post_id: created.id })
 
+    // Trigger on-demand ISR revalidation so the home feed shows the new post immediately.
+    // Fire-and-forget — don't block the redirect on the result.
+    void fetch('/api/posts/revalidate', { method: 'POST' }).catch(() => undefined)
+
     setSaving(false)
     router.push(`/post/${publishedRow.slug}`)
 

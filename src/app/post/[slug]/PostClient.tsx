@@ -18,6 +18,7 @@ import SavePostButton from '@/components/SavePostButton'
 import SharePostButton from '@/components/SharePostButton'
 import { formatDateTimeHe, formatRelativeHe } from '@/lib/time'
 import AuthorHover from '@/components/AuthorHover'
+import type { PostInitialData } from './page'
 
 type RichNode = ComponentProps<typeof RichText>['content']
 
@@ -191,13 +192,19 @@ function NotFoundPost() {
   )
 }
 
-export default function PostPage() {
+type Props = {
+  initialData?: PostInitialData | null
+}
+
+export default function PostPage({ initialData }: Props) {
   const params = useParams()
   const slug = useMemo(() => (typeof params?.slug === 'string' ? params.slug : ''), [params])
 
-  const [loading, setLoading] = useState(true)
+  // When the server passes initialData the post is available immediately —
+  // no client-side loading state needed for the first paint.
+  const [loading, setLoading] = useState(!initialData)
   const [notFoundFlag, setNotFoundFlag] = useState(false)
-  const [post, setPost] = useState<PostRow | null>(null)
+  const [post, setPost] = useState<PostRow | null>(initialData as PostRow | null ?? null)
   const [sidebarLoading, setSidebarLoading] = useState(false)
   const [moreFromAuthor, setMoreFromAuthor] = useState<SidebarPost[]>([])
   const [hotInChannel, setHotInChannel] = useState<SidebarPost[]>([])
@@ -367,50 +374,59 @@ export default function PostPage() {
 
     let cancelled = false
 
-    const load = async () => {
-      setLoading(true)
-      setNotFoundFlag(false)
-      setPost(null)
+    const load = async (skipPostFetch = false) => {
+      if (!skipPostFetch) {
+        setLoading(true)
+        setNotFoundFlag(false)
+        setPost(null)
+      }
       setMoreFromAuthor([])
       setHotInChannel([])
       setSidebarLoading(false)
 
-      const { data, error } = await supabase
-        .from('posts')
-        .select(
+      let p: PostRow
+
+      if (skipPostFetch && post) {
+        // Post data already set from server initialData — use it directly
+        p = post
+      } else {
+        const { data, error } = await supabase
+          .from('posts')
+          .select(
+            `
+            id,
+            slug,
+            title,
+            excerpt,
+            cover_image_url,
+            status,
+            published_at,
+            content_json,
+            created_at,
+            author_id,
+            channel_id,
+            subcategory_tag_id,
+            channel:channels ( name_he, slug ),
+            author:profiles!posts_author_id_fkey ( id, username, display_name, avatar_url )
           `
-          id,
-          slug,
-          title,
-          excerpt,
-          cover_image_url,
-          status,
-          published_at,
-          content_json,
-          created_at,
-          author_id,
-          channel_id,
-          subcategory_tag_id,
-          channel:channels ( name_he, slug ),
-          author:profiles!posts_author_id_fkey ( id, username, display_name, avatar_url )
-        `
-        )
-        .is('deleted_at', null)
-        .eq('status', 'published')
-        .eq('slug', slug)
-        .single()
+          )
+          .is('deleted_at', null)
+          .eq('status', 'published')
+          .eq('slug', slug)
+          .single()
 
-      if (cancelled) return
+        if (cancelled) return
 
-      if (error || !data) {
-        setNotFoundFlag(true)
+        if (error || !data) {
+          setNotFoundFlag(true)
+          setLoading(false)
+          return
+        }
+
+        p = data as PostRow
+        setPost(p)
         setLoading(false)
-        return
       }
-
-      const p = data as PostRow
-      setPost(p)
-      setLoading(false)
 
       setSidebarLoading(true)
 
@@ -496,18 +512,40 @@ export default function PostPage() {
       setSidebarLoading(false)
     }
 
-    void load()
+    // Skip the DB fetch only on the initial render where the server already provided
+    // matching data. On SPA slug changes initialData belongs to a different post,
+    // so we must always re-fetch from the client.
+    void load(!!initialData && initialData.slug === slug)
 
     return () => {
       cancelled = true
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug])
 
   if (loading) {
     return (
       <main className="min-h-screen bg-neutral-50 dark:bg-background" dir="rtl">
-        <div className="mx-auto max-w-5xl px-4 py-12">
-          <div className="text-sm text-muted-foreground">טוען…</div>
+        <div className="mx-auto max-w-5xl px-4 py-10 animate-pulse">
+          {/* Cover placeholder */}
+          <div className="mb-6 h-56 w-full rounded-2xl bg-neutral-200 dark:bg-muted sm:h-72" />
+          {/* Title placeholder */}
+          <div className="h-9 w-3/4 rounded-xl bg-neutral-200 dark:bg-muted" />
+          <div className="mt-3 h-5 w-1/2 rounded-lg bg-neutral-100 dark:bg-muted/60" />
+          {/* Author row */}
+          <div className="mt-8 flex items-center gap-3">
+            <div className="h-12 w-12 shrink-0 rounded-full bg-neutral-200 dark:bg-muted" />
+            <div className="space-y-2">
+              <div className="h-4 w-28 rounded-lg bg-neutral-200 dark:bg-muted" />
+              <div className="h-3 w-20 rounded-lg bg-neutral-100 dark:bg-muted/60" />
+            </div>
+          </div>
+          {/* Body lines */}
+          <div className="mt-10 space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className={`h-4 rounded-lg bg-neutral-100 dark:bg-muted/60 ${i === 5 ? 'w-2/3' : 'w-full'}`} />
+            ))}
+          </div>
         </div>
       </main>
     )
@@ -724,7 +762,18 @@ export default function PostPage() {
         }
       >
         {sidebarLoading && moreFromAuthor.length === 0 ? (
-          <div className="text-sm text-muted-foreground">טוען…</div>
+          <div className="space-y-1.5 animate-pulse" aria-hidden="true">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="flex items-start justify-between gap-2.5 rounded-xl border border-neutral-200/70 dark:border-border p-2">
+                <div className="min-w-0 flex-1 space-y-2 pt-1">
+                  <div className="h-3.5 w-3/4 rounded-lg bg-neutral-200 dark:bg-muted" />
+                  <div className="h-3 w-full rounded-lg bg-neutral-100 dark:bg-muted/60" />
+                  <div className="h-2.5 w-1/2 rounded-lg bg-neutral-100 dark:bg-muted/60" />
+                </div>
+                <div className="h-20 w-20 shrink-0 rounded-2xl bg-neutral-200 dark:bg-muted" />
+              </div>
+            ))}
+          </div>
         ) : moreFromAuthor.length === 0 ? (
           <div className="text-sm text-muted-foreground">אין עוד פוסטים.</div>
         ) : (
@@ -744,7 +793,18 @@ export default function PostPage() {
           }
         >
           {sidebarLoading && hotInChannel.length === 0 ? (
-            <div className="text-sm text-muted-foreground">טוען…</div>
+            <div className="space-y-1.5 animate-pulse" aria-hidden="true">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="flex items-start justify-between gap-2.5 rounded-xl border border-neutral-200/70 dark:border-border p-2">
+                  <div className="min-w-0 flex-1 space-y-2 pt-1">
+                    <div className="h-3.5 w-3/4 rounded-lg bg-neutral-200 dark:bg-muted" />
+                    <div className="h-3 w-full rounded-lg bg-neutral-100 dark:bg-muted/60" />
+                    <div className="h-2.5 w-1/2 rounded-lg bg-neutral-100 dark:bg-muted/60" />
+                  </div>
+                  <div className="h-20 w-20 shrink-0 rounded-2xl bg-neutral-200 dark:bg-muted" />
+                </div>
+              ))}
+            </div>
           ) : hotInChannel.length === 0 ? (
             <div className="text-sm text-muted-foreground">אין עדיין פוסטים חמים.</div>
           ) : (

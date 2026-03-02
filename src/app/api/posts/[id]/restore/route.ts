@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { requireUserFromRequest } from '@/lib/auth/requireUserFromRequest'
 
 const RESTORE_WINDOW_DAYS = 14
@@ -41,6 +42,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const { error: updErr } = await auth.supabase.from('posts').update({ deleted_at: null }).eq('id', postId)
   if (updErr) return NextResponse.json({ error: { code: 'db_error', message: updErr.message } }, { status: 500 })
+
+  revalidatePath('/')
+  revalidatePath('/c/release')
+  revalidatePath('/c/stories')
+  revalidatePath('/c/magazine')
 
   return NextResponse.json({ ok: true })
 }

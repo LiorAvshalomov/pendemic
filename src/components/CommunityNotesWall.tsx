@@ -25,14 +25,6 @@ const NOTE_MAX = 220
 const COOLDOWN_SECONDS = 10 * 60
 const NOTE_TTL_SECONDS = 12 * 60 * 60
 
-function getColumnsCount() {
-  if (typeof window === 'undefined') return 1
-  const w = window.innerWidth
-  if (w >= 1024) return 3
-  if (w >= 640) return 2
-  return 1
-}
-
 function sortNotesByUpdatedAtDesc(arr: NoteRow[]) {
   return arr
     .slice()
@@ -69,9 +61,6 @@ export default function CommunityNotesWall() {
   const [notes, setNotes] = useState<NoteRow[]>([])
   const [loading, setLoading] = useState(true)
 
-  // responsive masonry columns (keeps newest-first within each column)
-  const [colsCount, setColsCount] = useState(1)
-
   // realtime status (fallback polling keeps everything consistent even if websocket isn't enabled)
   const [rtStatus, setRtStatus] = useState<'INIT' | 'SUBSCRIBED' | 'CLOSED' | 'ERROR'>('INIT')
 
@@ -105,14 +94,6 @@ export default function CommunityNotesWall() {
   useEffect(() => {
     const t = setInterval(() => setNowMs(Date.now()), 1000)
     return () => clearInterval(t)
-  }, [])
-
-  // columns count (client only)
-  useEffect(() => {
-    const apply = () => setColsCount(getColumnsCount())
-    apply()
-    window.addEventListener('resize', apply)
-    return () => window.removeEventListener('resize', apply)
   }, [])
 
   async function loadMe() {
@@ -481,124 +462,120 @@ export default function CommunityNotesWall() {
             עדיין אין פתקים. תהיה הראשון להשאיר משהו 🙂 
           </div>
         ) : (
-          <div className="flex gap-3" dir="rtl">
-            {Array.from({ length: colsCount }).map((_, colIndex) => {
-              const colNotes = notes.filter((_, i) => i % colsCount === colIndex)
+          // CSS columns: layout is determined at paint time by the browser — no JS needed.
+          // Eliminates the CLS jump that occurred when colsCount changed from 1→2→3 after mount.
+          <div className="columns-1 sm:columns-2 lg:columns-3 gap-3" dir="rtl">
+            {notes.map((n) => {
+              const mine = meId && n.user_id === meId
+
+              // TTL visible ONLY to the owner
+              const ttlUpdatedAt = mine && myLastUpdatedAt ? myLastUpdatedAt : n.updated_at
+              const expiresInSeconds = mine
+                ? Math.max(0, NOTE_TTL_SECONDS - Math.floor((Date.now() - new Date(ttlUpdatedAt).getTime()) / 1000))
+                : 0
+              const expiresText = mine && expiresInSeconds > 0 ? secondsToHumanHe(expiresInSeconds) : null
+
               return (
-                <div key={colIndex} className="flex-1 space-y-3 min-w-0">
-                  {colNotes.map((n) => {
-                    const mine = meId && n.user_id === meId
-
-                    // TTL visible ONLY to the owner
-                    const ttlUpdatedAt = mine && myLastUpdatedAt ? myLastUpdatedAt : n.updated_at
-                    const expiresInSeconds = mine
-                      ? Math.max(0, NOTE_TTL_SECONDS - Math.floor((Date.now() - new Date(ttlUpdatedAt).getTime()) / 1000))
-                      : 0
-                    const expiresText = mine && expiresInSeconds > 0 ? secondsToHumanHe(expiresInSeconds) : null
-
-                    return (
-                      <div
-                        key={n.id}
-                        className={[
-                          'group relative text-right w-full rounded-2xl border border-black/10 bg-white/70 p-3 shadow-sm transition dark:border-border dark:bg-card',
-                          'will-change-transform hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-black/20 dark:focus:ring-white/20',
-                          mine ? 'opacity-95' : 'cursor-pointer',
-                          (lastPostedIdRef.current === n.id || highlightId === n.id)
-                            ? 'ring-2 ring-black/20 shadow-md scale-[1.01] bg-white/80 dark:ring-white/20'
-                            : '',
-                        ].join(' ')}
-                        dir="rtl"
-                        title={mine ? 'זה הפתק שלך' : 'לחץ על התוכן כדי לפתוח שיחה'}
+                <div
+                  key={n.id}
+                  className={[
+                    'break-inside-avoid mb-3',
+                    'group relative text-right w-full rounded-2xl border border-black/10 bg-white/70 p-3 shadow-sm transition dark:border-border dark:bg-card',
+                    'will-change-transform hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-black/20 dark:focus:ring-white/20',
+                    mine ? 'opacity-95' : 'cursor-pointer',
+                    (lastPostedIdRef.current === n.id || highlightId === n.id)
+                      ? 'ring-2 ring-black/20 shadow-md scale-[1.01] bg-white/80 dark:ring-white/20'
+                      : '',
+                  ].join(' ')}
+                  dir="rtl"
+                  title={mine ? 'זה הפתק שלך' : 'לחץ על התוכן כדי לפתוח שיחה'}
+                >
+                  {isAdmin ? (
+                    <div className="absolute left-2 top-2" data-note-menu>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setOpenMenuId((cur) => (cur === n.id ? null : n.id))
+                        }}
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-base text-black hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 dark:text-foreground dark:hover:bg-white/10"
+                        aria-label="פעולות אדמין"
                       >
-                        {isAdmin ? (
-                          <div className="absolute left-2 top-2" data-note-menu>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setOpenMenuId((cur) => (cur === n.id ? null : n.id))
-                              }}
-                              className="flex h-8 w-8 items-center justify-center rounded-full text-base text-black hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 dark:text-foreground dark:hover:bg-white/10"
-                              aria-label="פעולות אדמין"
-                            >
-                              ⋯
-                            </button>
+                        ⋯
+                      </button>
 
-                            {openMenuId === n.id ? (
-                              <div className="mt-1 w-40 overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-card">
-                                <button
-                                  type="button"
-                                  className="w-full px-3 py-2 text-right text-sm hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 dark:hover:text-red-400"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setOpenMenuId(null)
-                                    setDeleteTarget(n)
-                                    setDeleteReason('')
-                                  }}
-                                >
-                                  מחק
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
+                      {openMenuId === n.id ? (
+                        <div className="mt-1 w-40 overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-card">
+                          <button
+                            type="button"
+                            className="w-full px-3 py-2 text-right text-sm hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setOpenMenuId(null)
+                              setDeleteTarget(n)
+                              setDeleteReason('')
+                            }}
+                          >
+                            מחק
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
 
-                        <div className="flex items-start gap-3">
-                          <div className="shrink-0">
-                            <AuthorHover username={n.username}>
-                              <Link href={`/u/${n.username}`}>
-                                <Avatar src={n.avatar_url} name={n.display_name || n.username} size={34} />
-                              </Link>
-                            </AuthorHover>
-                          </div>
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0">
+                      <AuthorHover username={n.username}>
+                        <Link href={`/u/${n.username}`}>
+                          <Avatar src={n.avatar_url} name={n.display_name || n.username} size={34} />
+                        </Link>
+                      </AuthorHover>
+                    </div>
 
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <AuthorHover username={n.username}>
-                                <Link
-                                  href={`/u/${n.username}`}
-                                  className="truncate text-sm font-bold hover:underline"
-                                  onClick={(e) => e.stopPropagation()}
-                                  title="לפרופיל"
-                                >
-                                  {n.display_name || n.username}
-                                </Link>
-                              </AuthorHover>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <AuthorHover username={n.username}>
+                          <Link
+                            href={`/u/${n.username}`}
+                            className="truncate text-sm font-bold hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                            title="לפרופיל"
+                          >
+                            {n.display_name || n.username}
+                          </Link>
+                        </AuthorHover>
 
-                              <div className="shrink-0 text-left">
-                                <div className="text-xs text-muted-foreground">{timeAgoHeShort(n.updated_at)}</div>
-                                {expiresText ? (
-                                  <div className="mt-0.5 text-[11px] text-muted-foreground">
-                                    יימחק בעוד {expiresText}
-                                  </div>
-                                ) : null}
-                              </div>
+                        <div className="shrink-0 text-left">
+                          <div className="text-xs text-muted-foreground">{timeAgoHeShort(n.updated_at)}</div>
+                          {expiresText ? (
+                            <div className="mt-0.5 text-[11px] text-muted-foreground">
+                              יימחק בעוד {expiresText}
                             </div>
-
-                            <button
-                              type="button"
-                              onClick={() => handleOpenChat(n)}
-                              disabled={!!mine}
-                              className={[
-                                'mt-1 w-full text-right text-sm leading-relaxed text-black/90 dark:text-foreground/90',
-                                'whitespace-pre-wrap break-words',
-                                mine ? 'cursor-default' : 'cursor-pointer',
-                              ].join(' ')}
-                              title={mine ? 'זה הפתק שלך' : 'פתח שיחה'}
-                            >
-                              {n.body}
-                            </button>
-
-                            {!mine ? (
-                              <div className="mt-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-                                פתח שיחה →
-                              </div>
-                            ) : null}
-                          </div>
+                          ) : null}
                         </div>
                       </div>
-                    )
-                  })}
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenChat(n)}
+                        disabled={!!mine}
+                        className={[
+                          'mt-1 w-full text-right text-sm leading-relaxed text-black/90 dark:text-foreground/90',
+                          'whitespace-pre-wrap break-words',
+                          mine ? 'cursor-default' : 'cursor-pointer',
+                        ].join(' ')}
+                        title={mine ? 'זה הפתק שלך' : 'פתח שיחה'}
+                      >
+                        {n.body}
+                      </button>
+
+                      {!mine ? (
+                        <div className="mt-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+                          פתח שיחה →
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
               )
             })}

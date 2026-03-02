@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import sharp from 'sharp'
 import { requireUserFromRequest } from '@/lib/auth/requireUserFromRequest'
 
+// sharp uses native binaries — must run in Node.js, not Edge.
+export const runtime = 'nodejs'
+
 // Promote a private draft cover from `post-assets` to the public `post-covers` bucket.
+// Compresses the image to JPEG (max 1600 px wide, quality 80) before uploading,
+// reducing typical cover sizes from ~9 MB to < 300 KB.
 // Uses the service role key on the server to avoid Storage RLS errors.
+
+const MAX_INPUT_BYTES = 15 * 1024 * 1024 // 15 MB source limit
+const COMPRESS_MAX_WIDTH = 1600
+const COMPRESS_QUALITY = 80
 
 export async function POST(req: Request) {
   try {
@@ -60,16 +70,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: download.error?.message ?? 'לא הצלחתי להוריד את הקאבר' }, { status: 400 })
     }
 
-    const ext = (sourcePath.split('.').pop() || 'jpg').toLowerCase()
-    const publicPath = `${postId}/cover.${ext}`
-
-    const mimeByExt: Record<string, string> = {
-      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-      webp: 'image/webp', gif: 'image/gif', avif: 'image/avif',
+    if (download.data.size > MAX_INPUT_BYTES) {
+      return NextResponse.json({ error: 'תמונת המקור גדולה מדי (מקסימום 15 MB)' }, { status: 400 })
     }
-    const contentType = download.data.type || mimeByExt[ext] || 'image/jpeg'
 
-    const upload = await supabase.storage.from('post-covers').upload(publicPath, download.data, {
+    // Compress: resize to max 1600 px wide, convert to JPEG quality 80, strip metadata.
+    // This reduces typical uploads from ~9 MB to < 300 KB.
+    const inputBuffer = Buffer.from(await download.data.arrayBuffer())
+    let outputBuffer: Buffer
+    try {
+      outputBuffer = await sharp(inputBuffer)
+        .rotate()                                              // auto-rotate using EXIF orientation, then strip tag
+        .resize({ width: COMPRESS_MAX_WIDTH, withoutEnlargement: true })
+        .jpeg({ quality: COMPRESS_QUALITY })
+        .toBuffer()
+    } catch {
+      return NextResponse.json({ error: 'שגיאה בדחיסת התמונה — ייתכן שהפורמט אינו נתמך' }, { status: 400 })
+    }
+
+    const publicPath = `${postId}/cover.jpg`
+    const contentType = 'image/jpeg'
+
+    const upload = await supabase.storage.from('post-covers').upload(publicPath, outputBuffer, {
       upsert: true,
       cacheControl: '31536000',
       contentType,
