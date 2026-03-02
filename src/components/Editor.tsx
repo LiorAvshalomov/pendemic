@@ -29,6 +29,8 @@ type Props = {
 
   chaptersEnabled?: boolean
   userPosts?: ChapterItem[]
+  /** הפרק/טיוטה שנמצא עכשיו בעריכה – מוצג בנפרד ברשימת הבחירה */
+  currentDraft?: ChapterItem | null
 }
 
 type ChapterItem = { id: string; slug: string; title: string }
@@ -159,12 +161,15 @@ function extractYoutubeId(url: string): string | null {
   return null
 }
 
+/** מחזיר את מספר הפרק (0-based אינדקס → מספר מוצג) */
+function getChapterNumber(index: number, hasIntro: boolean): number {
+  return hasIntro ? index : index + 1
+}
+
+/** Compare only by id – slug/title are no longer stored */
 function chaptersEqual(a: ChapterItem[], b: ChapterItem[]): boolean {
   if (a.length !== b.length) return false
-  for (let i = 0; i < a.length; i++) {
-    if (a[i].id !== b[i].id || a[i].slug !== b[i].slug || a[i].title !== b[i].title) return false
-  }
-  return true
+  return a.every((item, i) => item.id === b[i].id)
 }
 
 function stripRelatedPosts(json: JSONContent): JSONContent {
@@ -172,15 +177,40 @@ function stripRelatedPosts(json: JSONContent): JSONContent {
   return { ...json, content }
 }
 
-function extractRelatedPostsItems(json: JSONContent): ChapterItem[] {
+/**
+ * Extracts postIds from content_json.
+ * Supports both:
+ *   new format: attrs.postIds = string[]          (stable UUIDs only)
+ *   old format: attrs.items  = [{id, slug, title}] (legacy snapshots)
+ */
+function extractRelatedPostsData(json: JSONContent): { postIds: string[]; hasIntro: boolean } {
   const rpNode = (json?.content ?? []).find(n => n.type === 'relatedPosts')
-  return (rpNode?.attrs?.items ?? []) as ChapterItem[]
+  const attrs = rpNode?.attrs as Record<string, unknown> | undefined
+  if (!attrs) return { postIds: [], hasIntro: false }
+
+  if (Array.isArray(attrs.postIds)) {
+    return {
+      postIds: (attrs.postIds as unknown[]).filter((x): x is string => typeof x === 'string'),
+      hasIntro: !!(attrs.hasIntro),
+    }
+  }
+  // Backward-compat: old format stored full objects
+  if (Array.isArray(attrs.items)) {
+    return {
+      postIds: (attrs.items as Array<Record<string, unknown>>)
+        .map(item => item.id)
+        .filter((x): x is string => typeof x === 'string'),
+      hasIntro: !!(attrs.hasIntro),
+    }
+  }
+  return { postIds: [], hasIntro: false }
 }
 
-function appendRelatedPosts(json: JSONContent, items: ChapterItem[]): JSONContent {
+/** Serialize only stable UUIDs – no title/slug snapshots */
+function appendRelatedPosts(json: JSONContent, postIds: string[], hasIntro: boolean): JSONContent {
   const content = (json?.content ?? []).filter(n => n.type !== 'relatedPosts')
-  if (items.length > 0) {
-    content.push({ type: 'relatedPosts', attrs: { items } })
+  if (postIds.length > 0) {
+    content.push({ type: 'relatedPosts', attrs: { postIds, hasIntro } })
   }
   return { ...json, content }
 }
@@ -504,7 +534,7 @@ function YoutubeNodeView({ node, deleteNode, editor, getPos }: NodeViewProps) {
   )
 }
 
-export default function Editor({ value, onChange, postId, userId, chaptersEnabled, userPosts: userPostsProp }: Props) {
+export default function Editor({ value, onChange, postId, userId, chaptersEnabled, userPosts: userPostsProp, currentDraft }: Props) {
   const [showMedia, setShowMedia] = useState(false)
   const [showStyle, setShowStyle] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -514,8 +544,12 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const chaptersContainerRef = useRef<HTMLDivElement>(null)
   const chaptersRef = useRef<ChapterItem[]>([])
+  /** source of truth for serialization – postIds only, never title/slug */
+  const chapterPostIdsRef = useRef<string[]>([])
+  const hasIntroRef = useRef(false)
   const [showChapters, setShowChapters] = useState(false)
   const [chaptersItems, setChaptersItems] = useState<ChapterItem[]>([])
+  const [hasIntro, setHasIntro] = useState(false)
   const [pendingIds, setPendingIds] = useState<string[]>([])
   const [chapterSearch, setChapterSearch] = useState('')
   const userPosts = userPostsProp ?? []
@@ -572,20 +606,21 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
       },
     },
     onUpdate({ editor }) {
-      onChange(appendRelatedPosts(editor.getJSON(), chaptersRef.current))
+      onChange(appendRelatedPosts(editor.getJSON(), chapterPostIdsRef.current, hasIntroRef.current))
     },
   })
 
-  // נטען כל פעם שמגיע value חדש (טעינת טיוטה)
+  // Effect 1: sync TipTap editor content + extract postIds when value changes
   useEffect(() => {
     if (!editor) return
     const raw = value ?? EMPTY_DOC
     const next = stripRelatedPosts(raw)
 
-    // Extract and sync relatedPosts chapters
-    const items = extractRelatedPostsItems(raw)
-    chaptersRef.current = items
-    setChaptersItems(prev => chaptersEqual(prev, items) ? prev : items)
+    // Extract postIds and hasIntro (new format: postIds; old format: items[].id)
+    const { postIds, hasIntro: loadedHasIntro } = extractRelatedPostsData(raw)
+    chapterPostIdsRef.current = postIds
+    hasIntroRef.current = loadedHasIntro
+    setHasIntro(loadedHasIntro)
 
     // רק אם באמת שונה (כדי לא לשרוף undo)
     try {
@@ -600,6 +635,17 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
       editor.commands.setContent(next, { emitUpdate: false })
     }, 0)
   }, [editor, value])
+
+  // Effect 2: resolve postIds → ChapterItem[] for display whenever userPosts or currentDraft changes.
+  // Runs independently so that typing in the title (changing currentDraft) never resets TipTap content.
+  useEffect(() => {
+    const allPosts = [...userPosts, ...(currentDraft ? [currentDraft] : [])]
+    const resolved = chapterPostIdsRef.current
+      .map(id => allPosts.find(p => p.id === id))
+      .filter((p): p is ChapterItem => p != null)
+    chaptersRef.current = resolved
+    setChaptersItems(prev => chaptersEqual(prev, resolved) ? prev : resolved)
+  }, [userPosts, currentDraft])
 
   // רענון Signed URLs לתמונות פרטיות כשפותחים/טוענים טיוטה
   useEffect(() => {
@@ -785,30 +831,35 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
     }
   }, [editor])
 
-  const updateChapters = useCallback((newItems: ChapterItem[]) => {
+  const updateChapters = useCallback((newItems: ChapterItem[], newHasIntro?: boolean) => {
+    const newIds = newItems.map(item => item.id)
+    chapterPostIdsRef.current = newIds
     chaptersRef.current = newItems
     setChaptersItems(newItems)
     if (!editor || editor.isDestroyed) return
-    onChange(appendRelatedPosts(editor.getJSON(), newItems))
+    onChange(appendRelatedPosts(editor.getJSON(), newIds, newHasIntro ?? hasIntroRef.current))
+  }, [editor, onChange])
+
+  const toggleHasIntro = useCallback((v: boolean) => {
+    hasIntroRef.current = v
+    setHasIntro(v)
+    if (!editor || editor.isDestroyed) return
+    onChange(appendRelatedPosts(editor.getJSON(), chapterPostIdsRef.current, v))
   }, [editor, onChange])
 
   const availablePosts = userPosts.filter(p =>
     p.id !== postId && !chaptersItems.some(c => c.id === p.id)
   )
 
+  // הפרק הנוכחי זמין להוספה רק אם לא נמצא כבר ברשימה
+  const currentDraftAvailable =
+    currentDraft &&
+    currentDraft.id &&
+    !chaptersItems.some(c => c.id === currentDraft.id)
+
   const togglePending = useCallback((id: string) => {
     setPendingIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }, [])
-
-  const addChecked = useCallback(() => {
-    if (pendingIds.length === 0) return
-    const toAdd = pendingIds
-      .map(id => availablePosts.find(p => p.id === id))
-      .filter((p): p is ChapterItem => p != null)
-    if (toAdd.length === 0) return
-    updateChapters([...chaptersItems, ...toAdd])
-    setPendingIds([])
-  }, [pendingIds, availablePosts, chaptersItems, updateChapters])
 
   const removeChapter = useCallback((index: number) => {
     updateChapters(chaptersItems.filter((_, i) => i !== index))
@@ -951,6 +1002,28 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
                     overflowX: 'hidden',
                   }}
                 >
+                  {/* Intro toggle */}
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '6px 4px',
+                      marginBottom: 8,
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      userSelect: 'none',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={hasIntro}
+                      onChange={e => toggleHasIntro(e.target.checked)}
+                      style={{ accentColor: '#111', flexShrink: 0 }}
+                    />
+                    <span>יש הקדמה (פרק 0)</span>
+                  </label>
+
                   {/* Search */}
                   <input
                     type="text"
@@ -973,7 +1046,37 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
 
                   {/* Available posts – checkboxes */}
                   <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-muted)' }}>
-                    {userPosts.length === 0 && (
+                    {/* הפרק הנוכחי – תמיד ראשון ברשימה */}
+                    {currentDraftAvailable && currentDraft && (
+                      !chapterSearch.trim() || currentDraft.title.includes(chapterSearch.trim())
+                    ) && (
+                      <label
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '6px 8px',
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          borderBottom: '1px solid var(--color-border)',
+                          background: 'var(--color-background)',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={pendingIds.includes(currentDraft.id)}
+                          onChange={() => togglePending(currentDraft.id)}
+                          style={{ accentColor: '#111', flexShrink: 0 }}
+                        />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                          {currentDraft.title || 'ללא כותרת'}
+                        </span>
+                        <span style={{ fontSize: 10, color: 'var(--color-muted-foreground)', flexShrink: 0, border: '1px solid var(--color-border)', borderRadius: 4, padding: '1px 4px' }}>
+                          הפרק הנוכחי
+                        </span>
+                      </label>
+                    )}
+                    {userPosts.length === 0 && !currentDraftAvailable && (
                       <div style={{ padding: '10px 8px', fontSize: 12, color: 'var(--color-muted-foreground)', textAlign: 'center' }}>טוען...</div>
                     )}
                     {availablePosts
@@ -1002,7 +1105,7 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
                           </span>
                         </label>
                       ))}
-                    {userPosts.length > 0 && availablePosts.filter(p => !chapterSearch.trim() || p.title.includes(chapterSearch.trim())).length === 0 && (
+                    {userPosts.length > 0 && !currentDraftAvailable && availablePosts.filter(p => !chapterSearch.trim() || p.title.includes(chapterSearch.trim())).length === 0 && (
                       <div style={{ padding: '10px 8px', fontSize: 12, color: 'var(--color-muted-foreground)', textAlign: 'center' }}>אין פוסטים זמינים</div>
                     )}
                   </div>
@@ -1010,7 +1113,16 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
                   {/* Add checked button */}
                   <button
                     type="button"
-                    onClick={addChecked}
+                    onClick={() => {
+                      if (pendingIds.length === 0) return
+                      const currentDraftToAdd = currentDraft && pendingIds.includes(currentDraft.id) ? currentDraft : null
+                      const toAdd = pendingIds
+                        .map(id => id === currentDraft?.id ? currentDraftToAdd : availablePosts.find(p => p.id === id))
+                        .filter((p): p is ChapterItem => p != null)
+                      if (toAdd.length === 0) return
+                      updateChapters([...chaptersItems, ...toAdd])
+                      setPendingIds([])
+                    }}
                     disabled={pendingIds.length === 0}
                     style={{
                       width: '100%',
@@ -1035,7 +1147,9 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
                     </div>
                   )}
                   <div style={{ display: 'grid', gap: 4 }}>
-                    {chaptersItems.map((item, i) => (
+                    {chaptersItems.map((item, i) => {
+                      const isCurrentDraft = !!(currentDraft && item.id === currentDraft.id)
+                      return (
                       <div
                         key={item.id}
                         style={{
@@ -1044,13 +1158,18 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
                           gap: 4,
                           padding: '4px 8px',
                           borderRadius: 8,
-                          border: '1px solid var(--color-border)',
-                          background: 'var(--color-muted)',
+                          border: isCurrentDraft ? '1px solid var(--color-foreground)' : '1px solid var(--color-border)',
+                          background: isCurrentDraft ? 'var(--color-background)' : 'var(--color-muted)',
                           fontSize: 12,
                         }}
                       >
                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-                          {i + 1}. {item.title}
+                          {getChapterNumber(i, hasIntro)}. {item.title}
+                          {isCurrentDraft && (
+                            <span style={{ marginRight: 6, fontSize: 10, color: 'var(--color-muted-foreground)', border: '1px solid var(--color-border)', borderRadius: 4, padding: '1px 4px' }}>
+                              אתה נמצא פה
+                            </span>
+                          )}
                         </span>
                         <button
                           type="button"
@@ -1121,7 +1240,8 @@ export default function Editor({ value, onChange, postId, userId, chaptersEnable
                           ×
                         </button>
                       </div>
-                    ))}
+                    )
+                    })}
                   </div>
                 </div>
                 <style>{`

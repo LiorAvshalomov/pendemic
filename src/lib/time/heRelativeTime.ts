@@ -51,7 +51,7 @@ export function heRelativeTime(iso: string | null | undefined): string {
   if (diffSec < 60) return 'עכשיו'
 
   const diffMin = Math.floor(diffSec / 60)
-  if (diffMin < 60) return diffMin === 1 ? 'דקה' : `${diffMin} דקות`
+  if (diffMin < 60) return diffMin === 1 ? 'לפני דקה' : `לפני ${diffMin} דקות`
 
   const diffHr = Math.floor(diffMin / 60)
   if (diffHr === 1) return 'לפני שעה'
