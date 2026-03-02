@@ -103,6 +103,12 @@ export default function PostComments({ postId, postSlug, postTitle, postAuthorId
   const [text, setText] = useState('')
   const [items, setItems] = useState<CommentRow[]>([])
   const [err, setErr] = useState<string | null>(null)
+  const [realtimeHighlightIds, setRealtimeHighlightIds] = useState<Set<string>>(new Set())
+  const [newCommentBanner, setNewCommentBanner] = useState(false)
+  const itemIdsRef = useRef<string[]>([])
+  const userIdRef = useRef<string | null>(null)
+  const likeSyncTimerRef = useRef<number | null>(null)
+  const bannerCommentIdRef = useRef<string | null>(null)
 
   const searchParams = useSearchParams()
   const pathname = usePathname()
@@ -379,6 +385,11 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length])
 
+  // Keep itemIdsRef current for stable subscription callbacks (avoids stale closure).
+  useEffect(() => {
+    itemIdsRef.current = items.map(x => x.id)
+  }, [items])
+
   // Auto-expand parents of highlighted/pending-highlighted replies
   useEffect(() => {
     const idsToCheck = new Set<string>()
@@ -576,10 +587,12 @@ async function submitReport() {
   const load = async () => {
     setErrFor(null)
     setLoading(true)
+    setNewCommentBanner(false)
 
     const { data: auth } = await supabase.auth.getUser()
     const u = auth.user
     setUserId(u?.id ?? null)
+    userIdRef.current = u?.id ?? null
 
     // admin/mod check — env-var based, no DB query
     if (u?.id) {
@@ -705,6 +718,16 @@ async function submitReport() {
               if (prev.some(x => x.id === row.id)) return prev
               return [row, ...prev]
             })
+            // Highlight the new comment for 2.5s
+            setRealtimeHighlightIds(prev => { const n = new Set(prev); n.add(row.id); return n })
+            window.setTimeout(() => {
+              setRealtimeHighlightIds(prev => { const n = new Set(prev); n.delete(row.id); return n })
+            }, 2500)
+            // Banner only for others' comments (own are already optimistically in view)
+            if (row.author_id !== userIdRef.current) {
+              bannerCommentIdRef.current = row.id
+              setNewCommentBanner(true)
+            }
           }
 
           if (payload.eventType === 'DELETE') {
@@ -734,6 +757,42 @@ async function submitReport() {
     return () => {
       supabase.removeChannel(ch)
     }
+  }, [postId])
+
+  // Live likes: subscribe to comment_likes; filter client-side by known comment IDs.
+  // Own actions are skipped (already handled optimistically in toggleLike).
+  // A debounced DB reconcile corrects any delta drift after 200ms.
+  useEffect(() => {
+    if (!postId) return
+    const likeCh = supabase
+      .channel(`comment-likes-${postId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'comment_likes' },
+        payloadRaw => {
+          const p = payloadRaw as {
+            eventType: string
+            new?: { comment_id?: string; user_id?: string }
+            old?: { comment_id?: string; user_id?: string }
+          }
+          const commentId = (p.new?.comment_id ?? p.old?.comment_id) as string | undefined
+          if (!commentId || !itemIdsRef.current.includes(commentId)) return
+          const evUserId = p.new?.user_id ?? p.old?.user_id
+          if (evUserId && evUserId === userIdRef.current) return // own action — already optimistic
+          if (p.eventType === 'INSERT') {
+            setLikeCounts(prev => ({ ...prev, [commentId]: Number(prev[commentId] ?? 0) + 1 }))
+          } else if (p.eventType === 'DELETE') {
+            setLikeCounts(prev => ({ ...prev, [commentId]: Math.max(0, Number(prev[commentId] ?? 0) - 1) }))
+          }
+          // Debounced reconcile — corrects any double-count after all events settle
+          if (likeSyncTimerRef.current) window.clearTimeout(likeSyncTimerRef.current)
+          likeSyncTimerRef.current = window.setTimeout(() => {
+            void refreshLikes(itemIdsRef.current, userIdRef.current)
+          }, 200)
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(likeCh) }
   }, [postId])
 
   const send = async () => {
@@ -1008,6 +1067,11 @@ async function submitReport() {
       35% { transform: scale(1.005); box-shadow: 0 0 24px -2px rgba(251,191,36,0.28); }
       100%{ transform: scale(1);     box-shadow: 0 0 12px -3px rgba(251,191,36,0.10); }
     }
+    @keyframes tyutaNewComment {
+      0%   { box-shadow: 0 0 0 3px rgba(59,130,246,0.5); }
+      60%  { box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+      100% { box-shadow: 0 0 0 0   rgba(59,130,246,0); }
+    }
   `}</style>
   {/* Report modal */}
   {reportOpen && (
@@ -1184,6 +1248,52 @@ async function submitReport() {
         <div className="mt-3 rounded-xl border bg-red-50 dark:bg-red-950/30 dark:border-red-800/40 p-3 text-sm text-red-700 dark:text-red-300">{err}</div>
       ) : null}
 
+      {/* New comment banner */}
+      {newCommentBanner && !loading ? (
+        <button
+          type="button"
+          onClick={() => {
+            setNewCommentBanner(false)
+            const id = bannerCommentIdRef.current
+            if (!id) return
+
+            // If the new comment is a reply, expand its parent first so the element renders.
+            const comment = items.find(x => x.id === id)
+            if (comment?.parent_comment_id) {
+              setExpandedParents(prev => {
+                const n = new Set(prev)
+                n.add(comment.parent_comment_id!)
+                return n
+              })
+            }
+
+            // Retry until the element appears in the DOM (expansion needs a render cycle).
+            let attempts = 0
+            const tryScrollAndHighlight = () => {
+              const el = document.getElementById(`comment-${id}`)
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                // Re-trigger highlight: remove → 50ms → re-add → remove after 2.5s
+                setRealtimeHighlightIds(prev => { const n = new Set(prev); n.delete(id); return n })
+                window.setTimeout(() => {
+                  setRealtimeHighlightIds(prev => { const n = new Set(prev); n.add(id); return n })
+                  window.setTimeout(() => {
+                    setRealtimeHighlightIds(prev => { const n = new Set(prev); n.delete(id); return n })
+                  }, 2500)
+                }, 50)
+                return
+              }
+              attempts++
+              if (attempts < 12) window.setTimeout(tryScrollAndHighlight, 100)
+            }
+            window.setTimeout(tryScrollAndHighlight, 50)
+          }}
+          className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-center text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-800/40 dark:bg-blue-950/30 dark:text-blue-300"
+        >
+          ↓ תגובה חדשה — לחץ לצפייה
+        </button>
+      ) : null}
+
       {/* List */}
       <div ref={listRef} className="mt-4 space-y-3">
         {loading ? (
@@ -1319,6 +1429,7 @@ async function submitReport() {
                   `relative rounded-2xl border p-3 scroll-mt-24 transition-all duration-500 ease-out ` +
                   (highlightIds.has(`comment-${c.id}`) ? 'ring-1 ring-amber-200/50 bg-amber-50/50 shadow-[0_0_12px_-3px_rgba(251,191,36,0.10)] animate-[tyutaGlow_900ms_ease-out] motion-reduce:animate-none' : '')
                 }
+                style={realtimeHighlightIds.has(c.id) ? { animation: 'tyutaNewComment 2.5s ease-out forwards' } : undefined}
               >
 {isAdmin && !isTemp && !isMine ? (
   <div className="absolute left-2 top-2" data-comment-menu>
@@ -1433,6 +1544,7 @@ async function submitReport() {
                             `relative rounded-2xl border bg-white dark:bg-card dark:border-border p-3 scroll-mt-24 transition-all duration-500 ease-out ` +
                             (highlightIds.has(`comment-${r.id}`) ? 'ring-1 ring-amber-200/50 bg-amber-50/50 shadow-[0_0_12px_-3px_rgba(251,191,36,0.10)] animate-[tyutaGlow_900ms_ease-out] motion-reduce:animate-none' : '')
                           }
+                          style={realtimeHighlightIds.has(r.id) ? { animation: 'tyutaNewComment 2.5s ease-out forwards' } : undefined}
                         >
 {isAdmin && !rTemp && !rMine ? (
   <div className="absolute left-2 top-2" data-comment-menu>

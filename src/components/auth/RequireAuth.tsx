@@ -57,6 +57,21 @@ export default function RequireAuth({ children, unauthRedirectTo = '/auth/login'
     }
   }, [pathname, router, unauthRedirectTo])
 
-  if (!ready) return null
+  if (!ready) {
+    // Stable skeleton prevents CLS: occupies the same vertical space as children
+    // so there is no layout jump when auth resolves and content mounts.
+    return (
+      <div className="min-h-screen animate-pulse" aria-hidden="true">
+        <div className="mx-auto max-w-6xl px-3 py-6 space-y-4">
+          <div className="h-32 rounded-3xl bg-neutral-100 dark:bg-muted/40" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-28 rounded-2xl bg-neutral-100 dark:bg-muted/40" />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
   return <>{children}</>
 }

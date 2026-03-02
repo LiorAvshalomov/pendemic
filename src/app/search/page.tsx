@@ -423,8 +423,27 @@ export default function SearchPage() {
         {error ? <div className="mt-3 text-sm text-red-700">שגיאת חיפוש: {error}</div> : null}
       </form>
 
-      <div className="mt-6 space-y-3">
-        {results.map((p) => (
+      <div className="mt-6 space-y-3 min-h-[400px]">
+        {/* Skeleton cards while loading – reserves space so no CLS when results arrive */}
+        {loading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <div
+              key={i}
+              className="animate-pulse rounded-2xl border bg-white p-4 dark:bg-card dark:border-border"
+            >
+              <div className="flex flex-row-reverse items-start gap-4">
+                <div className="h-20 w-28 shrink-0 rounded-xl bg-neutral-200 dark:bg-muted" />
+                <div className="min-w-0 flex-1 space-y-2 pt-1">
+                  <div className="h-4 w-1/3 rounded-lg bg-neutral-200 dark:bg-muted" />
+                  <div className="h-5 w-3/4 rounded-lg bg-neutral-200 dark:bg-muted" />
+                  <div className="h-4 w-full rounded-lg bg-neutral-100 dark:bg-muted/60" />
+                  <div className="h-3 w-1/4 rounded-lg bg-neutral-100 dark:bg-muted/60" />
+                </div>
+              </div>
+            </div>
+          ))
+        ) : null}
+        {!loading && results.map((p) => (
           <div
             key={p.id}
             role="link"
@@ -483,6 +502,7 @@ export default function SearchPage() {
         ))}
 
         {!loading && !error && results.length === 0 ? <div className="rounded-2xl border bg-white p-6 text-sm text-muted-foreground dark:bg-card dark:border-border">לא נמצאו תוצאות.</div> : null}
+        {!loading && error ? null /* error shown in form */ : null}
       </div>
 
       <div className="mt-6 flex items-center justify-center gap-2">

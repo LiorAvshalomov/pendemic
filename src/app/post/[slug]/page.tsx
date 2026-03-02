@@ -18,14 +18,23 @@ type PageProps = {
   params: Promise<{ slug: string }>
 }
 
-type PostSeoRow = {
-  author_id: string
+// Full post data returned to the client as SSR initial state (avoids a first client-side DB round-trip)
+export type PostInitialData = {
+  id: string
+  slug: string
   title: string | null
   excerpt: string | null
   cover_image_url: string | null
+  status: string | null
   published_at: string | null
   updated_at: string | null
-  author: { username: string | null; display_name: string | null }[] | null
+  content_json: unknown
+  created_at: string
+  author_id: string
+  channel_id: number | null
+  subcategory_tag_id: number | null
+  channel: { name_he: string | null; slug: string | null }[] | null
+  author: { id: string; username: string | null; display_name: string | null; avatar_url: string | null }[] | null
 }
 
 type ProfileRow = {
@@ -66,19 +75,27 @@ export default async function PostPage({ params }: PageProps) {
     .from("posts")
     .select(
       `
-        author_id,
+        id,
+        slug,
         title,
         excerpt,
         cover_image_url,
+        status,
         published_at,
         updated_at,
-        author:profiles!posts_author_id_fkey ( username, display_name )
+        content_json,
+        created_at,
+        author_id,
+        channel_id,
+        subcategory_tag_id,
+        channel:channels ( name_he, slug ),
+        author:profiles!posts_author_id_fkey ( id, username, display_name, avatar_url )
       `,
     )
     .eq("slug", slug)
     .eq("status", "published")
     .is("deleted_at", null)
-    .maybeSingle<PostSeoRow>()
+    .maybeSingle<PostInitialData>()
 
   if (!data) return <PostClient />
 
@@ -94,7 +111,7 @@ export default async function PostPage({ params }: PageProps) {
   let authorName = ""
   let authorUsername: string | null = null
 
-  const joinedAuthor = pickAuthor(data.author)
+  const joinedAuthor = pickAuthor(data.author as { username: string | null; display_name: string | null }[] | null)
   authorName = (joinedAuthor?.display_name ?? "").trim()
   authorUsername = joinedAuthor?.username ?? null
 
@@ -142,7 +159,7 @@ export default async function PostPage({ params }: PageProps) {
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: safeJsonLdStringify(jsonLd) }}
       />
-      <PostClient />
+      <PostClient initialData={data} />
     </>
   )
 }
