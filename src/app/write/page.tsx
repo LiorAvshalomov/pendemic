@@ -178,6 +178,25 @@ export default function WritePage() {
 
   const [chapterUserPosts, setChapterUserPosts] = useState<Array<{ id: string; slug: string; title: string }>>([])
 
+  // הפרק הנוכחי שנמצא בעריכה (רק כאשר כבר נוצרה טיוטה עם ID)
+  const currentDraftForChapters = useMemo(() => {
+    if (!effectivePostId || !draftSlug) return null
+    return { id: effectivePostId, slug: draftSlug, title: title || 'הפרק הנוכחי' }
+  }, [effectivePostId, draftSlug, title])
+
+  // כשהמשתמש עוזב מצב "סיפור בהמשכים" – נקה relatedPosts מיד (מניעת שמירת נתונים ישנים)
+  const prevChaptersEnabledRef = useRef<boolean | null>(null)
+  useEffect(() => {
+    const prev = prevChaptersEnabledRef.current
+    prevChaptersEnabledRef.current = chaptersEnabled
+    // רק כשיש מעבר מפעיל→כבוי (לא בטעינה ראשונית כשהערך כבר false)
+    if (prev !== true || chaptersEnabled) return
+    setContentJson(c => ({
+      ...c,
+      content: (c?.content ?? []).filter((n: JSONContent) => n.type !== 'relatedPosts'),
+    }))
+  }, [chaptersEnabled])
+
   useEffect(() => {
     if (!chaptersEnabled || !userId) {
       setChapterUserPosts([])
@@ -258,6 +277,14 @@ export default function WritePage() {
 
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasLoadedDraftOnce = useRef(false)
+  /**
+   * Monotonically-increasing save counter.
+   * Every autosave request captures `mySeq = ++saveSeqRef.current` at start.
+   * Response-side state updates (lastSavedAt, createdDraftId) are only applied
+   * when `mySeq === saveSeqRef.current`, i.e. no newer save has started since.
+   * This prevents stale responses from overwriting newer UI state.
+   */
+  const saveSeqRef = useRef(0)
   const subcatReqSeq = useRef(0)
   const tagsReqSeq = useRef(0)
   const publishingRef = useRef(false)
@@ -645,6 +672,10 @@ if (!effectiveChannelId) {
     const isEmpty = !title.trim() && !excerpt.trim() && JSON.stringify(contentJson) === JSON.stringify(EMPTY_DOC)
     if (isEmpty && !effectivePostId && !isEditMode) return
 
+    // Capture a seq token. Any response-side setState below is gated on this
+    // token still being the latest, preventing stale saves from overwriting newer state.
+    const mySeq = ++saveSeqRef.current
+
     setSaving(true)
     setErrorMsg(null)
 
@@ -675,7 +706,8 @@ if (!effectiveChannelId) {
         }
 
         if (!settingsLocked) await syncTags(effectivePostId)
-        setLastSavedAt(new Date().toISOString())
+        // Only update lastSavedAt if no newer save has started since ours
+        if (mySeq === saveSeqRef.current) setLastSavedAt(new Date().toISOString())
         return
       }
 
@@ -704,10 +736,14 @@ if (!effectiveChannelId) {
       }
 
       await syncTags(id)
-      setLastSavedAt(new Date().toISOString())
+      // Only update meta if this is still the latest save response
+      if (mySeq === saveSeqRef.current) setLastSavedAt(new Date().toISOString())
     } finally {
-      setSaving(false)
-      setSavePending(false)
+      // Only clear the saving/pending indicators when no newer save is in flight
+      if (mySeq === saveSeqRef.current) {
+        setSaving(false)
+        setSavePending(false)
+      }
     }
   }, [
     userId,
@@ -1078,6 +1114,12 @@ if (!effectiveChannelId) {
         setHighlightSubcategory(true)
         setTimeout(() => setHighlightSubcategory(false), 2500)
         hasSettingsError = true
+      } else if (!subcategoryOptions.some(sc => sc.id === subcategoryTagId)) {
+        // תת-קטגוריה לא שייכת לערוץ הנוכחי (ערך ישן מערוץ קודם)
+        setSubcategoryTagId(null)
+        setHighlightSubcategory(true)
+        setTimeout(() => setHighlightSubcategory(false), 2500)
+        hasSettingsError = true
       }
       if (selectedTagIds.length < 1) {
         setHighlightTags(true)
@@ -1146,12 +1188,17 @@ if (!effectiveChannelId) {
       return
     }
 
+    // Strip relatedPosts/serial attrs if we are NOT in serial-story mode (safety net for any stale state)
+    const publishContentJson: JSONContent = chaptersEnabled
+      ? contentJson
+      : { ...contentJson, content: (contentJson.content ?? []).filter(n => n.type !== 'relatedPosts') }
+
     const { data: publishedRow, error } = await supabase
       .from('posts')
       .update({
         title: title.trim(),
         excerpt: excerpt.trim() || null,
-        content_json: contentJson,
+        content_json: publishContentJson,
         channel_id: channelId,
         subcategory_tag_id: subcategoryTagId,
         cover_image_url: finalCoverUrl,
@@ -1363,6 +1410,7 @@ if (!effectiveChannelId) {
                         const next = Number(e.target.value)
                         setChannelId(next)
                         setSubcategoryTagId(null)
+                        setSubcategoryOptions([]) // מנקה מיד – מניעת ערכים ישנים עד שהשאילתא החדשה תחזור
                       }}
                       className={`mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm disabled:opacity-60 transition-shadow duration-500 dark:bg-card dark:border-border dark:text-foreground ${highlightChannel ? 'ring-2 ring-red-400 shadow-[0_0_0_4px_rgb(248_113_113_/_0.15)]' : ''}`}
                     >
@@ -1456,7 +1504,7 @@ if (!effectiveChannelId) {
               </div>
             </div>
           </div>
-          <Editor value={contentJson} onChange={setContentJson} postId={effectivePostId} userId={userId} chaptersEnabled={chaptersEnabled} userPosts={chapterUserPosts} />
+          <Editor value={contentJson} onChange={setContentJson} postId={effectivePostId} userId={userId} chaptersEnabled={chaptersEnabled} userPosts={chapterUserPosts} currentDraft={currentDraftForChapters} />
         </section>
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">

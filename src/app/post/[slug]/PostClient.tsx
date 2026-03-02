@@ -954,7 +954,7 @@ export default function PostPage({ initialData }: Props) {
       >
       {/* תוכן – לב האתר */}
       <div className="mt-6 min-h-[45vh] pb-4">
-        <RichText content={post.content_json as RichNode} />
+        <RichText content={post.content_json as RichNode} currentPostId={post.id} currentSlug={slug} />
       </div>
 
       {(() => {

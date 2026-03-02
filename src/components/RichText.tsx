@@ -1,5 +1,8 @@
-import React from 'react'
+'use client'
+
+import React, { useEffect, useState } from 'react'
 import { RICHTEXT_TYPOGRAPHY } from '@/lib/richtextStyles'
+import { supabase } from '@/lib/supabaseClient'
 
 type Mark = {
   type: 'bold' | 'italic' | string
@@ -25,6 +28,10 @@ export type RichNode = {
 
 type Props = {
   content: RichNode
+  /** id של הפוסט הנוכחי (UUID) – match ראשוני לזיהוי "אתה פה" ברשימת פרקי הסדרה */
+  currentPostId?: string
+  /** slug fallback – בשימוש כאשר currentPostId לא מוגדר */
+  currentSlug?: string
 }
 
 function toYouTubeNoCookieEmbed(src: string): string | null {
@@ -116,14 +123,126 @@ function renderText(node: RichNode, key: string) {
   return <React.Fragment key={key}>{out}</React.Fragment>
 }
 
-function renderNode(node: RichNode, key: string): React.ReactNode {
+function getChapterNumber(index: number, hasIntro: boolean): number {
+  return hasIntro ? index : index + 1
+}
+
+/**
+ * Extracts postIds from relatedPosts attrs.
+ * Handles both new format (attrs.postIds) and old format (attrs.items[].id).
+ */
+function extractPostIds(attrs: Record<string, unknown> | undefined): string[] {
+  if (!attrs) return []
+  if (Array.isArray(attrs.postIds)) {
+    return (attrs.postIds as unknown[]).filter((x): x is string => typeof x === 'string')
+  }
+  if (Array.isArray(attrs.items)) {
+    return (attrs.items as Array<Record<string, unknown>>)
+      .map(item => item.id)
+      .filter((x): x is string => typeof x === 'string')
+  }
+  return []
+}
+
+type LiveChapter = { id: string; slug: string; title: string; status: string }
+
+/** Fetches live chapter data and renders the ordered list. */
+function SerialChaptersList({
+  postIds,
+  hasIntro,
+  currentPostId,
+  currentSlug,
+}: {
+  postIds: string[]
+  hasIntro: boolean
+  currentPostId?: string
+  currentSlug?: string
+}) {
+  const [chapters, setChapters] = useState<LiveChapter[]>([])
+  const [loaded, setLoaded] = useState(false)
+
+  const idsKey = postIds.join(',')
+
+  useEffect(() => {
+    if (postIds.length === 0) { setLoaded(true); return }
+    let cancelled = false
+    supabase
+      .from('posts')
+      .select('id, slug, title, status')
+      .in('id', postIds)
+      .then(({ data }) => {
+        if (cancelled) return
+        const rows = (data ?? []) as LiveChapter[]
+        // Preserve the order from postIds (DB returns in any order)
+        const ordered = postIds
+          .map(id => rows.find(r => r.id === id))
+          .filter((r): r is LiveChapter => r != null)
+        setChapters(ordered)
+        setLoaded(true)
+      })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey])
+
+  if (!loaded) {
+    return (
+      <div style={{ color: 'var(--color-muted-foreground)', fontSize: 13 }}>
+        טוען פרקים…
+      </div>
+    )
+  }
+  if (chapters.length === 0) return null
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {chapters.map((item, i) => {
+        const chNum = getChapterNumber(i, hasIntro)
+        const isCurrent =
+          (!!currentPostId && item.id === currentPostId) ||
+          (!currentPostId && !!currentSlug && item.slug === currentSlug)
+        const isPublished = item.status === 'published'
+
+        return (
+          <div key={item.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, lineHeight: 1.7 }}>
+            <span style={{ flexShrink: 0, minWidth: 20, color: 'var(--color-muted-foreground)', fontSize: 13 }}>
+              {chNum}.
+            </span>
+            {isCurrent ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'default' }}>
+                <span style={{ fontWeight: 600 }}>{item.title}</span>
+                <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 4, border: '1px solid currentColor', color: 'var(--color-muted-foreground)', whiteSpace: 'nowrap' }}>
+                  אתה פה
+                </span>
+              </span>
+            ) : isPublished ? (
+              <a
+                href={`/post/${item.slug}`}
+                style={{ textDecoration: 'none' }}
+                className="text-blue-700 dark:text-blue-400 hover:underline"
+              >
+                {item.title}
+              </a>
+            ) : (
+              // Deleted / unpublished – show as disabled text, not a link
+              <span style={{ color: 'var(--color-muted-foreground)', textDecoration: 'line-through', fontSize: 14 }}>
+                {item.title}
+              </span>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function renderNode(node: RichNode, key: string, currentPostId?: string, currentSlug?: string): React.ReactNode {
   if (!node || !node.type) return null
 
   if (node.type === 'text') return renderText(node, key)
   if (node.type === 'hardBreak') return <br key={key} />
 
   const children = (node.content ?? []).map((c, i) =>
-    renderNode(c, `${key}-${i}`)
+    renderNode(c, `${key}-${i}`, currentPostId, currentSlug)
   )
 
   switch (node.type) {
@@ -206,9 +325,10 @@ function renderNode(node: RichNode, key: string): React.ReactNode {
     }
 
     case 'relatedPosts': {
-      const rawItems = (node.attrs as Record<string, unknown> | undefined)?.items
-      if (!Array.isArray(rawItems) || rawItems.length === 0) return null
-      const typedItems = rawItems as Array<{ id: string; slug: string; title: string }>
+      const rawAttrs = node.attrs as Record<string, unknown> | undefined
+      const postIds = extractPostIds(rawAttrs)
+      if (postIds.length === 0) return null
+      const hasIntro = !!(rawAttrs?.hasIntro)
       return (
         <div
           key={key}
@@ -218,18 +338,12 @@ function renderNode(node: RichNode, key: string): React.ReactNode {
           <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>
             פרקים בסדרה
           </h3>
-          <ol style={{ paddingRight: 20, listStyleType: 'decimal', margin: 0 }}>
-            {typedItems.map((item, i) => (
-              <li key={item.id || i} style={{ marginBottom: 6, lineHeight: 1.7 }}>
-                <a
-                  href={`/post/${item.slug}`}
-                  className="text-blue-700 dark:text-blue-400"
-                >
-                  {item.title}
-                </a>
-              </li>
-            ))}
-          </ol>
+          <SerialChaptersList
+            postIds={postIds}
+            hasIntro={hasIntro}
+            currentPostId={currentPostId}
+            currentSlug={currentSlug}
+          />
         </div>
       )
     }
@@ -239,7 +353,7 @@ function renderNode(node: RichNode, key: string): React.ReactNode {
   }
 }
 
-export default function RichText({ content }: Props) {
+export default function RichText({ content, currentPostId, currentSlug }: Props) {
   const normalized: RichNode =
     content && content.type === 'doc'
       ? content
@@ -250,7 +364,7 @@ export default function RichText({ content }: Props) {
       dir="rtl"
       className={`richtext-viewer w-full max-w-[72ch] ml-auto whitespace-pre-wrap ${RICHTEXT_TYPOGRAPHY}`}
     >
-      {renderNode(normalized, 'root')}
+      {renderNode(normalized, 'root', currentPostId, currentSlug)}
     </div>
   )
 }
