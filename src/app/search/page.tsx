@@ -245,7 +245,6 @@ export default function SearchPage() {
           { count: 'exact' }
         )
         .eq('status', 'published')
-        .is('deleted_at', null)
 
       if (channelId) query = query.eq('channel_id', channelId)
       if (subcatValid) query = query.eq('subcategory_tag_id', subcatValid)
