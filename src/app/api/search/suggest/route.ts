@@ -72,7 +72,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const { data: posts, error } = await supabase
     .from('posts_with_counts')
     .select('id, slug, title, cover_image_url, reactions_count, published_at, author_id')
-    .is('deleted_at', null)
     .eq('status', 'published')
     .or(`title.ilike.%${q}%,excerpt.ilike.%${q}%`)
     .order('reactions_count', { ascending: false })
