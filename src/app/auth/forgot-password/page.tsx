@@ -97,7 +97,7 @@ export default function ForgotPasswordPage() {
     <AuthLayout mode="forgot">
       <div className="space-y-5">
         <div className="space-y-1">
-          <h2 className="pd-auth-title text-2xl font-extrabold">איפוס סיסמה</h2>
+          <h2 className="pd-auth-title text-2xl font-bold tracking-tight">איפוס סיסמה</h2>
           <p className="pd-auth-subtitle text-sm">נשלח לך קישור במייל להגדרת סיסמה חדשה.</p>
         </div>
 
@@ -140,7 +140,7 @@ export default function ForgotPasswordPage() {
 
         <div className="text-sm text-black/70">
           חזרה ל־{' '}
-          <Link href="/auth/login" className="font-semibold text-blue-700 hover:underline">כניסה</Link>
+          <Link href="/auth/login" className="pd-auth-link">כניסה</Link>
         </div>
       </div>
     </AuthLayout>

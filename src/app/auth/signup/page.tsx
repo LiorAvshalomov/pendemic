@@ -108,7 +108,7 @@ export default function SignupPage() {
     <AuthLayout mode="signup">
       <div className="space-y-5">
         <div className="space-y-1">
-          <h2 className="pd-auth-title text-2xl font-extrabold">הרשמה</h2>
+          <h2 className="pd-auth-title text-3xl font-black tracking-tight">הרשמה</h2>
           <p className="pd-auth-subtitle text-sm">
             {/* Render a deterministic line on the server / first paint, then rotate after mount */}
             <span className="pd-witty inline-block">{mounted ? WITTY[lineIdx] : WITTY[0]}</span>
@@ -179,11 +179,11 @@ export default function SignupPage() {
 
           <p className="text-xs leading-5 text-black/60">
             בלחיצה על <span className="font-semibold text-black/75">&quot;יצירת משתמש&quot;</span> את/ה מאשר/ת שקראת והסכמת ל־{' '}
-            <Link href="/terms" className="font-semibold text-blue-700 hover:underline">
+            <Link href="/terms" className="pd-auth-link">
               תנאי השימוש
             </Link>{' '}
             ול־{' '}
-            <Link href="/privacy" className="font-semibold text-blue-700 hover:underline">
+            <Link href="/privacy" className="pd-auth-link">
               מדיניות הפרטיות
             </Link>
             .
@@ -200,7 +200,7 @@ export default function SignupPage() {
 
         <div className="text-sm text-black/70">
           כבר יש לך משתמש?{' '}
-          <Link href="/auth/login" className="font-semibold text-blue-700 hover:underline">כניסה</Link>
+          <Link href="/auth/login" className="pd-auth-link">כניסה</Link>
         </div>
       </div>
     </AuthLayout>

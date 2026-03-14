@@ -411,3 +411,65 @@ html {
 .dark .editor-highlight-swatch {
   color: oklch(0.145 0 0);
 }
+
+/* === Tyuta editorial tokens === */
+
+/* Warm hover accent — replaces repetitive sky-blue across feed surfaces */
+.tyuta-hover {
+  transition: color 0.2s ease;
+}
+.tyuta-hover:hover {
+  color: oklch(0.42 0.08 30); /* warm sepia-brown */
+}
+.dark .tyuta-hover:hover {
+  color: oklch(0.78 0.06 60); /* warm amber in dark */
+}
+
+/* Section header editorial rule — thin decorative line */
+.tyuta-section-rule {
+  position: relative;
+  padding-bottom: 0.5rem;
+}
+.tyuta-section-rule::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 2.5rem;
+  height: 2px;
+  background: oklch(0.42 0.08 30 / 40%);
+  border-radius: 1px;
+}
+.dark .tyuta-section-rule::after {
+  background: oklch(0.78 0.06 60 / 35%);
+}
+
+/* Sidebar panel heading — slightly larger, with letter-spacing */
+.tyuta-panel-title {
+  font-size: 0.9375rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+/* Card hover — refined, warmer shadow instead of generic shadow-lg */
+.tyuta-card-hover {
+  transition: box-shadow 0.25s ease, transform 0.2s ease;
+}
+.tyuta-card-hover:hover {
+  box-shadow: 0 8px 24px -4px oklch(0.3 0.02 30 / 12%), 0 2px 6px -2px oklch(0.3 0.02 30 / 8%);
+  transform: translateY(-1px);
+}
+.dark .tyuta-card-hover:hover {
+  box-shadow: 0 8px 24px -4px oklch(0 0 0 / 35%), 0 2px 6px -2px oklch(0 0 0 / 20%);
+}
+
+/* Write CTA editorial warmth */
+.tyuta-cta-card {
+  background: linear-gradient(135deg, oklch(0.97 0.01 60 / 80%), oklch(0.95 0.015 30 / 60%));
+  border: 1px solid oklch(0.85 0.03 40 / 30%);
+}
+.dark .tyuta-cta-card {
+  background: linear-gradient(135deg, oklch(0.28 0.01 60 / 80%), oklch(0.26 0.015 30 / 60%));
+  border: 1px solid oklch(0.4 0.03 40 / 20%);
+}

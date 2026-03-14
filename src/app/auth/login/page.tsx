@@ -67,7 +67,7 @@ export default function LoginPage() {
     <AuthLayout mode="login">
       <div className="space-y-5">
         <div className="space-y-1">
-          <h2 className="pd-auth-title text-2xl font-extrabold">כניסה</h2>
+          <h2 className="pd-auth-title text-3xl font-black tracking-tight">כניסה</h2>
           <p className="pd-auth-subtitle text-sm">
             <span key={lineIdx} className="pd-witty inline-block">{WITTY[lineIdx]}</span>
           </p>
@@ -115,14 +115,14 @@ export default function LoginPage() {
         </form>
 
         <div className="text-sm text-black/70">
-          <Link href="/auth/forgot-password" className="font-semibold text-blue-700 hover:underline">
+          <Link href="/auth/forgot-password" className="pd-auth-link">
             שכחת סיסמה?
           </Link>
         </div>
 
         <div className="text-sm text-black/70">
           אין לך משתמש?{' '}
-          <Link href="/auth/signup" className="font-semibold text-blue-700 hover:underline">הרשמה</Link>
+          <Link href="/auth/signup" className="pd-auth-link">הרשמה</Link>
         </div>
       </div>
     </AuthLayout>
