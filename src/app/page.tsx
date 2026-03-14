@@ -133,8 +133,8 @@ function channelBadgeColor(slug: string | null) {
 
 function SectionHeader({ title, href }: { title: string; href: string }) {
   return (
-    <div className="flex items-center justify-between mb-3">
-      <Link href={href} className="text-lg font-black tracking-tight hover:text-sky-700 dark:hover:text-sky-400 transition-colors">
+    <div className="flex items-center justify-between mb-4">
+      <Link href={href} className="tyuta-section-rule tyuta-hover text-xl font-black tracking-tight">
         {title}
       </Link>
     </div>
@@ -143,8 +143,8 @@ function SectionHeader({ title, href }: { title: string; href: string }) {
 
 function FeaturedPost({ post }: { post: CardPost }) {
   return (
-    <article className="group bg-gradient-to-b from-card to-muted/40 dark:to-muted/10 font-sans rounded-2xl overflow-hidden shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-[1px] border border-border">
-      <div className="lg:grid lg:grid-cols-2 lg:items-stretch lg:min-h-[360px]">
+    <article className="group bg-gradient-to-b from-card to-muted/40 dark:to-muted/10 font-sans rounded-2xl overflow-hidden tyuta-card-hover border border-border">
+      <div className="lg:grid lg:grid-cols-2 lg:items-stretch lg:min-h-[380px]">
         {/* Image */}
         <div className="order-1 lg:order-2">
           <Link href={`/post/${post.slug}`} className="block h-full">
@@ -182,7 +182,7 @@ function FeaturedPost({ post }: { post: CardPost }) {
               <div className="min-w-0">
                 {post.author_username ? (
                   <AuthorHover username={post.author_username}>
-                    <Link href={`/u/${post.author_username}`} className="font-bold text-sm hover:text-sky-700 dark:hover:text-sky-400 transition-colors">
+                    <Link href={`/u/${post.author_username}`} className="font-bold text-sm tyuta-hover">
                       {post.author_name}
                     </Link>
                   </AuthorHover>
@@ -242,15 +242,15 @@ function FeaturedPost({ post }: { post: CardPost }) {
           ) : null}
 
           {/* Title */}
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black leading-tight mb-3">
-            <Link href={`/post/${post.slug}`} className="hover:text-sky-700 dark:hover:text-sky-400 transition-colors">
+          <h1 className="text-2xl sm:text-3xl lg:text-[2.5rem] font-black leading-[1.15] tracking-tight mb-3">
+            <Link href={`/post/${post.slug}`} className="tyuta-hover">
               {post.title}
             </Link>
           </h1>
 
           {/* Excerpt */}
           {post.excerpt ? (
-            <p className="text-muted-foreground text-sm sm:text-base lg:text-lg leading-relaxed mb-4 line-clamp-3">
+            <p className="text-muted-foreground text-sm sm:text-base lg:text-[1.0625rem] leading-[1.7] mb-5 line-clamp-3">
               {truncateText(post.excerpt, 150)}
             </p>
           ) : (
@@ -264,7 +264,7 @@ function FeaturedPost({ post }: { post: CardPost }) {
 
 function SimplePostCard({ post }: { post: CardPost }) {
   return (
-    <article className="group bg-gradient-to-b from-card to-muted/40 dark:to-muted/10 rounded-xl overflow-hidden shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-[1px] border border-border flex flex-col">
+    <article className="group bg-gradient-to-b from-card to-muted/40 dark:to-muted/10 rounded-xl overflow-hidden tyuta-card-hover border border-border flex flex-col">
       <Link href={`/post/${post.slug}`} className="block">
         <div className="relative aspect-[4/3] bg-muted">
           {post.cover_image_url ? (
@@ -310,8 +310,8 @@ function SimplePostCard({ post }: { post: CardPost }) {
           </div>
         </div>
 
-        <h3 className="text-base font-black leading-snug line-clamp-2">
-          <Link href={`/post/${post.slug}`} className="hover:text-sky-700 dark:hover:text-sky-400 transition-colors">
+        <h3 className="text-base font-black leading-snug tracking-tight line-clamp-2">
+          <Link href={`/post/${post.slug}`} className="tyuta-hover">
             {post.title}
           </Link>
         </h3>
@@ -326,9 +326,9 @@ function SimplePostCard({ post }: { post: CardPost }) {
         <div className="mt-auto pt-3 flex items-center justify-start gap-2 text-xs text-foreground">
           {post.author_username ? (
             <AuthorHover username={post.author_username}>
-              <Link href={`/u/${post.author_username}`} className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-neutral-200/70 dark:hover:bg-muted transition-colors duration-200 cursor-pointer">
+              <Link href={`/u/${post.author_username}`} className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted/80 dark:hover:bg-muted transition-colors duration-200 cursor-pointer">
                 <Avatar src={post.author_avatar_url} name={post.author_name} size={24} />
-                <span className="font-semibold transition-colors group-hover/author:text-sky-700 dark:group-hover/author:text-sky-400">{post.author_name}</span>
+                <span className="font-semibold tyuta-hover">{post.author_name}</span>
               </Link>
             </AuthorHover>
           ) : (
@@ -352,7 +352,7 @@ function SimplePostCard({ post }: { post: CardPost }) {
 
 function ListRowCompact({ post }: { post: CardPost }) {
   return (
-    <article className="group relative bg-gradient-to-b from-card to-muted/40 dark:to-muted/10 rounded-2xl border border-border p-4 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-[1px] hover:ring-1 hover:ring-border active:scale-[0.99]">
+    <article className="group relative bg-gradient-to-b from-card to-muted/40 dark:to-muted/10 rounded-2xl border border-border p-4 tyuta-card-hover active:scale-[0.99]">
       {/* Full-card click target to the post. Other links (author/profile) stay clickable above it. */}
       <Link
         href={`/post/${post.slug}`}
@@ -373,7 +373,7 @@ function ListRowCompact({ post }: { post: CardPost }) {
               Constrain cover image height to prevent oversized uploads (e.g. desktop images)
               from expanding the card. The aspect ratio keeps a consistent thumbnail size.
             */}
-              <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-muted">
+              <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-muted ring-1 ring-border/50">
                 {post.cover_image_url ? (
                   <Image
                     src={coverProxySrc(post.cover_image_url)!}
@@ -437,8 +437,8 @@ function ListRowCompact({ post }: { post: CardPost }) {
 
             </div>
 
-            <div className="mt-1 text-[15px] sm:text-base font-black leading-snug line-clamp-2">
-              <Link href={`/post/${post.slug}`} className="transition-colors hover:text-sky-700 dark:hover:text-sky-400 pointer-events-auto">
+            <div className="mt-1 text-[15px] sm:text-base font-black leading-snug tracking-tight line-clamp-2">
+              <Link href={`/post/${post.slug}`} className="tyuta-hover pointer-events-auto">
                 {post.title}
               </Link>
             </div>
@@ -481,7 +481,7 @@ function ListRowCompact({ post }: { post: CardPost }) {
 
 function RecentMiniRow({ post }: { post: CardPost }) {
   return (
-    <div className="group relative rounded-2xl border border-border bg-gradient-to-b from-card to-muted/40 dark:to-muted/10 p-3 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-[1px] active:scale-[0.99]">
+    <div className="group relative rounded-2xl border border-border bg-gradient-to-b from-card to-muted/40 dark:to-muted/10 p-3 tyuta-card-hover active:scale-[0.99]">
       {/* Full-card click target to the post. Other links (author/profile) stay clickable above it. */}
       <Link
         href={`/post/${post.slug}`}
@@ -496,7 +496,7 @@ function RecentMiniRow({ post }: { post: CardPost }) {
         <div className="flex flex-row-reverse items-stretch gap-3">
           <div className="w-[94px] shrink-0">
             <Link href={`/post/${post.slug}`} className="block pointer-events-auto">
-              <div className="relative aspect-square rounded-xl overflow-hidden bg-muted">
+              <div className="relative aspect-square rounded-xl overflow-hidden bg-muted ring-1 ring-border/50">
                 {post.cover_image_url ? (
                   <Image
                     src={coverProxySrc(post.cover_image_url)!}
@@ -513,8 +513,8 @@ function RecentMiniRow({ post }: { post: CardPost }) {
           </div>
 
           <div className="min-w-0 flex-1 text-right flex flex-col">
-            <div className="text-sm font-black leading-snug">
-              <Link href={`/post/${post.slug}`} className="transition-colors hover:text-sky-700 dark:hover:text-sky-400 line-clamp-2 block pointer-events-auto">
+            <div className="text-sm font-black leading-snug tracking-tight">
+              <Link href={`/post/${post.slug}`} className="tyuta-hover line-clamp-2 block pointer-events-auto">
                 {truncateText(post.title, 48)}
               </Link>
             </div>
@@ -1075,16 +1075,16 @@ export default async function HomePage(props: HomePageProps = {}) {
 
   return (
     <main className="min-h-screen" dir="rtl">
-      <div className="mx-auto max-w-6xl px-4 py-6">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
         
 {isChannelPage ? (
           <div className="space-y-8">
             {/* Channel header */}
             {channelName ? (
-              <div className="space-y-1">
-                <div className="text-2xl sm:text-3xl font-black tracking-tight">{channelName}</div>
+              <div className="space-y-1.5">
+                <h1 className="text-2xl sm:text-3xl font-black tracking-tight leading-[1.15]">{channelName}</h1>
                 {channelSubtitle ? (
-                  <div className="text-sm text-muted-foreground">{channelSubtitle}</div>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{channelSubtitle}</p>
                 ) : null}
               </div>
             ) : null}
@@ -1098,10 +1098,10 @@ export default async function HomePage(props: HomePageProps = {}) {
               ) : null}
 
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-lg font-black tracking-tight">פוסטים מובילים{isChannelPage && channelName ? ` ב: ${channelName}` : ``}</div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="tyuta-section-rule text-xl font-black tracking-tight">פוסטים מובילים{isChannelPage && channelName ? ` ב${channelName}` : ``}</div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                   {top1 ? <SimplePostCard post={top1} /> : null}
                   {top2 ? <SimplePostCard post={top2} /> : null}
                   {top3 ? <SimplePostCard post={top3} /> : null}
@@ -1110,7 +1110,7 @@ export default async function HomePage(props: HomePageProps = {}) {
             </div>
 
             {/* Below: subcategories (HOT monthly) + sidebar */}
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8 items-start">
               <div className="space-y-8">
                 {forcedSubcategories.map(sc => {
                                     const rankedItems = channelRanks
@@ -1130,8 +1130,8 @@ export default async function HomePage(props: HomePageProps = {}) {
 
                   return (
                     <div key={sc.name_he}>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="text-lg font-black tracking-tight">{sc.name_he}</div>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="tyuta-section-rule text-lg font-black tracking-tight">{sc.name_he}</div>
                       </div>
                       <div className="space-y-3">
                         {rows.length > 0 ? rows.map(p => (
@@ -1161,7 +1161,7 @@ export default async function HomePage(props: HomePageProps = {}) {
                 <div className="space-y-8">
                   {/* Recent posts FIRST */}
                   <div className="bg-card rounded-2xl p-5 shadow-sm border border-border">
-                    <Link href={channelSlug ? `/search?sort=recent&channel=${channelSlug}` : "/search?sort=recent"} className="text-base font-black mb-4 inline-flex hover:text-sky-700 dark:hover:text-sky-400 transition-colors">פוסטים אחרונים</Link>
+                    <Link href={channelSlug ? `/search?sort=recent&channel=${channelSlug}` : "/search?sort=recent"} className="tyuta-panel-title tyuta-hover mb-4 inline-flex">פוסטים אחרונים</Link>
                     <div className="space-y-3">
                       {recentMini.length > 0 ? (
                         recentMini.slice(0, 8).map(p => (
@@ -1175,7 +1175,7 @@ export default async function HomePage(props: HomePageProps = {}) {
 
                   {/* Writers of week */}
                   <div className="bg-card rounded-2xl p-5 shadow-sm border border-border">
-                    <div className="text-base font-black mb-4">{isChannelPage ? 'כותבי החודש' : 'כותבי השבוע'}</div>
+                    <div className="tyuta-panel-title mb-4">{isChannelPage ? 'כותבי החודש' : 'כותבי השבוע'}</div>
 
                     {writerScores.length ? (
                       <div className="space-y-3">
@@ -1190,7 +1190,7 @@ export default async function HomePage(props: HomePageProps = {}) {
                                 <AuthorHover username={w.username}>
                                   <Link href={`/u/${w.username}`} className="group/writer inline-flex items-center gap-2 min-w-0">
                                     <Avatar src={w.avatar_url} name={w.name} size={36} />
-                                    <span className="text-sm font-bold transition-colors group-hover/writer:text-sky-700 dark:group-hover/writer:text-sky-400 min-w-0 break-words leading-tight">
+                                    <span className="text-sm font-bold tyuta-hover min-w-0 break-words leading-tight">
                                       {w.name}
                                     </span>
                                   </Link>
@@ -1237,10 +1237,10 @@ export default async function HomePage(props: HomePageProps = {}) {
               ) : null}
 
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-lg font-black tracking-tight">פוסטים מובילים{isChannelPage && channelName ? ` ב: ${channelName}` : ``}</div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="tyuta-section-rule text-xl font-black tracking-tight">פוסטים מובילים{isChannelPage && channelName ? ` ב${channelName}` : ``}</div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                   {top1 ? <SimplePostCard post={top1} /> : null}
                   {top2 ? <SimplePostCard post={top2} /> : null}
                   {top3 ? <SimplePostCard post={top3} /> : null}
@@ -1249,7 +1249,7 @@ export default async function HomePage(props: HomePageProps = {}) {
             </div>
 
             {/* Below: categories on the right, sidebar on the left */}
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8 items-start">
               {/* Categories */}
               <div className="space-y-8">
                 <div>
@@ -1285,7 +1285,7 @@ export default async function HomePage(props: HomePageProps = {}) {
                 <div className="space-y-8">
                   {/* Recent posts FIRST */}
                   <div className="bg-card rounded-2xl p-5 shadow-sm border border-border">
-                    <Link href="/search?sort=recent" className="text-base font-black mb-4 inline-flex hover:text-sky-700 dark:hover:text-sky-400 transition-colors">פוסטים אחרונים</Link>
+                    <Link href="/search?sort=recent" className="tyuta-panel-title tyuta-hover mb-4 inline-flex">פוסטים אחרונים</Link>
                     <div className="space-y-3">
                       {recentMini.length > 0 ? (
                         recentMini.slice(0, 8).map(p => (
@@ -1299,7 +1299,7 @@ export default async function HomePage(props: HomePageProps = {}) {
 
                   {/* Writers of week */}
                   <div className="bg-card rounded-2xl p-5 shadow-sm border border-border">
-                    <div className="text-base font-black mb-4">כותבי השבוע</div>
+                    <div className="tyuta-panel-title mb-4">כותבי השבוע</div>
 
                     {writerScores.length ? (
                       <div className="space-y-3">
@@ -1314,7 +1314,7 @@ export default async function HomePage(props: HomePageProps = {}) {
                                 <AuthorHover username={w.username}>
                                   <Link href={`/u/${w.username}`} className="group/writer inline-flex items-center gap-2 min-w-0">
                                     <Avatar src={w.avatar_url} name={w.name} size={36} />
-                                    <span className="text-sm font-bold transition-colors group-hover/writer:text-sky-700 dark:group-hover/writer:text-sky-400 min-w-0 break-words leading-tight">
+                                    <span className="text-sm font-bold tyuta-hover min-w-0 break-words leading-tight">
                                       {w.name}
                                     </span>
                                   </Link>

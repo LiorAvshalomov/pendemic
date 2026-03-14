@@ -190,7 +190,7 @@ export default function ResetPasswordPage() {
     <AuthLayout mode="reset">
       <div className="space-y-5">
         <div className="space-y-1">
-          <h2 className="pd-auth-title text-2xl font-extrabold">בחירת סיסמה חדשה</h2>
+          <h2 className="pd-auth-title text-2xl font-bold tracking-tight">בחירת סיסמה חדשה</h2>
           <p className="pd-auth-subtitle text-sm">{PASSWORD_HINT_HE}</p>
         </div>
 
@@ -204,13 +204,13 @@ export default function ResetPasswordPage() {
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             {err ?? 'שגיאה לא צפויה'}
             <div className="mt-2 flex flex-col gap-2">
-              <Link href="/auth/forgot-password" className="font-semibold text-blue-700 hover:underline">
+              <Link href="/auth/forgot-password" className="pd-auth-link">
                 בקש/י קישור איפוס חדש
               </Link>
 
               <button
                 type="button"
-                className="text-left text-sm font-semibold text-black/70 underline hover:text-black"
+                className="text-start text-sm text-black/55 underline underline-offset-[3px] hover:text-black/80 transition-colors"
                 onClick={async () => {
                   // Allow user to exit the gate if they want to abandon reset.
                   clearResetGate()
