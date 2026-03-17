@@ -20,12 +20,6 @@ export default function Avatar({
   const safeSrc = src?.trim() ? src.trim() : null
   const radiusClass = shape === 'square' ? 'rounded-xl' : 'rounded-full'
   const url = safeSrc ? (avatarProxySrc(safeSrc) ?? safeSrc) : dicebearUrl(name)
-  const shouldBypassOptimization =
-    url.startsWith('blob:') ||
-    url.startsWith('data:') ||
-    url.endsWith('.svg') ||
-    url.includes('/svg?')
-
   return (
     <div
       className={`relative overflow-hidden shrink-0 ${radiusClass}`}
@@ -37,7 +31,7 @@ export default function Avatar({
         fill
         sizes={`${size}px`}
         className="object-cover"
-        unoptimized={shouldBypassOptimization}
+        unoptimized
       />
     </div>
   )

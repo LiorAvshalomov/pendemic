@@ -508,6 +508,7 @@ async function submitReport() {
   // likes
   const [myLiked, setMyLiked] = useState<Set<string>>(new Set())
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({})
+  const [likeAnim, setLikeAnim] = useState<Set<string>>(new Set())
 
   // like tooltip
   const [likerNames, setLikerNames] = useState<Record<string, { names: string[]; total: number }>>({})
@@ -893,6 +894,11 @@ async function submitReport() {
       const cur = Number(prev[commentId] ?? 0)
       return { ...prev, [commentId]: Math.max(0, cur + (already ? -1 : 1)) }
     })
+
+    if (!already) {
+      setLikeAnim(s => new Set([...s, commentId]))
+      window.setTimeout(() => setLikeAnim(s => { const n = new Set(s); n.delete(commentId); return n }), 400)
+    }
 
     if (already) {
       const { error } = await supabase
@@ -1330,7 +1336,7 @@ async function submitReport() {
                     <div className="flex items-center text-sm font-semibold">
                       {username ? (
                         <AuthorHover username={username}>
-                          <Link className="hover:underline" href={`/u/${username}`}>
+                          <Link className="tyuta-hover transition-colors duration-200" href={`/u/${username}`}>
                             {name}
                           </Link>
                         </AuthorHover>
@@ -1480,10 +1486,11 @@ async function submitReport() {
                       <button
                         type="button"
                         onClick={() => toggleLike(c.id)}
-                        className={`font-semibold hover:underline ${liked ? 'text-red-600' : 'text-neutral-600 dark:text-muted-foreground'}`}
+                        className={`inline-flex items-center gap-1 font-semibold transition-colors duration-150 ${liked ? 'text-red-500' : 'text-neutral-500 dark:text-muted-foreground hover:text-neutral-800 dark:hover:text-foreground'}`}
                         disabled={isTemp || sending}
                       >
-                        ❤ לייק
+                        <span className={likeAnim.has(c.id) ? 'tyuta-like-pop inline-block' : 'inline-block'} aria-hidden="true">❤</span>
+                        לייק
                       </button>
                       {likes > 0 && (
                         <span
@@ -1599,7 +1606,7 @@ async function submitReport() {
                                 <div className="flex items-center text-sm font-semibold">
                                   {rUsername ? (
                                     <AuthorHover username={rUsername}>
-                                      <Link className="hover:underline" href={`/u/${rUsername}`}>
+                                      <Link className="tyuta-hover transition-colors duration-200" href={`/u/${rUsername}`}>
                                         {rName}
                                       </Link>
                                     </AuthorHover>
@@ -1691,10 +1698,11 @@ async function submitReport() {
                                 <button
                                   type="button"
                                   onClick={() => toggleLike(r.id)}
-                                  className={`font-semibold hover:underline ${rLiked ? 'text-red-600' : 'text-neutral-600 dark:text-muted-foreground'}`}
+                                  className={`inline-flex items-center gap-1 font-semibold transition-colors duration-150 ${rLiked ? 'text-red-500' : 'text-neutral-500 dark:text-muted-foreground hover:text-neutral-800 dark:hover:text-foreground'}`}
                                   disabled={rTemp || sending}
                                 >
-                                  ❤ לייק
+                                  <span className={likeAnim.has(r.id) ? 'tyuta-like-pop inline-block' : 'inline-block'} aria-hidden="true">❤</span>
+                                  לייק
                                 </button>
                                 {rLikes > 0 && (
                                   <span

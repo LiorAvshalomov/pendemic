@@ -452,7 +452,7 @@ export default function SearchPage() {
             }}
             className="cursor-pointer rounded-2xl border bg-white p-4 hover:shadow-sm dark:bg-card dark:border-border"
           >
-            <div className="flex flex-row-reverse items-stretch gap-4 min-h-[100px]">
+            <div className="flex flex-row-reverse items-stretch gap-4 h-[108px]">
               {coverSrc ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={coverSrc} alt="" className="w-28 shrink-0 self-stretch rounded-xl object-cover" />
@@ -460,7 +460,7 @@ export default function SearchPage() {
                 <div className="w-28 shrink-0 self-stretch rounded-xl bg-muted" />
               )}
 
-              <div className="min-w-0 flex-1 flex flex-col justify-between gap-1">
+              <div className="min-w-0 flex-1 flex flex-col justify-between gap-1 overflow-hidden">
                 {/* Top: badges + title */}
                 <div>
                   <div className="flex flex-wrap items-center gap-1.5 text-xs">

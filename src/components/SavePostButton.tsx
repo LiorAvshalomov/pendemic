@@ -8,6 +8,7 @@ export default function SavePostButton({ postId }: { postId: string }) {
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState<string | null>(null)
+  const [animating, setAnimating] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const flash = (m: string) => {
@@ -62,6 +63,11 @@ export default function SavePostButton({ postId }: { postId: string }) {
       return
     }
 
+    if (!saved) {
+      setAnimating(true)
+      setTimeout(() => setAnimating(false), 650)
+    }
+
     setLoading(true)
 
     if (saved) {
@@ -104,6 +110,14 @@ export default function SavePostButton({ postId }: { postId: string }) {
 
   return (
     <div className="relative">
+      {animating ? (
+        <span
+          className="tyuta-save-dot pointer-events-none absolute inset-x-0 top-0 flex justify-center text-amber-500 text-sm leading-none select-none"
+          aria-hidden="true"
+        >
+          ★
+        </span>
+      ) : null}
       <button
         type="button"
         disabled={loading}

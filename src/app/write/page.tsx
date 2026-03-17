@@ -860,6 +860,8 @@ if (!effectiveChannelId) {
 
   const handlePickCoverFile = async (file: File) => {
     if (!userId) return
+    const { data: { session: _coverSession } } = await supabase.auth.getSession()
+    if (!_coverSession) { setErrorMsg('הסשן פג תוקף – רענן את הדף'); return }
     const postId = isEditMode ? effectivePostId : (await ensureDraft())?.id
     if (!postId) return
 
@@ -968,6 +970,8 @@ if (!effectiveChannelId) {
   const publish = async () => {
     if (saving || publishingRef.current) return
     if (!userId) return
+    const { data: { session: _pubSession } } = await supabase.auth.getSession()
+    if (!_pubSession) { setErrorMsg('הסשן פג תוקף – רענן את הדף'); return }
     publishingRef.current = true
     try {
 
@@ -1008,10 +1012,12 @@ if (!effectiveChannelId) {
 
       const ext = (activeCoverStoragePath.split('.').pop() || 'jpg').toLowerCase()
       const publicPath = `${userId}/${opts.postId}/cover.${ext}`
+      const version = Date.now()
 
       const upload = await supabase.storage.from('post-covers').upload(publicPath, download.data, {
         upsert: true,
-                contentType: download.data.type || undefined,
+        cacheControl: '31536000',
+        contentType: download.data.type || undefined,
       })
       if (upload.error) {
         throw new Error(upload.error.message ?? 'לא הצלחתי להעביר את הקאבר')
@@ -1021,7 +1027,8 @@ if (!effectiveChannelId) {
       void supabase.storage.from('post-assets').remove([activeCoverStoragePath])
 
       const { data: pub } = supabase.storage.from('post-covers').getPublicUrl(publicPath)
-      return { publicUrl: pub.publicUrl ?? null, source: activeCoverSource }
+      const publicUrl = pub.publicUrl ? `${pub.publicUrl}?v=${version}` : null
+      return { publicUrl, source: activeCoverSource }
     }
 
     // ✅ In edit-mode for already published posts, "publish" is actually "save changes".
