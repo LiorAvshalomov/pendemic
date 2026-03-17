@@ -17,8 +17,6 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       .from('posts')
       .select('slug')
       .eq('id', uuid)
-      .eq('status', 'published')
-      .is('deleted_at', null)
       .maybeSingle<{ slug: string }>()
 
     if (data?.slug && data.slug !== uuid) {
