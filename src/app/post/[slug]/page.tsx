@@ -149,7 +149,19 @@ export default async function PostPage({ params }: PageProps) {
   const data = await fetchPost(slug)
 
   if (!data) {
-    // If slug looks like a UUID, this might be an old link — try to find the post by id and redirect to its current slug
+    // Check slug_redirects for any old/broken slug (UUID-based, RTL-reversed, or other variants).
+    // This handles Facebook RTL-flipped slugs and pre-migration UUID slugs alike.
+    const { data: slugRedirect } = await supabase
+      .from("slug_redirects")
+      .select("new_slug")
+      .eq("old_slug", slug)
+      .maybeSingle<{ new_slug: string }>()
+    if (slugRedirect?.new_slug) {
+      redirect(`/post/${encodeURIComponent(slugRedirect.new_slug)}`)
+    }
+
+    // Legacy fallback: slug looks like a UUID — try matching against the post id column
+    // (covers any future deep-links that use the DB id directly).
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     if (UUID_RE.test(slug)) {
       const { data: byId } = await supabase
