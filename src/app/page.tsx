@@ -154,13 +154,14 @@ function FeaturedPost({ post }: { post: CardPost }) {
     ? { name: 'tyuta-panel-strong', meta: 'tyuta-panel-soft', tags: 'tyuta-panel-soft', title: 'tyuta-panel-strong', excerpt: 'tyuta-panel-soft' }
     : { name: 'text-foreground', meta: 'text-muted-foreground', tags: 'text-muted-foreground/60', title: 'text-foreground', excerpt: 'text-muted-foreground' }
   return (
-    <article className="group font-sans">
+    <article className="group relative font-sans">
       {/* ── Mobile: restored old-style card (image on top, content right, stacked on small screens) ── */}
-      <div className="lg:hidden bg-gradient-to-b from-card to-muted/40 dark:to-muted/10 rounded-2xl overflow-hidden border border-border tyuta-card-hover">
-        <div className="grid grid-cols-1 sm:grid-cols-2 sm:min-h-[320px]">
+      <div className="lg:hidden relative bg-gradient-to-b from-card to-muted/40 dark:to-muted/10 rounded-2xl overflow-hidden tyuta-featured-border tyuta-card-hover">
+        <Link href={`/post/${post.slug}`} className="absolute inset-0 z-10 rounded-2xl" aria-label={`לקריאת ${post.title}`}><span className="sr-only">לקריאה</span></Link>
+        <div className="relative z-20 pointer-events-none grid grid-cols-1 sm:grid-cols-2 sm:min-h-[320px]">
           {/* Image */}
           <div className="sm:order-2">
-            <Link href={`/post/${post.slug}`} className="block h-full">
+            <Link href={`/post/${post.slug}`} className="block h-full pointer-events-auto">
               <div className="relative aspect-[16/10] sm:aspect-auto sm:h-full overflow-hidden bg-muted">
                 {post.cover_image_url ? (
                   <Image
@@ -183,7 +184,7 @@ function FeaturedPost({ post }: { post: CardPost }) {
               <div className="flex items-center gap-3 min-w-0">
                 {post.author_username ? (
                   <AuthorHover username={post.author_username}>
-                    <Link href={`/u/${post.author_username}`} className="tyuta-avatar-ring">
+                    <Link href={`/u/${post.author_username}`} className="tyuta-avatar-ring pointer-events-auto">
                       <Avatar src={post.author_avatar_url} name={post.author_name} size={36} />
                     </Link>
                   </AuthorHover>
@@ -193,7 +194,7 @@ function FeaturedPost({ post }: { post: CardPost }) {
                 <div className="min-w-0">
                   {post.author_username ? (
                     <AuthorHover username={post.author_username}>
-                      <Link href={`/u/${post.author_username}`} className="font-bold text-sm tyuta-hover">
+                      <Link href={`/u/${post.author_username}`} className="font-bold text-sm tyuta-hover pointer-events-auto">
                         {post.author_name}
                       </Link>
                     </AuthorHover>
@@ -222,7 +223,7 @@ function FeaturedPost({ post }: { post: CardPost }) {
             </div>
             {post.channel_name && post.channel_slug ? (
               <div className="mb-2">
-                <Link href={`/c/${post.channel_slug}`}>
+                <Link href={`/c/${post.channel_slug}`} className="pointer-events-auto">
                   <span className={`inline-flex px-3 py-1 rounded-full font-semibold text-xs ${channelBadgeColor(post.channel_slug)}`}>
                     {post.channel_name}
                   </span>
@@ -230,7 +231,7 @@ function FeaturedPost({ post }: { post: CardPost }) {
               </div>
             ) : null}
             <h1 className="text-[1.625rem] sm:text-[2rem] lg:text-[2.75rem] font-black leading-[1.1] tracking-[-0.025em] mb-4 line-clamp-3">
-              <Link href={`/post/${post.slug}`} className="tyuta-hover">{post.title}</Link>
+              <Link href={`/post/${post.slug}`} className="tyuta-hover pointer-events-auto">{post.title}</Link>
             </h1>
             {post.excerpt ? (
               <p className="text-muted-foreground text-sm leading-[1.7] line-clamp-3">{post.excerpt}</p>
@@ -242,8 +243,11 @@ function FeaturedPost({ post }: { post: CardPost }) {
       {/* ── Desktop: cinematic full-bleed image with right-side readability veil ── */}
       <div className={`hidden lg:block tyuta-featured-desktop${hasCover ? ' has-cover' : ''}`}>
 
+        {/* Full-card click target — below frame and panel, handles empty-area clicks */}
+        <Link href={`/post/${post.slug}`} className="absolute inset-0 z-[1]" aria-label={`לקריאת ${post.title}`} tabIndex={-1}><span className="sr-only">לקריאה</span></Link>
+
         {/* Image layer — fills the full desktop block, clips at rounded boundary */}
-        <div className="tyuta-featured-img-frame">
+        <div className="tyuta-featured-img-frame z-[2]">
           <Link href={`/post/${post.slug}`} className="absolute inset-0 block" tabIndex={-1} aria-hidden="true">
             {post.cover_image_url ? (
               <Image
@@ -267,13 +271,13 @@ function FeaturedPost({ post }: { post: CardPost }) {
         {post.cover_image_url ? <FeaturedColorSync src={coverProxySrc(post.cover_image_url)!} /> : null}
 
         {/* Text panel — right 46%, floats over image, text in white */}
-        <div className="tyuta-featured-text-panel absolute top-0 bottom-0 right-0 w-[46%] flex flex-col justify-center px-10 py-8">
+        <div className="tyuta-featured-text-panel absolute top-0 bottom-0 right-0 w-[46%] flex flex-col justify-center px-10 py-8 z-[3] pointer-events-none">
           {/* Author row */}
           <div className="flex items-start justify-between gap-3 mb-4">
             <div className="flex items-center gap-3 min-w-0">
               {post.author_username ? (
                 <AuthorHover username={post.author_username}>
-                  <Link href={`/u/${post.author_username}`} className="tyuta-avatar-ring shrink-0">
+                  <Link href={`/u/${post.author_username}`} className="tyuta-avatar-ring shrink-0 pointer-events-auto">
                     <Avatar src={post.author_avatar_url} name={post.author_name} size={40} />
                   </Link>
                 </AuthorHover>
@@ -283,7 +287,7 @@ function FeaturedPost({ post }: { post: CardPost }) {
               <div className="min-w-0">
                 {post.author_username ? (
                   <AuthorHover username={post.author_username}>
-                    <Link href={`/u/${post.author_username}`} className={`font-bold text-sm ${tc.name} tyuta-hover block truncate tyuta-panel-author`}>
+                    <Link href={`/u/${post.author_username}`} className={`font-bold text-sm ${tc.name} tyuta-hover block truncate tyuta-panel-author pointer-events-auto`}>
                       {post.author_name}
                     </Link>
                   </AuthorHover>
@@ -312,8 +316,8 @@ function FeaturedPost({ post }: { post: CardPost }) {
           {/* Channel badge */}
           {post.channel_name && post.channel_slug ? (
             <div className="mb-3">
-              <Link href={`/c/${post.channel_slug}`}>
-                <span className={`inline-flex px-3 py-1 rounded-full font-semibold text-xs ${channelBadgeColor(post.channel_slug)}`}>
+              <Link href={`/c/${post.channel_slug}`} className="pointer-events-auto group/channel">
+                <span className={`inline-flex px-3 py-1 rounded-full font-semibold text-xs transition-all duration-200 ease-out group-hover/channel:scale-[1.07] group-hover/channel:brightness-105 group-hover/channel:shadow-sm cursor-pointer ${channelBadgeColor(post.channel_slug)}`}>
                   {post.channel_name}
                 </span>
               </Link>
@@ -322,7 +326,7 @@ function FeaturedPost({ post }: { post: CardPost }) {
 
           {/* Title */}
           <h1 className={`text-[1.875rem] xl:text-[2.375rem] font-black leading-[1.08] tracking-[-0.03em] mb-4 ${tc.title}`}>
-            <Link href={`/post/${post.slug}`} className="tyuta-hover">
+            <Link href={`/post/${post.slug}`} className="tyuta-hover pointer-events-auto">
               {post.title}
             </Link>
           </h1>
@@ -341,8 +345,10 @@ function FeaturedPost({ post }: { post: CardPost }) {
 
 function SimplePostCard({ post }: { post: CardPost }) {
   return (
-    <article className="group bg-gradient-to-b from-card to-muted/40 dark:to-muted/10 rounded-xl overflow-hidden tyuta-card-hover tyuta-gold-border flex flex-col">
-      <Link href={`/post/${post.slug}`} className="block">
+    <article className="group relative bg-gradient-to-b from-card to-muted/40 dark:to-muted/10 rounded-xl overflow-hidden tyuta-card-hover tyuta-gold-border flex flex-col">
+      <Link href={`/post/${post.slug}`} className="absolute inset-0 z-10 rounded-xl" aria-label={`לקריאת ${post.title}`}><span className="sr-only">לקריאה</span></Link>
+      <div className="relative z-20 pointer-events-none flex flex-col flex-1">
+      <Link href={`/post/${post.slug}`} className="block pointer-events-auto">
         <div className="relative aspect-[4/3] bg-muted tyuta-img-hover">
           {post.cover_image_url ? (
             <Image src={coverProxySrc(post.cover_image_url)!} alt={post.title} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 260px" quality={85} className="object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]" unoptimized={isProxySrc(coverProxySrc(post.cover_image_url))} />
@@ -388,7 +394,7 @@ function SimplePostCard({ post }: { post: CardPost }) {
         </div>
 
         <h3 className="text-base font-black leading-snug tracking-tight line-clamp-2">
-          <Link href={`/post/${post.slug}`} className="tyuta-hover">
+          <Link href={`/post/${post.slug}`} className="tyuta-hover pointer-events-auto">
             {post.title}
           </Link>
         </h3>
@@ -403,7 +409,7 @@ function SimplePostCard({ post }: { post: CardPost }) {
         <div className="mt-auto pt-3 flex items-center justify-start gap-2 text-xs text-foreground min-w-0">
           {post.author_username ? (
             <AuthorHover username={post.author_username}>
-              <Link href={`/u/${post.author_username}`} className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted/80 dark:hover:bg-muted transition-colors duration-200 cursor-pointer min-w-0 max-w-full overflow-hidden">
+              <Link href={`/u/${post.author_username}`} className="group/author inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted/80 dark:hover:bg-muted transition-colors duration-200 cursor-pointer min-w-0 max-w-full overflow-hidden pointer-events-auto">
                 <Avatar src={post.author_avatar_url} name={post.author_name} size={24} />
                 <span className="font-semibold tyuta-hover truncate min-w-0 flex-1">{post.author_name}</span>
               </Link>
@@ -422,6 +428,7 @@ function SimplePostCard({ post }: { post: CardPost }) {
           <span className="mx-1">•</span>
           <span className="font-semibold">{post.weekCommentsTotal}</span> תגובות
         </div> */}
+      </div>
       </div>
     </article>
   )

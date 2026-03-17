@@ -82,13 +82,11 @@ function SidebarSection({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-2xl border border-neutral-200/60 dark:border-border bg-white/05 dark:bg-card shadow-sm">
-      <div className="flex flex-row-reverse items-center justify-between gap-3 px-4 py-3">
+    <div className="rounded-2xl border border-border bg-gradient-to-b from-card to-muted/20 dark:to-muted/5 shadow-sm overflow-hidden">
+      <div className="flex flex-row-reverse items-center justify-between gap-2 px-4 py-3 border-b border-border/50 bg-muted/30 dark:bg-muted/20">
+        <h3 className="text-[11px] font-extrabold tracking-wide text-muted-foreground/80">{title}</h3>
         {action ? <div className="shrink-0">{action}</div> : null}
-        <h3 className="inline-flex items gap-2 rounded-xl border border-neutral-100/70 dark:border-border/50 bg-neutral-200/70 dark:bg-muted px-3 py-1.5 text-[12px] font-semibold text-slate-600 dark:text-muted-foreground">{title}</h3>
       </div>
-
-      <div className="mx-4 border-b border-neutral-100 dark:border-border" />
 
       <div className="px-3 pb-3 pt-2">
         <div className="space-y-1.5">{children}</div>
@@ -124,25 +122,27 @@ function SidebarPostItem({
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') goPost()
       }}
-      className="group flex items-start justify-between gap-2.5 rounded-xl border border-neutral-200/70 dark:border-border bg-white/60 dark:bg-card/50 p-2 transition-colors duration-150 hover:bg-neutral-100/60 dark:hover:bg-muted cursor-pointer"
+      className="group flex items-stretch justify-between gap-2.5 rounded-xl border border-border bg-gradient-to-b from-card to-muted/40 dark:to-muted/10 p-2.5 tyuta-card-hover active:scale-[0.97] active:shadow-none cursor-pointer"
     >
       {/* טקסט (ימין) */}
-      <div className="min-w-0 flex-1 text-right">
-        <div className="text-[14px] font-black leading-5 text-neutral-950 dark:text-foreground group-hover:text-neutral-950 dark:group-hover:text-foreground">
-          {trunc(post.title ?? 'ללא כותרת', isMobile ? 35 : 25)}
+      <div className="min-w-0 flex-1 text-right flex flex-col gap-2">
+        <div className="text-[14px] font-black leading-snug text-neutral-950 dark:text-foreground line-clamp-2 group-hover:text-[oklch(0.42_0.08_30)] dark:group-hover:text-[oklch(0.78_0.06_60)] transition-colors duration-200">
+          {post.title ?? 'ללא כותרת'}
         </div>
 
-        <div className="mt-0.5 min-h-[2rem] text-[13px] leading-5 text-neutral-700 dark:text-muted-foreground">
-          {post.excerpt ? trunc(post.excerpt, isMobile ? 50 : 30) : ''}
-        </div>
+        {post.excerpt ? (
+          <div className="text-[12px] leading-5 text-neutral-600 dark:text-muted-foreground line-clamp-1">
+            {post.excerpt}
+          </div>
+        ) : null}
 
-        <div className="mt-1 flex items-center justify-start gap-2 text-[11px] text-neutral-600 dark:text-muted-foreground whitespace-nowrap">
+        <div className="mt-auto flex items-center justify-start gap-2 text-[11px] text-neutral-600 dark:text-muted-foreground whitespace-nowrap">
           {showAuthor ? (
             authorUsername ? (
               <AuthorHover username={authorUsername}>
                 <Link
                   href={`/u/${authorUsername}`}
-                  className="inline-flex items-center gap-1.5 font-extrabold text-neutral-900 dark:text-foreground hover:text-neutral-950 dark:hover:text-foreground hover:underline"
+                  className="inline-flex items-center gap-1 font-extrabold text-neutral-900 dark:text-foreground tyuta-hover transition-colors duration-200"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <Avatar src={pAuthor?.avatar_url ?? null} name={authorName} size={16} />
@@ -162,11 +162,15 @@ function SidebarPostItem({
       </div>
 
       {/* תמונה (שמאל) */}
-      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-neutral-100 dark:bg-muted ring-1 ring-black/5">
+      <div className="h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl bg-neutral-100 dark:bg-muted ring-1 ring-border/50 flex items-center justify-center">
         {coverSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={coverSrc} alt="" className="h-full w-full object-cover" loading="lazy" />
-        ) : null}
+        ) : (
+          <span className="text-[28px] font-black text-neutral-300 dark:text-muted-foreground/30 select-none leading-none" aria-hidden="true">
+            {(post.title ?? 'פ').charAt(0)}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -740,7 +744,7 @@ export default function PostPage({ initialData }: Props) {
             <div className="flex items-center gap-2 text-[15px] font-extrabold text-neutral-950 dark:text-foreground">
               {authorUsername ? (
                 <AuthorHover username={authorUsername}>
-                  <Link href={`/u/${authorUsername}`} className="hover:underline">
+                  <Link href={`/u/${authorUsername}`} className="tyuta-hover transition-colors duration-200">
                     {authorName}
                   </Link>
                 </AuthorHover>
@@ -777,8 +781,8 @@ export default function PostPage({ initialData }: Props) {
         title="עוד מהכותב/ת"
         action={
           authorUsername ? (
-            <Link href={`/u/${authorUsername}`} className="text-sm text-blue-700 dark:text-blue-400 hover:underline">
-              לדף הפרופיל
+            <Link href={`/u/${authorUsername}`} className="text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              לדף הפרופיל ←
             </Link>
           ) : null
         }
@@ -808,8 +812,8 @@ export default function PostPage({ initialData }: Props) {
           title={`פוסטים חמים ב: ${channelName ?? 'קטגוריה'}`}
           action={
             channelHref ? (
-              <Link href={channelHref} className="text-sm text-blue-700 dark:text-blue-400 hover:underline">
-                לדף הקטגוריה
+              <Link href={channelHref} className="text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
+                לדף הקטגוריה ←
               </Link>
             ) : null
           }

@@ -7,7 +7,6 @@ import AuthSync from "@/components/auth/AuthSync"
 import SuspensionSync from "@/components/moderation/SuspensionSync"
 import ClientChrome from "@/components/ClientChrome"
 import PageTracker from "@/components/analytics/PageTracker"
-import { SpeedInsights } from "@vercel/speed-insights/next"
 import ToastProvider from "@/components/Toast"
 import VisualViewportSync from "@/components/VisualViewportSync"
 
@@ -82,7 +81,6 @@ function JsonLd({ data }: { data: unknown }) {
   return (
     <script
       type="application/ld+json"
-      // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{ __html: safeJsonLdStringify(data) }}
     />
   )
@@ -151,7 +149,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </SuspensionSync>
           </AuthSync>
           <Suspense fallback={null}><PageTracker /></Suspense>
-          <SpeedInsights />
         </ToastProvider>
       </body>
     </html>
