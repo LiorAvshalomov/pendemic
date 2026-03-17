@@ -35,6 +35,21 @@ const nextConfig: NextConfig = {
     ],
   },
 
+  async rewrites() {
+    return {
+      // beforeFiles runs before ISR cache — UUID post URLs are handed off to an
+      // API route (Node.js runtime) that looks up the current slug and redirects.
+      // The `?nr=1` query param acts as a bypass flag so the rewrite doesn't loop.
+      beforeFiles: [
+        {
+          source: '/post/:uuid([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})',
+          missing: [{ type: 'query', key: 'nr' }],
+          destination: '/api/internal/post-by-id/:uuid',
+        },
+      ],
+    }
+  },
+
   async headers() {
     return [
       {
