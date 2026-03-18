@@ -107,7 +107,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const title = (data.title ?? "").trim() || "Tyuta"
   const description = ((data.excerpt ?? "").trim() || "Tyuta(טיוטה): המקום לכל הגרסאות שלך. מרחב כתיבה שיתופי לקהילת הכותבים בישראל – מהמחשבה הראשונה ועד ליצירה הסופית.").slice(0, 200)
-  const imageUrl = data.cover_image_url ? absUrl(data.cover_image_url) : absUrl("/apple-touch-icon.png")
+  // Strip ?v=timestamp cache-busting params from the cover URL.
+  // Facebook/WhatsApp OG scrapers sometimes fail to fetch images whose URLs contain
+  // non-standard query strings. The Supabase storage URL without ?v= is still valid.
+  const rawCoverUrl = data.cover_image_url ? data.cover_image_url.split('?')[0] : null
+  // Fallback: web-app-manifest-512x512.png (512×512) rather than apple-touch-icon.png (180×180).
+  // Facebook requires ≥200×200; WhatsApp requires ≥300×300. 180px silently drops the image.
+  const imageUrl = rawCoverUrl ? absUrl(rawCoverUrl) : absUrl("/web-app-manifest-512x512.png")
   // Use data.slug (DB canonical) not URL param slug — ensures redirect targets also get correct canonical
   const canonical = `${SITE_URL}/post/${encodeURIComponent(data.slug)}`
   const author = pickAuthor(data.author as { username: string | null; display_name: string | null }[] | null)
@@ -123,7 +129,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       description,
       siteName: "Tyuta",
       locale: "he_IL",
-      images: [{ url: imageUrl, alt: title }],
+      images: rawCoverUrl
+        ? [{ url: imageUrl, alt: title }]
+        : [{ url: imageUrl, alt: title, width: 512, height: 512 }],
       ...(data.published_at ? { publishedTime: new Date(data.published_at).toISOString() } : {}),
       ...(data.updated_at ? { modifiedTime: new Date(data.updated_at).toISOString() } : {}),
       ...(author?.username ? { authors: [`${SITE_URL}/u/${encodeURIComponent(author.username)}`] } : {}),
