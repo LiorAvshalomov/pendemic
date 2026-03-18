@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import Script from "next/script"
 import { Suspense } from "react"
-import { headers } from "next/headers"
 import { Geist, Geist_Mono, Heebo } from "next/font/google"
 import "./globals.css"
 import AuthSync from "@/components/auth/AuthSync"
@@ -87,8 +86,7 @@ function JsonLd({ data }: { data: unknown }) {
   )
 }
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const nonce = (await headers()).get('x-nonce') ?? ''
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   const organizationSchema = {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -116,7 +114,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             Reads 'tyuta:theme' from localStorage ('light'|'dark'|'system').
             Falls back to prefers-color-scheme, then light. No external deps. */}
         <script
-          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var s=localStorage.getItem('tyuta:theme');var d=s==='dark'||(s!=='light'&&window.matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();`,
           }}
@@ -126,9 +123,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <Script
               src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_ID}`}
               strategy="afterInteractive"
-              nonce={nonce}
             />
-            <Script id="ga-init" strategy="afterInteractive" nonce={nonce}>
+            <Script id="ga-init" strategy="afterInteractive">
               {`
                 window.dataLayer = window.dataLayer || [];
                 function gtag(){dataLayer.push(arguments);}

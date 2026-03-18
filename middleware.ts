@@ -59,7 +59,7 @@ function buildCSP(nonce: string): string {
 
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' https://www.googletagmanager.com`,
+    `script-src 'self' 'unsafe-inline' https://www.googletagmanager.com`,
     "style-src 'self' 'unsafe-inline'",
     `img-src ${imgSrc}`,
     "font-src 'self'",
