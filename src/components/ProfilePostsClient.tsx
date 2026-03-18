@@ -154,7 +154,7 @@ function DesktopPostCard({
         <div className="min-w-0 flex-1 flex flex-col justify-between py-1">
           {/* Title */}
           <h4 className="text-base font-bold leading-snug line-clamp-2">
-            {post.title}
+            <span className="tyuta-hover">{post.title}</span>
           </h4>
 
           {/* Excerpt */}
@@ -264,7 +264,7 @@ function MobilePostCard({
       <div className="p-3">
         {/* Title */}
         <h4 className="text-base font-bold leading-snug line-clamp-2 mb-1">
-          {post.title}
+          <span className="tyuta-hover">{post.title}</span>
         </h4>
 
         {/* Excerpt */}

@@ -1,5 +1,7 @@
 
 import { createClient } from '@supabase/supabase-js'
+import { cache } from 'react'
+import type { Metadata } from 'next'
 
 export const revalidate = 60
 
@@ -10,8 +12,69 @@ import ProfileInfoCardsSection from '@/components/ProfileInfoCardsSection'
 
 
 
+const SITE_URL = 'https://tyuta.net'
+
 type PageProps = {
   params: Promise<{ username: string }>
+}
+
+// React cache deduplicates: generateMetadata + page body share one DB round-trip
+const fetchProfileSeo = cache(async (username: string) => {
+  const supabase = getSupabase()
+  if (!supabase) return null
+  const { data } = await supabase
+    .from('profiles')
+    .select('username, display_name, bio, avatar_url')
+    .eq('username', username)
+    .maybeSingle()
+  return data as { username: string; display_name: string | null; bio: string | null; avatar_url: string | null } | null
+})
+
+function absUrl(pathOrUrl: string): string {
+  if (pathOrUrl.startsWith('http')) return pathOrUrl
+  if (!pathOrUrl.startsWith('/')) return `${SITE_URL}/${pathOrUrl}`
+  return `${SITE_URL}${pathOrUrl}`
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { username } = await params
+  const canonical = `${SITE_URL}/u/${encodeURIComponent(username)}`
+  const data = await fetchProfileSeo(username)
+
+  if (!data) {
+    return {
+      title: 'פרופיל לא נמצא',
+      alternates: { canonical },
+      robots: { index: false, follow: false },
+      openGraph: { type: 'website', url: canonical },
+      twitter: { card: 'summary' },
+    }
+  }
+
+  const name = (data.display_name ?? '').trim() || `@${data.username}`
+  const description = ((data.bio ?? '').trim() || 'פרופיל משתמש ב‑Tyuta').slice(0, 200)
+  const image = data.avatar_url ? absUrl(data.avatar_url) : absUrl('/apple-touch-icon.png')
+
+  return {
+    title: name,
+    description,
+    alternates: { canonical },
+    openGraph: {
+      type: 'profile',
+      url: canonical,
+      title: `${name} | Tyuta`,
+      description,
+      siteName: 'Tyuta',
+      locale: 'he_IL',
+      images: [{ url: image }],
+    },
+    twitter: {
+      card: 'summary',
+      title: `${name} | Tyuta`,
+      description,
+      images: [image],
+    },
+  }
 }
 type Profile = {
   id: string
