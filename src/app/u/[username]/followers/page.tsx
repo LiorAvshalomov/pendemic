@@ -2,6 +2,8 @@ import { supabase } from '@/lib/supabaseClient'
 import FollowListClient from '@/components/FollowListClient'
 import FollowPageHeader from '@/components/FollowPageHeader'
 
+export const revalidate = 60
+
 type PageProps = {
   params: Promise<{ username: string }>
 }
@@ -25,27 +27,37 @@ export default async function FollowersPage({ params }: PageProps) {
 
   const displayName = (prof.display_name ?? '').trim() || 'אנונימי'
 
-  // Counts
-  const { count: followersCount = 0 } = await supabase
-    .from('user_follows')
-    .select('follower_id', { count: 'exact', head: true })
-    .eq('following_id', prof.id)
-
-  const { count: followingCount = 0 } = await supabase
-    .from('user_follows')
-    .select('following_id', { count: 'exact', head: true })
-    .eq('follower_id', prof.id)
-
-  // Followers list
-  const { data: rows } = await supabase
-    .from('user_follows')
-    .select('follower_id')
-    .eq('following_id', prof.id)
-    .order('created_at', { ascending: false })
-    .limit(200)
+  // Batch 1: all queries independent of each other — runs in parallel
+  const [
+    { count: followersCount = 0 },
+    { count: followingCount = 0 },
+    { data: rows },
+    { data: medalsRow },
+  ] = await Promise.all([
+    supabase
+      .from('user_follows')
+      .select('follower_id', { count: 'exact', head: true })
+      .eq('following_id', prof.id),
+    supabase
+      .from('user_follows')
+      .select('following_id', { count: 'exact', head: true })
+      .eq('follower_id', prof.id),
+    supabase
+      .from('user_follows')
+      .select('follower_id')
+      .eq('following_id', prof.id)
+      .order('created_at', { ascending: false })
+      .limit(200),
+    supabase
+      .from('profile_medals_all_time')
+      .select('gold, silver, bronze')
+      .eq('profile_id', prof.id)
+      .maybeSingle(),
+  ])
 
   const ids = (rows ?? []).map(r => (r as { follower_id: string }).follower_id).filter(Boolean)
 
+  // Batch 2: profile cards depend on ids from batch 1
   let initialUsers: { id: string; username: string; display_name: string | null; avatar_url: string | null; followers_count: number }[] = []
   if (ids.length > 0) {
     const { data: cards } = await supabase
@@ -61,13 +73,6 @@ export default async function FollowersPage({ params }: PageProps) {
       followers_count: c.followers_count ?? 0,
     }))
   }
-
-  // Get medals
-  const { data: medalsRow } = await supabase
-    .from('profile_medals_all_time')
-    .select('gold, silver, bronze')
-    .eq('profile_id', prof.id)
-    .maybeSingle()
 
   const medals = {
     gold: medalsRow?.gold ?? 0,

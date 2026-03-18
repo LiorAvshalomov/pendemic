@@ -674,25 +674,26 @@ export default async function HomePage(props: HomePageProps = {}) {
   const channelSubtitle = props.forcedSubtitle ?? null
   const forcedSubcategories = props.forcedSubcategories ?? []
 
-  // Resolve channel id once for stable filtering (PostgREST filters on embedded resources can be unreliable)
-  const channelId: number | null = isChannelPage && channelSlug
-    ? ((await supabase.from('channels').select('id').eq('slug', channelSlug).maybeSingle()).data?.id ?? null)
-    : null
-
-  // Resolve subcategory tag ids for forced subcategories (by Hebrew name)
+  // Resolve channel id + subcategory tag ids in parallel (both independent on channel pages)
   const forcedSubcatIdsByName = new Map<string, number>()
   const forcedSubcategoryPostsById = new Map<number, PostRow[]>()
-  
-  if (isChannelPage && forcedSubcategories.length > 0) {
-    const names = forcedSubcategories.map(s => s.name_he)
-    const { data: forcedTagRows } = await supabase
-      .from('tags')
-      .select('id,name_he')
-      .in('name_he', names)
-    ;(forcedTagRows ?? []).forEach(r => {
-      const rr = r as { id: number; name_he: string }
-      forcedSubcatIdsByName.set(rr.name_he, rr.id)
-    })
+
+  let channelId: number | null = null
+  if (isChannelPage && channelSlug) {
+    if (forcedSubcategories.length > 0) {
+      const names = forcedSubcategories.map(s => s.name_he)
+      const [channelRes, tagsRes] = await Promise.all([
+        supabase.from('channels').select('id').eq('slug', channelSlug).maybeSingle(),
+        supabase.from('tags').select('id,name_he').in('name_he', names),
+      ])
+      channelId = channelRes.data?.id ?? null
+      ;(tagsRes.data ?? []).forEach(r => {
+        const rr = r as { id: number; name_he: string }
+        forcedSubcatIdsByName.set(rr.name_he, rr.id)
+      })
+    } else {
+      channelId = ((await supabase.from('channels').select('id').eq('slug', channelSlug).maybeSingle()).data?.id ?? null)
+    }
   }
   
   // Bulk fetch recent posts for all forced subcategories (channel pages), so subcategory sections never rely on ranking availability
@@ -937,10 +938,17 @@ export default async function HomePage(props: HomePageProps = {}) {
     )
   )
 
-  const { data: postsRows, error: postsErr } = await supabase
-    .from('posts')
-    .select(
-      `
+  // Batch 3: postsRows, medalsRows, writerPostRows all depend only on Phase 2 — run in parallel
+  const rankedAllIds = rankedAll.map(r => r.post_id)
+  const [
+    { data: postsRows, error: postsErr },
+    { data: medalsRows, error: medalsErr },
+    { data: writerPostRows },
+  ] = await Promise.all([
+    supabase
+      .from('posts')
+      .select(
+        `
       id,
       title,
       slug,
@@ -953,10 +961,24 @@ export default async function HomePage(props: HomePageProps = {}) {
       author:profiles!posts_author_id_fkey ( username, display_name, avatar_url ),
       post_tags:post_tags!post_tags_post_id_fkey ( tag:tags!post_tags_tag_id_fkey ( name_he, slug ) )
       `
-    )
-    .in('id', idsNeeded)
-    .is('deleted_at', null)
-    .eq('status', 'published')
+      )
+      .in('id', idsNeeded)
+      .is('deleted_at', null)
+      .eq('status', 'published'),
+    supabase
+      .from('post_medals_all_time')
+      .select('post_id, gold, silver, bronze')
+      .in('post_id', idsNeeded),
+    supabase
+      .from('posts')
+      .select(
+        `
+      id,
+      author:profiles!posts_author_id_fkey ( username, display_name, avatar_url )
+      `
+      )
+      .in('id', rankedAllIds),
+  ])
 
   if (postsErr) {
     return (
@@ -968,12 +990,6 @@ export default async function HomePage(props: HomePageProps = {}) {
       </main>
     )
   }
-
-  // ALL-TIME medals for posts (display)
-  const { data: medalsRows, error: medalsErr } = await supabase
-    .from('post_medals_all_time')
-    .select('post_id, gold, silver, bronze')
-    .in('post_id', idsNeeded)
 
   if (medalsErr) {
     console.error('post_medals_all_time error:', medalsErr)
@@ -1088,18 +1104,7 @@ export default async function HomePage(props: HomePageProps = {}) {
   const homeHasAnyPosts = Boolean(featured) || Boolean(top1) || Boolean(top2) || Boolean(top3) || storiesFinal.length > 0 || releaseFinal.length > 0 || magazineFinal.length > 0
 
   // Writers of week: medals first, fallback to total weekly reactions.
-  // We compute this off rankedAll (broad) and then enrich with profile info via posts.
-  const rankedAllIds = rankedAll.map(r => r.post_id)
-  const { data: writerPostRows } = await supabase
-    .from('posts')
-    .select(
-      `
-      id,
-      author:profiles!posts_author_id_fkey ( username, display_name, avatar_url )
-      `
-    )
-    .in('id', rankedAllIds)
-
+  // writerPostRows already fetched in parallel above (Batch 3).
   const authorByPostId = new Map<string, { username: string | null; name: string; avatar_url: string | null }>()
     ; ((writerPostRows ?? []) as { id: string; author: { username: string; display_name: string | null; avatar_url: string | null }[] | null }[]).forEach(r => {
       const a = firstRel(r.author)
