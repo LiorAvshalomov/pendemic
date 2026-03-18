@@ -11,31 +11,20 @@ const SB_ORIGINS = [
 const SB_WSS = SB_ORIGINS.map((o) => o.replace('https://', 'wss://'))
 
 /**
- * Generate a cryptographically random base64 nonce using the Web Crypto API.
- * Works in the Next.js Edge Runtime (no Node.js Buffer/crypto module needed).
- */
-function generateNonce(): string {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  return btoa(String.fromCharCode(...Array.from(bytes)))
-}
-
-/**
- * Build the Content-Security-Policy header value for a given nonce.
+ * Build the Content-Security-Policy header value.
  *
  * script-src:
  *   - 'self'  — allows Next.js chunk scripts served from the same origin
- *   - 'nonce-{nonce}' — allows inline scripts that carry this exact nonce
+ *   - 'unsafe-inline' — required for Next.js RSC flight payload inline scripts
  *   - https://www.googletagmanager.com — allows GTM external script
- *   (no 'unsafe-inline' — nonce supersedes it in all modern browsers)
  *
  * style-src keeps 'unsafe-inline' because Tailwind v4 and TipTap use it.
  *
- * Added hardening vs previous config:
+ * Hardening:
  *   - object-src 'none' — blocks Flash / plugin embeds
  *   - upgrade-insecure-requests — upgrades any accidental HTTP sub-resources
  */
-function buildCSP(nonce: string): string {
+function buildCSP(): string {
   const imgSrc = [
     "'self'",
     'data:',
@@ -105,14 +94,6 @@ export function middleware(req: NextRequest) {
     return NextResponse.rewrite(new URL(`/api/internal/post-by-id/${uuidMatch[1]}`, req.url))
   }
 
-  const nonce = generateNonce()
-
-  // Forward the nonce to Server Components via a request header.
-  // Next.js App Router reads 'x-nonce' and automatically injects the nonce
-  // into every <script> and <style> tag it generates (hydration, chunks, etc.).
-  const requestHeaders = new Headers(req.headers)
-  requestHeaders.set('x-nonce', nonce)
-
   // Reset-cookie and recovery-flow gate (auth pages are exempt from this gate)
   if (!isAuthPage(pathname)) {
     const resetRequired = req.cookies.get(RESET_COOKIE)?.value === '1'
@@ -133,8 +114,8 @@ export function middleware(req: NextRequest) {
     }
   }
 
-  const response = NextResponse.next({ request: { headers: requestHeaders } })
-  response.headers.set('Content-Security-Policy', buildCSP(nonce))
+  const response = NextResponse.next()
+  response.headers.set('Content-Security-Policy', buildCSP())
   return response
 }
 
