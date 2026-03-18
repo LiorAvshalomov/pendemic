@@ -1,6 +1,8 @@
 
 import { createClient } from '@supabase/supabase-js'
 
+export const revalidate = 60
+
 import ProfileAvatarFrame from '@/components/ProfileAvatarFrame'
 import ProfileFollowBar from '@/components/ProfileFollowBar'
 import ProfileBottomTabsClient from '@/components/ProfileBottomTabsClient'
@@ -101,48 +103,62 @@ export default async function PublicProfilePage({ params }: PageProps) {
 
   const prof = profile as Profile
 
-  // Follow counts
-  const { count: followersCount = 0 } = await supabase
-    .from('user_follows')
-    .select('follower_id', { count: 'exact', head: true })
-    .eq('following_id', prof.id)
-
-  const { count: followingCount = 0 } = await supabase
-    .from('user_follows')
-    .select('following_id', { count: 'exact', head: true })
-    .eq('follower_id', prof.id)
-
-  // Posts count
-  const { count: postsCount = 0 } = await supabase
-    .from('posts')
-    .select('id', { count: 'exact', head: true })
-    .is('deleted_at', null)
-    .eq('author_id', prof.id)
-    .eq('status', 'published')
-    .eq('is_anonymous', false)
-
   const displayName = safeText(prof.display_name) || 'אנונימי'
   const bio = safeText(prof.bio)
 
-  // Comments written
-  const { count: commentsWritten = 0 } = await supabase
-    .from('comments')
-    .select('id', { count: 'exact', head: true })
-    .eq('author_id', prof.id)
+  // Batch 1: all queries independent of each other — runs in parallel
+  const [
+    { count: followersCount = 0 },
+    { count: followingCount = 0 },
+    { count: postsCount = 0 },
+    { count: commentsWritten = 0 },
+    { data: postIdsRows },
+    { data: medalsRow },
+    { data: reactionTotals, error: rtErr },
+  ] = await Promise.all([
+    supabase
+      .from('user_follows')
+      .select('follower_id', { count: 'exact', head: true })
+      .eq('following_id', prof.id),
+    supabase
+      .from('user_follows')
+      .select('following_id', { count: 'exact', head: true })
+      .eq('follower_id', prof.id),
+    supabase
+      .from('posts')
+      .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null)
+      .eq('author_id', prof.id)
+      .eq('status', 'published')
+      .eq('is_anonymous', false),
+    supabase
+      .from('comments')
+      .select('id', { count: 'exact', head: true })
+      .eq('author_id', prof.id),
+    supabase
+      .from('posts')
+      .select('id')
+      .is('deleted_at', null)
+      .eq('author_id', prof.id)
+      .eq('status', 'published')
+      .eq('is_anonymous', false)
+      .order('created_at', { ascending: false })
+      .limit(5000),
+    supabase
+      .from('profile_medals_all_time')
+      .select('gold, silver, bronze')
+      .eq('profile_id', prof.id)
+      .maybeSingle(),
+    supabase.rpc('get_profile_reaction_totals', { p_profile_id: prof.id }),
+  ])
 
-  // Comments received (on user's posts)
-  const { data: postIdsRows } = await supabase
-    .from('posts')
-    .select('id')
-    .is('deleted_at', null)
-    .eq('author_id', prof.id)
-    .eq('status', 'published')
-    .eq('is_anonymous', false)
-    .order('created_at', { ascending: false })
-    .limit(5000)
+  if (rtErr) {
+    console.error('get_profile_reaction_totals error:', rtErr)
+  }
 
+  // Batch 2: comments received depends on postIds from batch 1
   let commentsReceived = 0
-  const postIds = (postIdsRows ?? []).map(r => r.id)
+  const postIds = (postIdsRows ?? []).map((r: { id: string }) => r.id)
   if (postIds.length > 0) {
     const { count } = await supabase
       .from('comments')
@@ -151,26 +167,10 @@ export default async function PublicProfilePage({ params }: PageProps) {
     commentsReceived = count ?? 0
   }
 
-  // Medals (all-time)
-  const { data: medalsRow } = await supabase
-    .from('profile_medals_all_time')
-    .select('gold, silver, bronze')
-    .eq('profile_id', prof.id)
-    .maybeSingle()
-
   const medals = {
     gold: medalsRow?.gold ?? 0,
     silver: medalsRow?.silver ?? 0,
     bronze: medalsRow?.bronze ?? 0,
-  }
-
-  // Reaction totals
-  const { data: reactionTotals, error: rtErr } = await supabase.rpc('get_profile_reaction_totals', {
-    p_profile_id: prof.id,
-  })
-
-  if (rtErr) {
-    console.error('get_profile_reaction_totals error:', rtErr)
   }
 
   return (

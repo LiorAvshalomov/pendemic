@@ -1,7 +1,7 @@
 'use server'
 
-import HomePage from '@/app/page'
-import type { HomePageProps } from '@/app/page'
+import HomePage from '@/app/(home)/page'
+import type { HomePageProps } from '@/app/(home)/page'
 
 type Props = {
   channelSlug: string

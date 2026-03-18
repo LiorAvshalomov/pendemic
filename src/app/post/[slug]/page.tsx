@@ -6,6 +6,20 @@ import PostClient from "./PostClient"
 
 export const revalidate = 60
 export const runtime = "nodejs"
+export const dynamicParams = true
+
+export async function generateStaticParams() {
+  const supabase = getServerSupabase()
+  if (!supabase) return []
+  const { data } = await supabase
+    .from("posts")
+    .select("slug")
+    .eq("status", "published")
+    .is("deleted_at", null)
+    .order("published_at", { ascending: false })
+    .limit(50)
+  return (data ?? []).map(({ slug }: { slug: string }) => ({ slug }))
+}
 
 const SITE_URL = "https://tyuta.net"
 

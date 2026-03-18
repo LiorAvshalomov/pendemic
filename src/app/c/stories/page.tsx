@@ -1,4 +1,4 @@
-import HomePage from '@/app/page'
+import HomePage from '@/app/(home)/page'
 import type { Metadata } from "next";
 
 export const revalidate = 60
