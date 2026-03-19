@@ -1078,14 +1078,11 @@ if (!effectiveChannelId) {
 
         // Bust the ISR cache so readers see the updated post immediately.
         if (draftSlug && draftSlug !== 'undefined' && draftSlug !== 'null') {
-          void supabase.auth.getSession().then(({ data: { session } }) => {
-            if (!session?.access_token) return
-            fetch('/api/posts/revalidate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-              body: JSON.stringify({ slug: draftSlug }),
-            }).catch(() => undefined)
-          })
+          void fetch('/api/posts/revalidate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slug: draftSlug }),
+          }).catch(() => undefined)
         }
 
         setSaving(false)
@@ -1263,14 +1260,7 @@ if (!effectiveChannelId) {
 
     // Trigger on-demand ISR revalidation so the home feed shows the new post immediately.
     // Fire-and-forget — don't block the redirect on the result.
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session?.access_token) return
-      fetch('/api/posts/revalidate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({ slug: publishedRow.slug }),
-      }).catch(() => undefined)
-    })
+    void fetch('/api/posts/revalidate', { method: 'POST' }).catch(() => undefined)
 
     setSaving(false)
     router.push(`/post/${publishedRow.slug}`)
