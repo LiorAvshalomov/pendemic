@@ -174,6 +174,7 @@ function DesktopPostCard({
                   {channelSlug ? (
                     <Link
                       href={`/c/${channelSlug}`}
+                      prefetch={false}
                       onClick={e => e.stopPropagation()}
                       className={`rounded px-2 py-0.5 text-xs font-semibold ${getChannelStyle(post.channel_name)}`}
                     >
@@ -282,6 +283,7 @@ function MobilePostCard({
               channelSlug ? (
                 <Link
                   href={`/c/${channelSlug}`}
+                  prefetch={false}
                   onClick={e => e.stopPropagation()}
                   className={`rounded px-2 py-0.5 font-semibold ${getChannelStyle(post.channel_name)}`}
                 >

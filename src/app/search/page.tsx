@@ -470,6 +470,7 @@ export default function SearchPage() {
                     {p.channel ? (
                       <Link
                         href={`/c/${p.channel.slug}`}
+                        prefetch={false}
                         onClick={(e) => e.stopPropagation()}
                         className={`rounded-full border px-2 py-0.5 font-medium transition-opacity hover:opacity-80 ${channelBadgeColor(p.channel.slug)}`}
                       >

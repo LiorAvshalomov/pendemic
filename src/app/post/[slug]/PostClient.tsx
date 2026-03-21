@@ -185,7 +185,7 @@ function NotFoundPost() {
           <p className="mt-3 text-sm text-muted-foreground">הפוסט לא קיים או הוסר.</p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <Link href="/" className="rounded-full bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800">
+            <Link href="/" prefetch={false} className="rounded-full bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800">
               לדף הבית
             </Link>
             <Link href="/notebook" className="rounded-full border bg-white dark:bg-card dark:border-border px-4 py-2 text-sm hover:bg-neutral-50 dark:hover:bg-muted">

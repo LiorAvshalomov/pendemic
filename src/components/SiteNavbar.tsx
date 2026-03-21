@@ -8,7 +8,7 @@ export default function SiteNavbar() {
       <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3" dir="rtl">
         {/* ימין: לוגו + סלוגן */}
         <div className="flex items-center gap-3 min-w-0">
-          <Link href="/" className="text-xl font-black tracking-tight">
+          <Link href="/" prefetch={false} className="text-xl font-black tracking-tight">
             Tyuta
           </Link>
           <span className="text-sm text-muted-foreground whitespace-nowrap">

@@ -74,7 +74,7 @@ function SectionTitle({ title, href }: { title: string; href?: string }) {
      <div className="mb-3 overflow-hidden rounded-2xl border bg-white/70 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/60">
       <div className="bg-black/5 px-4 py-2 font-bold">
         {href ? (
-          <Link href={href} className="hover:underline">
+          <Link href={href} prefetch={false} className="hover:underline">
             {title}
           </Link>
         ) : (
@@ -322,7 +322,7 @@ function ListRow({ post }: { post: CardPost }) {
             {post.channel_name && post.channel_slug ? (
               <>
                 <span className="mx-2">•</span>
-                <Link href={`/c/${post.channel_slug}`} className="hover:underline">
+                <Link href={`/c/${post.channel_slug}`} prefetch={false} className="hover:underline">
                   {post.channel_name}
                 </Link>
               </>

@@ -9,6 +9,7 @@ import ClientChrome from "@/components/ClientChrome"
 import PageTracker from "@/components/analytics/PageTracker"
 import ToastProvider from "@/components/Toast"
 import VisualViewportSync from "@/components/VisualViewportSync"
+import ThemeSync from "@/components/ThemeSync"
 
 const SITE_URL = "https://tyuta.net"
 
@@ -143,6 +144,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <JsonLd data={websiteSchema} />
         <ToastProvider>
           <VisualViewportSync />
+          <ThemeSync />
           <AuthSync>
             <SuspensionSync>
               <ClientChrome>{children}</ClientChrome>

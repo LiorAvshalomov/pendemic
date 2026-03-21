@@ -38,13 +38,13 @@ export default function SiteFooter() {
 
           {/* Left side */}
           <nav className="flex flex-wrap justify-center gap-4 md:justify-end">
-            <Link className="tyuta-hover" href="/c/stories">
+            <Link className="tyuta-hover" href="/c/stories" prefetch={false}>
               סיפורים
             </Link>
-            <Link className="tyuta-hover" href="/c/release">
+            <Link className="tyuta-hover" href="/c/release" prefetch={false}>
               פריקה
             </Link>
-            <Link className="tyuta-hover" href="/c/magazine">
+            <Link className="tyuta-hover" href="/c/magazine" prefetch={false}>
               מגזין
             </Link>
             <Link className="tyuta-hover" href="/search">

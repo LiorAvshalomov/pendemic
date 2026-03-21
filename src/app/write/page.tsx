@@ -17,6 +17,7 @@ import {
   sortHebrew,
 } from '@/lib/taxonomy'
 import { generatePostSlug, resolveUniquePostSlug } from '@/lib/postSlug'
+import { notifyFeedContentUpdated } from '@/lib/feedFreshness'
 
 type Channel = { id: number; name_he: string }
 type Tag = { id: number; type: 'emotion' | 'theme' | 'genre' | 'topic'; name_he: string; channel_id: number | null }
@@ -1078,10 +1079,17 @@ if (!effectiveChannelId) {
 
         // Bust the ISR cache so readers see the updated post immediately.
         if (draftSlug && draftSlug !== 'undefined' && draftSlug !== 'null') {
-          void fetch('/api/posts/revalidate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ slug: draftSlug }),
+          void supabase.auth.getSession().then(async ({ data: { session } }) => {
+            if (!session?.access_token) return
+            const response = await fetch('/api/posts/revalidate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+              body: JSON.stringify({ slug: draftSlug }),
+            })
+
+            if (response.ok) {
+              notifyFeedContentUpdated()
+            }
           }).catch(() => undefined)
         }
 
@@ -1260,7 +1268,18 @@ if (!effectiveChannelId) {
 
     // Trigger on-demand ISR revalidation so the home feed shows the new post immediately.
     // Fire-and-forget — don't block the redirect on the result.
-    void fetch('/api/posts/revalidate', { method: 'POST' }).catch(() => undefined)
+    void supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session?.access_token) return
+      const response = await fetch('/api/posts/revalidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ slug: publishedRow.slug }),
+      })
+
+      if (response.ok) {
+        notifyFeedContentUpdated()
+      }
+    }).catch(() => undefined)
 
     setSaving(false)
     router.push(`/post/${publishedRow.slug}`)

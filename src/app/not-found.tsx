@@ -7,6 +7,7 @@ export default function NotFound() {
       <p className="mt-4 text-lg text-neutral-600">העמוד לא נמצא</p>
       <Link
         href="/"
+        prefetch={false}
         className="mt-6 rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-800"
       >
         חזרה לדף הבית

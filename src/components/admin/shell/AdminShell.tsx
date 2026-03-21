@@ -104,6 +104,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         <div className="border-t border-neutral-200 px-3 py-3">
           <Link
             href="/"
+            prefetch={false}
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
           >
             <ArrowLeft size={16} />
@@ -133,6 +134,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           {/* Topbar right - back to site on mobile */}
           <Link
             href="/"
+            prefetch={false}
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 md:hidden"
           >
             <ArrowLeft size={14} />
@@ -195,6 +197,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <div className="border-t border-neutral-200 px-3 py-3">
               <Link
                 href="/"
+                prefetch={false}
                 onClick={closeDrawer}
                 className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
               >
