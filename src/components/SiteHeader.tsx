@@ -28,6 +28,7 @@ import {
 import NotificationsBell from "@/components/NotificationsBell"
 import { broadcastAuthEvent, getAuthState, setAuthState } from '@/lib/auth/authEvents'
 import ThemeToggle from '@/components/ThemeToggle'
+import FeedIntentLink from '@/components/FeedIntentLink'
 
 
 type MiniUser = {
@@ -160,16 +161,15 @@ function ChannelsInline({ onNavigate, mobile = false }: { onNavigate?: () => voi
       {items.map(it => {
         const Icon = it.icon
         return (
-          <Link
+          <FeedIntentLink
             key={it.href}
             href={it.href}
-            prefetch={false}
             onClick={onNavigate}
             className={`group inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold bg-white dark:bg-card border ${it.borderClass} dark:border-border ${it.hoverClass} dark:hover:bg-muted hover:shadow-md active:scale-[0.97] transition-all duration-200 whitespace-nowrap ${mobile ? 'w-full justify-start' : ''}`}
           >
             <Icon size={17} strokeWidth={2.5} className={`${it.colorClass} group-hover:scale-110 transition-transform`} />
             <span className="text-neutral-700 dark:text-foreground group-hover:text-neutral-900 dark:group-hover:text-foreground transition-colors">{it.label}</span>
-          </Link>
+          </FeedIntentLink>
         )
       })}
     </nav>
@@ -589,9 +589,8 @@ export default function SiteHeader() {
                 </button>
 
                 {/* בית - רק בדסקטופ */}
-                <Link
+                <FeedIntentLink
                   href="/"
-                  prefetch={false}
                   className="hidden lg:flex items-center gap-2 text-sm font-semibold text-neutral-700 dark:text-foreground/80 hover:text-neutral-950 dark:hover:text-foreground transition-all duration-300 group"
                   onClick={closeAll}
                 >
@@ -600,7 +599,7 @@ export default function SiteHeader() {
                     <div className="absolute inset-0 bg-neutral-900 dark:bg-foreground rounded-full blur-md opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
                   </div>
                   <span className="group-hover:translate-x-[-1px] transition-all duration-300">בית</span>
-                </Link>
+                </FeedIntentLink>
 
                 {/* לוגו מוקטן - רק במובייל */}
                 <Link
@@ -880,9 +879,8 @@ export default function SiteHeader() {
           <div className="grid items-center gap-4 py-5" dir="rtl" style={{ gridTemplateColumns: '1fr auto 1fr' }}>
             {/* Right: brand */}
             <div className="min-w-0">
-             <Link
+             <FeedIntentLink
   href="/"
-  prefetch={false}
   className="group inline-flex w-fit items-center gap-3 text-right transition-all duration-300"
 >
   <span className="relative text-lg font-bold tracking-tight text-[#1E2A44] dark:text-foreground transition-transform duration-300 group-hover:-translate-y-[2px]">
@@ -894,7 +892,7 @@ export default function SiteHeader() {
   <span className="text-sm font-medium text-[#1E2A44]/60 dark:text-foreground/60 transition-colors duration-300 group-hover:text-[#1E2A44]/80 dark:group-hover:text-foreground/80">
     המקום לכל הגרסאות שלך
   </span>
-</Link>
+</FeedIntentLink>
             </div>
 
             {/* Center: channels */}

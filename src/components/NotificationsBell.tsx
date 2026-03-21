@@ -785,10 +785,10 @@ const token = storeHighlightToken(ids)
     const isMobile = mode === 'mobile'
 
     return (
-      <div
-        className={
+        <div
+          className={
           "bg-white dark:bg-popover shadow-xl border border-neutral-200 dark:border-border overflow-hidden " +
-          (isMobile ? "rounded-none h-[calc(100vh-56px)] flex flex-col" : "rounded-xl")
+          (isMobile ? "rounded-none h-[calc(100dvh-56px)] min-h-0 flex flex-col" : "rounded-xl")
         }
       >
         <div className="sticky top-0 z-10 bg-gradient-to-b from-neutral-100 to-neutral-50 dark:from-card dark:to-card border-b border-neutral-200 dark:border-border px-4 py-3">
@@ -824,7 +824,10 @@ const token = storeHighlightToken(ids)
           )}
         </div>
 
-        <div className={isMobile ? "flex-1 overflow-auto overscroll-contain" : "max-h-[440px] overflow-auto overscroll-contain"}>
+        <div
+          className={isMobile ? "min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y" : "max-h-[440px] overflow-auto overscroll-contain"}
+          style={isMobile ? { WebkitOverflowScrolling: 'touch' } : undefined}
+        >
           {loading ? (
             <div className="py-10 text-center text-sm text-neutral-600 dark:text-muted-foreground">טוען...</div>
           ) : items.length === 0 ? (
@@ -970,7 +973,7 @@ const token = storeHighlightToken(ids)
         ? createPortal(
             <>
               <div className="lg:hidden fixed top-14 left-0 right-0 bottom-0 z-[9998] bg-black/30 backdrop-blur-sm animate-in fade-in duration-200" />
-              <div className="lg:hidden fixed top-14 left-0 right-0 bottom-0 z-[9999] p-0 overflow-hidden animate-in slide-in-from-top duration-300">
+              <div className="lg:hidden fixed top-14 left-0 right-0 bottom-0 z-[9999] p-0 overflow-hidden overscroll-none animate-in slide-in-from-top duration-300">
                 {renderPanel('mobile')}
               </div>
             </>,
