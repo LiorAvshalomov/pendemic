@@ -562,8 +562,7 @@ function ListRowCompact({ post, accentClass }: { post: CardPost; accentClass?: s
                       </span>
                     </>
                   )
-                })()}
-
+                })() : null}
 
 
               </div>
