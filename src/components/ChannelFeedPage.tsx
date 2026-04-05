@@ -380,7 +380,7 @@ function ListRow({ post }: { post: CardPost }) {
                       </span>
                     </>
                   )
-                })()}
+                })() : null}
               </>
             ) : null}
           </div>
