@@ -688,7 +688,7 @@ async function submitReport() {
     }
   }, [postId, refreshLikes])
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setErrFor(null)
     setLoading(true)
     setNewCommentBanner(false)
@@ -769,7 +769,7 @@ async function submitReport() {
     setItems(normalized)
     await refreshLikes(normalized.map((x) => x.id).filter(Boolean), u?.id ?? null)
     setLoading(false)
-  }
+  }, [postId, refreshLikes])
 
   useEffect(() => {
     if (!postId) return
@@ -918,16 +918,21 @@ async function submitReport() {
 
   // Clear auth state on logout so comment box and like buttons switch to guest mode immediately
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         setUserId(null)
         userIdRef.current = null
         setMe(null)
         setIsAdmin(false)
+        return
+      }
+
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user?.id) {
+        void load()
       }
     })
     return () => subscription.unsubscribe()
-  }, [])
+  }, [load])
 
   const send = async () => {
     setErrFor(null)

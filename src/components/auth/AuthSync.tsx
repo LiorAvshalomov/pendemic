@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef } from 'react'
-import { supabase, hydrateSession } from '@/lib/supabaseClient'
+import { clearHydratedSession, hydrateSession, supabase } from '@/lib/supabaseClient'
 import {
   AUTH_BROADCAST_STORAGE_KEY,
   broadcastAuthEvent,
@@ -19,6 +19,8 @@ import {
   isAdminPath,
   isEntryAuthPath,
   isProtectedPath,
+  shouldRunLoginRedirect,
+  syncLoginRedirectState,
 } from '@/lib/auth/protectedRoutes'
 
 type Props = { children: React.ReactNode }
@@ -115,6 +117,7 @@ export default function AuthSync({ children }: Props) {
 
   // Recovery / reset-gate check — runs on every navigation, lightweight
   useEffect(() => {
+    syncLoginRedirectState()
     if (urlIsRecoveryOrInviteFlow()) {
       setResetGate()
       if (!isResetRoute(pathname)) router.replace('/auth/reset-password')
@@ -175,16 +178,16 @@ export default function AuthSync({ children }: Props) {
       setAuthState('out')
       setAuthResolutionState('unauthenticated')
 
-      if (!skipBroadcast) {
-        if (reason === 'TOKEN_REFRESH_FAILED') broadcastAuthEvent('TOKEN_REFRESH_FAILED')
-        else broadcastAuthEvent('SIGNED_OUT')
+      if (!skipBroadcast && reason === 'TOKEN_REFRESH_FAILED') {
+        broadcastAuthEvent('TOKEN_REFRESH_FAILED')
       }
 
-      // Clear the in-memory session for cross-tab signouts and server-side auth loss.
-      // If this tab already got a real SIGNED_OUT from supabase.auth.signOut(),
-      // emitting another local SIGNED_OUT would just duplicate downstream work.
-      const shouldClearLocalSession = reason !== 'SIGNED_OUT' || skipBroadcast
-      if (shouldClearLocalSession && !isHandlingSignOutRef.current) {
+      // Cross-tab and storage-broadcast auth-loss events already reached this tab.
+      // Clear only the in-memory session here; rebroadcasting signOut from every tab
+      // is what turns a normal logout into a fetch storm.
+      if (skipBroadcast) {
+        clearHydratedSession()
+      } else if (!isHandlingSignOutRef.current) {
         isHandlingSignOutRef.current = true
         void supabase.auth.signOut({ scope: 'local' })
           .catch(() => { /* ignore — session may already be gone */ })
@@ -193,7 +196,14 @@ export default function AuthSync({ children }: Props) {
 
       const currentPath = pathnameRef.current
       if (isAdminPath(currentPath) || isProtectedPath(currentPath)) {
-        router.replace(buildLoginRedirect(currentPath))
+        const loginTarget = buildLoginRedirect(currentPath)
+        if (shouldRunLoginRedirect(loginTarget)) {
+          router.replace(loginTarget)
+        }
+        return
+      }
+
+      if (isEntryAuthPath(currentPath)) {
         return
       }
 
@@ -287,17 +297,26 @@ export default function AuthSync({ children }: Props) {
     const handleIncomingSignIn = async () => {
       if (cancelled) return
 
+      const refreshPublicRouteAfterSignIn = () => {
+        const currentPath = pathnameRef.current
+        if (isEntryAuthPath(currentPath) || isProtectedPath(currentPath) || isAdminPath(currentPath)) return
+        router.refresh()
+      }
+
       const existing = await supabase.auth.getSession()
       if (cancelled) return
 
       if (existing.data.session?.user?.id) {
         markAuthenticated(existing.data.session.expires_at)
+        refreshPublicRouteAfterSignIn()
         return
       }
 
       const result = await recoverSessionFromServer()
       if (cancelled) return
-      if (result === 'ok') return
+      if (result === 'ok') {
+        refreshPublicRouteAfterSignIn()
+      }
     }
 
     const init = async () => {
@@ -338,7 +357,8 @@ export default function AuthSync({ children }: Props) {
         // otherwise we'd enter an infinite handleLostAuth → signOut → SIGNED_OUT loop.
         if (isHandlingSignOutRef.current) return
         clearResetGate()
-        handleLostAuth('SIGNED_OUT')
+        // Supabase already propagates SIGNED_OUT between tabs.
+        handleLostAuth('SIGNED_OUT', true)
         return
       }
 

@@ -54,6 +54,12 @@ const memStorage = {
   removeItem: (key: string): void => { delete _mem[key] },
 }
 
+export function clearHydratedSession(): void {
+  for (const key of Object.keys(_mem)) {
+    delete _mem[key]
+  }
+}
+
 export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage:           memStorage,

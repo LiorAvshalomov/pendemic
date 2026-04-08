@@ -8,7 +8,7 @@ import { USERNAME_MAX, DISPLAY_NAME_MAX } from '@/lib/validation'
 import Avatar from '@/components/Avatar'
 import AvatarUpload from '@/components/AvatarUpload'
 import { waitForClientSession } from '@/lib/auth/clientSession'
-import { buildLoginRedirect } from '@/lib/auth/protectedRoutes'
+import { buildLoginRedirect, shouldRunLoginRedirect } from '@/lib/auth/protectedRoutes'
 import { notifyProfileUpdated } from '@/lib/profileFreshness'
 
 type ProfileRow = {
@@ -55,7 +55,10 @@ export default function ProfileSettingsPage() {
 
       const resolved = await waitForClientSession()
       if (resolved.status !== 'authenticated') {
-        router.replace(buildLoginRedirect('/settings/profile'))
+        const loginTarget = buildLoginRedirect('/settings/profile')
+        if (shouldRunLoginRedirect(loginTarget)) {
+          router.replace(loginTarget)
+        }
         return
       }
 

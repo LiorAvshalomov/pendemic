@@ -107,18 +107,46 @@ export default function PostReactions({ postId, channelId, authorId, onMedalsCha
     userIdRef.current = userId
   }, [userId])
 
+  const authSyncSeqRef = useRef(0)
+
+  const syncViewerVotes = useCallback(async (uid: string | null) => {
+    const seq = ++authSyncSeqRef.current
+    setUserId(uid)
+
+    if (!uid) {
+      setMyVotes(new Set())
+      return
+    }
+
+    const { data: mv, error } = await supabase
+      .from('post_reaction_votes')
+      .select('reaction_key')
+      .eq('post_id', postId)
+      .eq('voter_id', uid)
+
+    if (authSyncSeqRef.current !== seq) return
+    if (error) {
+      setMyVotes(new Set())
+      return
+    }
+
+    setMyVotes(new Set((mv ?? []).map(x => (x as { reaction_key: string }).reaction_key)))
+  }, [postId])
+
   // Clear auth state on logout so buttons switch to guest mode immediately
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
-        setUserId(null)
-        setMyVotes(new Set())
-      } else if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user?.id) {
-        setUserId(session.user.id)
+        void syncViewerVotes(null)
+        return
+      }
+
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user?.id) {
+        void syncViewerVotes(session.user.id)
       }
     })
     return () => subscription.unsubscribe()
-  }, [])
+  }, [syncViewerVotes])
 
   // --------
   // Fetch summary only (truth from DB)
@@ -168,7 +196,8 @@ export default function PostReactions({ postId, channelId, authorId, onMedalsCha
       const { data: auth } = await supabase.auth.getSession()
       if (cancelled) return
       const u = auth.session?.user
-      setUserId(u?.id ?? null)
+      await syncViewerVotes(u?.id ?? null)
+      if (cancelled) return
 
       const { data: rx, error: rxErr } = await supabase
         .from('reactions')
@@ -187,25 +216,6 @@ export default function PostReactions({ postId, channelId, authorId, onMedalsCha
       await fetchSummaryOnly()
       if (cancelled) return
 
-      if (u?.id) {
-        const { data: mv, error: mvErr } = await supabase
-          .from('post_reaction_votes')
-          .select('reaction_key')
-          .eq('post_id', postId)
-          .eq('voter_id', u.id)
-
-        if (cancelled) return
-        if (mvErr) {
-          setErrorMsg(mvErr.message)
-          setLoading(false)
-          return
-        }
-
-        setMyVotes(new Set((mv ?? []).map(x => (x as { reaction_key: string }).reaction_key)))
-      } else {
-        setMyVotes(new Set())
-      }
-
       setLoading(false)
     }
 
@@ -215,7 +225,7 @@ export default function PostReactions({ postId, channelId, authorId, onMedalsCha
       cancelled = true
       if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current)
     }
-  }, [postId, channelId, fetchSummaryOnly])
+  }, [postId, channelId, fetchSummaryOnly, syncViewerVotes])
 
   // --------
   // Realtime: on ANY change -> schedule DB sync

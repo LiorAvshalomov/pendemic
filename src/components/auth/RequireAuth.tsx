@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { getAuthState, waitForAuthResolution } from '@/lib/auth/authEvents'
-import { buildLoginRedirect } from '@/lib/auth/protectedRoutes'
+import { buildLoginRedirect, shouldRunLoginRedirect } from '@/lib/auth/protectedRoutes'
 import { getBannedFlag, getSuspendedFlag } from '@/lib/moderation'
 
 type Props = {
@@ -39,7 +39,10 @@ export default function RequireAuth({ children, unauthRedirectTo = '/auth/login'
 
     const redirectToUnauth = () => {
       if (unauthRedirectTo === '/auth/login') {
-        router.replace(buildLoginRedirect(pathname))
+        const loginTarget = buildLoginRedirect(pathname)
+        if (shouldRunLoginRedirect(loginTarget)) {
+          router.replace(loginTarget)
+        }
         return
       }
       const qs = new URLSearchParams()

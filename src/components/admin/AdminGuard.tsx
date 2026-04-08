@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { waitForClientSession } from '@/lib/auth/clientSession'
-import { buildLoginRedirect } from '@/lib/auth/protectedRoutes'
+import { buildLoginRedirect, shouldRunLoginRedirect } from '@/lib/auth/protectedRoutes'
 
 export default function AdminGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -12,7 +12,12 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     let cancelled = false
 
-    const redirectToLogin = () => router.replace(buildLoginRedirect('/admin'))
+    const redirectToLogin = () => {
+      const loginTarget = buildLoginRedirect('/admin')
+      if (shouldRunLoginRedirect(loginTarget)) {
+        router.replace(loginTarget)
+      }
+    }
 
     const checkAdmin = async (accessToken: string) => {
       const res = await fetch('/api/admin/me', {

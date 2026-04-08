@@ -20,7 +20,7 @@ import { generatePostSlug, resolveUniquePostSlug } from '@/lib/postSlug'
 import { notifyFeedContentUpdated } from '@/lib/feedFreshness'
 import { notifyPostUpdated } from '@/lib/postFreshness'
 import { waitForClientSession } from '@/lib/auth/clientSession'
-import { buildLoginRedirect } from '@/lib/auth/protectedRoutes'
+import { buildLoginRedirect, shouldRunLoginRedirect } from '@/lib/auth/protectedRoutes'
 
 type Channel = { id: number; name_he: string }
 type Tag = { id: number; type: 'emotion' | 'theme' | 'genre' | 'topic'; name_he: string; channel_id: number | null }
@@ -314,7 +314,10 @@ export default function WritePage() {
     const run = async () => {
       const resolved = await waitForClientSession()
       if (resolved.status !== 'authenticated') {
-        router.replace(buildLoginRedirect('/write'))
+        const loginTarget = buildLoginRedirect('/write')
+        if (shouldRunLoginRedirect(loginTarget)) {
+          router.replace(loginTarget)
+        }
         return
       }
       setUserId(resolved.user.id)
