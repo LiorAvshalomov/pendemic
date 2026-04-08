@@ -26,7 +26,7 @@ import {
   MessageCircle,
 } from 'lucide-react'
 import NotificationsBell from "@/components/NotificationsBell"
-import { broadcastAuthEvent, getAuthState, setAuthState } from '@/lib/auth/authEvents'
+import { getAuthState, setAuthState } from '@/lib/auth/authEvents'
 import {
   PROFILE_REFRESH_CHANNEL,
   PROFILE_REFRESH_EVENT,
@@ -582,10 +582,9 @@ export default function SiteHeader() {
     writeCachedHeaderUser(null)
     setUser(null)
     setUserResolved(true)
-    // Cross-tab: notify other tabs + set global state.
+    // Mark the optimistic local state as signed out immediately.
     setAuthState('out')
-    broadcastAuthEvent('SIGNED_OUT')
-    await supabase.auth.signOut()
+    await supabase.auth.signOut({ scope: 'local' })
     // Navigation is handled by AuthSync.handleLostAuth which fires via onAuthStateChange.
     // Protected pages → redirect to login; public pages → refresh in guest mode.
   }
