@@ -171,6 +171,7 @@ export default function AuthSync({ children }: Props) {
       }
 
       clearResetGate()
+      hadSessionRef.current = false
       setAuthState('out')
       setAuthResolutionState('unauthenticated')
 
@@ -179,10 +180,11 @@ export default function AuthSync({ children }: Props) {
         else broadcastAuthEvent('SIGNED_OUT')
       }
 
-      // Clear the in-memory session so onAuthStateChange('SIGNED_OUT') fires for
-      // all in-tab Supabase subscribers (e.g. SiteHeader clears the user avatar/name).
-      // scope:'local' = no network call, just wipes memStorage and fires the event.
-      if (!isHandlingSignOutRef.current) {
+      // Clear the in-memory session for cross-tab signouts and server-side auth loss.
+      // If this tab already got a real SIGNED_OUT from supabase.auth.signOut(),
+      // emitting another local SIGNED_OUT would just duplicate downstream work.
+      const shouldClearLocalSession = reason !== 'SIGNED_OUT' || skipBroadcast
+      if (shouldClearLocalSession && !isHandlingSignOutRef.current) {
         isHandlingSignOutRef.current = true
         void supabase.auth.signOut({ scope: 'local' })
           .catch(() => { /* ignore — session may already be gone */ })
