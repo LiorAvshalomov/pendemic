@@ -38,17 +38,17 @@ export default function FollowButton({
 
     let mounted = true
 
-    async function init() {
-      const { data } = await supabase.auth.getSession()
-      const uid = data?.session?.user?.id ?? null
+    const syncFollowState = async (uid: string | null) => {
       if (!mounted) return
-      setMyId(uid)
 
+      setMyId(uid)
       if (!uid || uid === targetUserId) {
+        setIsFollowing(false)
         setLoading(false)
         return
       }
 
+      setLoading(true)
       const { data: row } = await supabase
         .from('user_follows')
         .select('follower_id')
@@ -61,20 +61,24 @@ export default function FollowButton({
       setLoading(false)
     }
 
-    init()
+    void supabase.auth.getSession().then(({ data }) => syncFollowState(data?.session?.user?.id ?? null))
 
-    return () => { mounted = false }
-  }, [skipInitialLoad, targetUserId])
-
-  // Clear auth state on logout so the button hides immediately
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
-        setMyId(null)
+        void syncFollowState(null)
+        return
+      }
+
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user?.id) {
+        void syncFollowState(session.user.id)
       }
     })
-    return () => subscription.unsubscribe()
-  }, [])
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [skipInitialLoad, targetUserId])
 
   // Sync instantly when HoverProfileCard (or any other component) follows/unfollows
   useEffect(() => {

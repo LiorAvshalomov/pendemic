@@ -66,6 +66,29 @@ export default function PostOwnerMenu({
       .catch(() => setViewerId(null))
   }, [])
 
+  useEffect(() => {
+    const syncViewer = (nextViewerId: string | null) => {
+      setViewerId(nextViewerId)
+      if (nextViewerId !== authorId) {
+        setOpen(false)
+        setShareModalOpen(false)
+      }
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") {
+        syncViewer(null)
+        return
+      }
+
+      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user?.id) {
+        syncViewer(session.user.id)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [authorId])
+
   // Close on outside click / touch + Esc
   useEffect(() => {
     if (!open) return

@@ -19,18 +19,17 @@ export default function SavePostButton({ postId }: { postId: string }) {
 
   useEffect(() => {
     let mounted = true
-
-    async function init() {
-      const { data } = await supabase.auth.getSession()
-      const uid = data?.session?.user?.id ?? null
+    const syncBookmarkState = async (uid: string | null) => {
       if (!mounted) return
-      setMyId(uid)
 
+      setMyId(uid)
       if (!uid) {
+        setSaved(false)
         setLoading(false)
         return
       }
 
+      setLoading(true)
       const { data: row, error } = await supabase
         .from('post_bookmarks')
         .select('post_id')
@@ -50,23 +49,25 @@ export default function SavePostButton({ postId }: { postId: string }) {
       setLoading(false)
     }
 
-    init()
+    void supabase.auth.getSession().then(({ data }) => syncBookmarkState(data?.session?.user?.id ?? null))
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        void syncBookmarkState(null)
+        return
+      }
+
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user?.id) {
+        void syncBookmarkState(session.user.id)
+      }
+    })
 
     return () => {
       mounted = false
+      subscription.unsubscribe()
+      if (timerRef.current) clearTimeout(timerRef.current)
     }
   }, [postId])
-
-  // Clear auth state on logout so the button hides immediately
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') {
-        setMyId(null)
-        setSaved(false)
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [])
 
   async function toggle() {
     if (!myId) {

@@ -17,7 +17,7 @@ import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { waitForClientSession } from '@/lib/auth/clientSession'
-import { buildLoginRedirect } from '@/lib/auth/protectedRoutes'
+import { buildLoginRedirect, shouldRunLoginRedirect } from '@/lib/auth/protectedRoutes'
 
 type NoteRow = {
   id: string
@@ -190,7 +190,10 @@ export default function CommunityNotesWall() {
     if (resolved.status !== 'authenticated') {
       setMeId(null)
       setAuthChecked(true)
-      router.replace(buildLoginRedirect('/notes'))
+      const loginTarget = buildLoginRedirect('/notes')
+      if (shouldRunLoginRedirect(loginTarget)) {
+        router.replace(loginTarget)
+      }
       return null
     }
 
@@ -379,7 +382,10 @@ export default function CommunityNotesWall() {
 
   async function handlePost() {
     if (!meId) {
-      router.push(buildLoginRedirect('/notes'))
+      const loginTarget = buildLoginRedirect('/notes')
+      if (shouldRunLoginRedirect(loginTarget)) {
+        router.push(loginTarget)
+      }
       return
     }
 
@@ -439,7 +445,10 @@ export default function CommunityNotesWall() {
 
   async function handleOpenChat(note: NoteRow) {
     if (!meId) {
-      router.push(buildLoginRedirect('/notes'))
+      const loginTarget = buildLoginRedirect('/notes')
+      if (shouldRunLoginRedirect(loginTarget)) {
+        router.push(loginTarget)
+      }
       return
     }
     if (note.user_id === meId) return

@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { waitForClientSession } from '@/lib/auth/clientSession'
-import { buildLoginRedirect } from '@/lib/auth/protectedRoutes'
+import { buildLoginRedirect, shouldRunLoginRedirect } from '@/lib/auth/protectedRoutes'
 
 type TrashPostRow = {
   id: string
@@ -70,7 +70,10 @@ export default function TrashPage() {
     const run = async () => {
       const resolved = await waitForClientSession()
       if (resolved.status !== 'authenticated') {
-        router.replace(buildLoginRedirect('/trash'))
+        const loginTarget = buildLoginRedirect('/trash')
+        if (shouldRunLoginRedirect(loginTarget)) {
+          router.replace(loginTarget)
+        }
         return
       }
       setUserId(resolved.user.id)

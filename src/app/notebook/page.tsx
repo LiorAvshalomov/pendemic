@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { waitForClientSession } from '@/lib/auth/clientSession'
-import { buildLoginRedirect } from '@/lib/auth/protectedRoutes'
+import { buildLoginRedirect, shouldRunLoginRedirect } from '@/lib/auth/protectedRoutes'
 
 type DraftRow = {
   id: string
@@ -52,7 +52,10 @@ export default function NotebookPage() {
 
       if (resolved.status !== 'authenticated') {
         alert('כדי להשתמש במחברת צריך להתחבר.')
-        router.replace(buildLoginRedirect('/notebook'))
+        const loginTarget = buildLoginRedirect('/notebook')
+        if (shouldRunLoginRedirect(loginTarget)) {
+          router.replace(loginTarget)
+        }
         return
       }
 
@@ -66,7 +69,12 @@ export default function NotebookPage() {
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return
-      if (!session?.user?.id) router.replace(buildLoginRedirect('/notebook'))
+      if (!session?.user?.id) {
+        const loginTarget = buildLoginRedirect('/notebook')
+        if (shouldRunLoginRedirect(loginTarget)) {
+          router.replace(loginTarget)
+        }
+      }
     })
 
     return () => {

@@ -306,6 +306,32 @@ export default function PostPage({ initialData, initialExtras }: Props) {
     }
   }, [])
 
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setMyUserId(null)
+        setMenuOpen(false)
+        setReportOpen(false)
+        setReportErr(null)
+        setReportOk(null)
+        return
+      }
+
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user?.id) {
+        setMyUserId(session.user.id)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    const nextCanReport = !!myUserId && !!post && post.author_id !== myUserId
+    if (nextCanReport) return
+    setMenuOpen(false)
+    setReportOpen(false)
+  }, [myUserId, post])
+
   // When navigating with a #comment-... hash, scroll to the comment (App Router sometimes won't).
   useEffect(() => {
     if (loading || !post) return
