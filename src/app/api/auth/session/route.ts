@@ -13,6 +13,7 @@ import { setPresenceCookie, clearPresenceCookie, verifyPresence, PRESENCE_COOKIE
 import { isAdminUser } from '@/lib/auth/isAdminUser'
 import { fetchModerationRoutingHint } from '@/lib/auth/fetchModerationRoutingHint'
 import { buildHeaderUserFromAuthUser, fetchHeaderUserById } from '@/lib/auth/headerUser'
+import { clearHeaderUserCookie, setHeaderUserCookie } from '@/lib/auth/headerUserCookie'
 
 function getIp(req: NextRequest): string {
   return (
@@ -84,6 +85,7 @@ export async function GET(req: NextRequest) {
     })
     clearRefreshCookie(errRes)
     clearPresenceCookie(errRes)
+    clearHeaderUserCookie(errRes)
 
     // Audit: best-effort; never block the response.
     if (serviceKey) {
@@ -127,6 +129,7 @@ export async function GET(req: NextRequest) {
     : oldPresence?.moderation ?? 'none'
 
   await setPresenceCookie(res, data.user!.id, isAdminUser(data.user!.id), rememberMe, moderation)
+  await setHeaderUserCookie(res, headerUser, rememberMe)
   return res
 }
 
@@ -204,5 +207,6 @@ export async function POST(req: NextRequest) {
       )
     : 'none'
   await setPresenceCookie(res, data.user!.id, isAdminUser(data.user!.id), true, moderation)
+  await setHeaderUserCookie(res, headerUser, true)
   return res
 }

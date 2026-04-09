@@ -10,6 +10,7 @@ import PageTracker from "@/components/analytics/PageTracker"
 import ToastProvider from "@/components/Toast"
 import VisualViewportSync from "@/components/VisualViewportSync"
 import ThemeSync from "@/components/ThemeSync"
+import { resolveInitialHeaderUser } from "@/lib/auth/serverHeaderUser"
 
 const SITE_URL = "https://tyuta.net"
 
@@ -87,7 +88,8 @@ function JsonLd({ data }: { data: unknown }) {
   )
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const initialHeaderUser = await resolveInitialHeaderUser()
   const organizationSchema = {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -119,11 +121,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: `(function(){try{var s=localStorage.getItem('tyuta:theme');var d=s==='dark'||(s!=='light'&&window.matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();`,
           }}
         />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var hinted='guest';var raw=localStorage.getItem('tyuta:header:user');if(raw){try{var parsed=JSON.parse(raw);if(parsed&&typeof parsed==='object'&&typeof parsed.id==='string'&&typeof parsed.username==='string'){hinted='signed-in';}}catch(e){}}if(hinted!=='signed-in'&&localStorage.getItem('tyuta:auth:state')==='in'){hinted='signed-in';}document.documentElement.setAttribute('data-tyuta-auth-ui',hinted);}catch(e){document.documentElement.setAttribute('data-tyuta-auth-ui','guest');}})();`,
-          }}
-        />
         {process.env.NODE_ENV === "production" && (
           <>
             {/* GA ID stored in a meta tag so the external ga.js can read it without inline JS */}
@@ -144,7 +141,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ThemeSync />
           <AuthSync>
             <SuspensionSync>
-              <ClientChrome>{children}</ClientChrome>
+              <ClientChrome initialHeaderUser={initialHeaderUser}>{children}</ClientChrome>
             </SuspensionSync>
           </AuthSync>
           <Suspense fallback={null}><PageTracker /></Suspense>

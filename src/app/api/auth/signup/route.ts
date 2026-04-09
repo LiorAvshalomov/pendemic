@@ -6,6 +6,7 @@ import { setRefreshCookie } from '@/lib/auth/cookieHelpers'
 import { setPresenceCookie } from '@/lib/auth/presenceCookie'
 import { fetchModerationRoutingHint } from '@/lib/auth/fetchModerationRoutingHint'
 import { buildHeaderUserFromAuthUser, fetchHeaderUserById } from '@/lib/auth/headerUser'
+import { setHeaderUserCookie } from '@/lib/auth/headerUserCookie'
 import { setAnalyticsSessionCookie } from '@/lib/analytics/sessionCookie'
 
 function getIp(req: Request): string {
@@ -109,6 +110,7 @@ export async function POST(req: Request) {
     )
     setRefreshCookie(res, data.session.refresh_token)
     await setPresenceCookie(res, data.user!.id, false, true, moderation)
+    await setHeaderUserCookie(res, headerUser, true)
     setAnalyticsSessionCookie(res, randomUUID())
     return res
   }
