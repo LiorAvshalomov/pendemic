@@ -31,8 +31,7 @@ type AuthUserFallback = {
 
 const HEADER_USER_CACHE_KEY = 'tyuta:header:user'
 const HEADER_USER_EVENT = 'tyuta:header-user'
-const HEADER_USER_GRACE_MS = 5 * 60_000
-const LEGACY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const HEADER_USER_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 function normalizeHeaderUser(input: {
   id: string
@@ -103,12 +102,8 @@ function parseCachedHeaderUser(): CachedHeaderUserRecord | null {
 function isExpired(record: CachedHeaderUserRecord): boolean {
   const now = Date.now()
 
-  if (typeof record.expiresAt === 'number') {
-    return record.expiresAt * 1000 + HEADER_USER_GRACE_MS < now
-  }
-
   if (typeof record.cachedAt === 'number') {
-    return record.cachedAt + LEGACY_CACHE_TTL_MS < now
+    return record.cachedAt + HEADER_USER_CACHE_TTL_MS < now
   }
 
   return false

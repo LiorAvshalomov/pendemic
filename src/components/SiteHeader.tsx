@@ -21,6 +21,7 @@ import {
   PenTool,
   FileText,
   Newspaper,
+  Bell,
   ChevronDown,
   NotebookPen,
   MessageCircle,
@@ -142,6 +143,32 @@ function formatDateTime(dt: string) {
   const hh = String(d.getHours()).padStart(2, '0')
   const mi = String(d.getMinutes()).padStart(2, '0')
   return `${hh}:${mi} · ${dd}.${mm}.${yy}`
+}
+
+function DesktopNotesPendingShell() {
+  return (
+    <div
+      className="tyuta-header-auth-pending hidden lg:flex items-center gap-2 text-sm font-semibold text-neutral-700/75 dark:text-foreground/65"
+      aria-hidden="true"
+    >
+      <BookOpen size={17} strokeWidth={2.5} className="opacity-70" />
+      <span className="h-4 w-12 rounded-full bg-neutral-300/80 dark:bg-white/10" />
+    </div>
+  )
+}
+
+function DesktopUserPendingShell() {
+  return (
+    <div className="tyuta-header-auth-pending hidden lg:flex items-center gap-2.5" aria-hidden="true">
+      <div className="grid h-9 w-9 place-items-center rounded-lg bg-neutral-200/80 text-neutral-600 dark:bg-white/8 dark:text-neutral-300">
+        <MessageCircle size={18} strokeWidth={2.3} className="opacity-80" />
+      </div>
+      <div className="grid h-9 w-9 place-items-center rounded-lg bg-neutral-200/80 text-neutral-600 dark:bg-white/8 dark:text-neutral-300">
+        <Bell size={18} strokeWidth={2.3} className="opacity-80" />
+      </div>
+      <div className="h-8 w-8 rounded-full border border-neutral-300/80 bg-neutral-200/80 dark:border-white/10 dark:bg-white/10" />
+    </div>
+  )
 }
 
 export default function SiteHeader() {
@@ -631,7 +658,19 @@ export default function SiteHeader() {
   )
 
   return (
-    <header className="w-full">
+    <>
+      <style jsx global>{`
+        @media (min-width: 1024px) {
+          html[data-tyuta-auth-ui='signed-in'] .tyuta-header-auth-pending {
+            display: flex !important;
+          }
+
+          html[data-tyuta-auth-ui='signed-in'] .tyuta-header-guest-placeholder {
+            display: none !important;
+          }
+        }
+      `}</style>
+      <header className="w-full">
       {/* TOP NAVBAR - FIXED (sticky fails inside overflow containers) */}
       <nav
         className="fixed top-0 inset-x-0 z-[10000] bg-[#F5F3EE]/95 dark:bg-background/80 backdrop-blur-md border-b border-neutral-300/70 dark:border-border shadow-sm"
@@ -703,6 +742,8 @@ export default function SiteHeader() {
                     </div>
                     <span className="group-hover:translate-x-[-1px] transition-all duration-300">פתקים</span>
                   </Link>
+                ) : !userResolved ? (
+                  <DesktopNotesPendingShell />
                 ) : null}
               </div>
 
@@ -923,10 +964,13 @@ export default function SiteHeader() {
                     </Link>
                   </div>
                 ) : (
-                  <div className="hidden lg:flex items-center gap-2 opacity-0 pointer-events-none select-none" aria-hidden="true">
+                  <>
+                    <DesktopUserPendingShell />
+                    <div className="tyuta-header-guest-placeholder hidden lg:flex items-center gap-2 opacity-0 pointer-events-none select-none" aria-hidden="true">
                     <div className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold">התחבר</div>
                     <div className="rounded-full px-4 py-1.5 text-sm font-semibold">הירשם</div>
-                  </div>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -1215,6 +1259,7 @@ export default function SiteHeader() {
           </div>
         </>
       )}
-    </header>
+      </header>
+    </>
   )
 }
