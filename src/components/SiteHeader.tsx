@@ -26,7 +26,12 @@ import {
   MessageCircle,
 } from 'lucide-react'
 import NotificationsBell from "@/components/NotificationsBell"
-import { getAuthState, setAuthState } from '@/lib/auth/authEvents'
+import {
+  getAuthResolutionState,
+  getAuthState,
+  setAuthState,
+  subscribeAuthResolutionState,
+} from '@/lib/auth/authEvents'
 import {
   PROFILE_REFRESH_CHANNEL,
   PROFILE_REFRESH_EVENT,
@@ -36,14 +41,14 @@ import {
 } from '@/lib/profileFreshness'
 import ThemeToggle from '@/components/ThemeToggle'
 import FeedIntentLink from '@/components/FeedIntentLink'
-
-
-type MiniUser = {
-  id: string
-  username: string
-  displayName: string
-  avatarUrl: string | null
-}
+import {
+  clearCachedHeaderUser,
+  readCachedHeaderUser,
+  sameHeaderUser,
+  subscribeHeaderUser,
+  writeCachedHeaderUser,
+  type HeaderUser,
+} from '@/lib/auth/headerUser'
 
 type ThreadRow = {
   conversation_id: string
@@ -56,59 +61,8 @@ type ThreadRow = {
   unread_count: number | null
 }
 
-const HEADER_USER_CACHE_KEY = 'tyuta:header:user'
-
-function readCachedHeaderUser(): MiniUser | null {
-  if (typeof window === 'undefined') return null
-  if (getAuthState() !== 'in') return null
-
-  try {
-    const raw = window.localStorage.getItem(HEADER_USER_CACHE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== 'object') return null
-    const rec = parsed as Record<string, unknown>
-    if (
-      typeof rec.id !== 'string' ||
-      typeof rec.username !== 'string' ||
-      typeof rec.displayName !== 'string' ||
-      (rec.avatarUrl !== null && typeof rec.avatarUrl !== 'string')
-    ) {
-      return null
-    }
-    return {
-      id: rec.id,
-      username: rec.username,
-      displayName: rec.displayName,
-      avatarUrl: rec.avatarUrl as string | null,
-    }
-  } catch {
-    return null
-  }
-}
-
-function writeCachedHeaderUser(user: MiniUser | null): void {
-  if (typeof window === 'undefined') return
-  try {
-    if (!user) {
-      window.localStorage.removeItem(HEADER_USER_CACHE_KEY)
-      return
-    }
-    window.localStorage.setItem(HEADER_USER_CACHE_KEY, JSON.stringify(user))
-  } catch {
-    // ignore
-  }
-}
-
-function sameMiniUser(a: MiniUser | null, b: MiniUser | null): boolean {
-  if (a === b) return true
-  if (!a || !b) return false
-  return (
-    a.id === b.id &&
-    a.username === b.username &&
-    a.displayName === b.displayName &&
-    a.avatarUrl === b.avatarUrl
-  )
+type SiteHeaderProps = {
+  initialUser?: HeaderUser | null
 }
 
 const useHeaderLayoutEffect =
@@ -194,7 +148,7 @@ function formatDateTime(dt: string) {
   return `${hh}:${mi} · ${dd}.${mm}.${yy}`
 }
 
-export default function SiteHeader() {
+export default function SiteHeader({ initialUser = null }: SiteHeaderProps) {
   const router = useRouter()
   const pathname = usePathname()
 
@@ -208,8 +162,8 @@ export default function SiteHeader() {
     (pathname ?? '').startsWith('/auth/reset-password') ||
     pathname === '/login' ||
     pathname === '/register'
-  const [user, setUser] = useState<MiniUser | null>(null)
-  const [userResolved, setUserResolved] = useState(false)
+  const [user, setUser] = useState<HeaderUser | null>(initialUser)
+  const [userResolved, setUserResolved] = useState(Boolean(initialUser))
 
   // dropdown states
   const [writeOpen, setWriteOpen] = useState(false)
@@ -310,20 +264,27 @@ export default function SiteHeader() {
   }, [anyOpen, mobileMenuOpen, closeAll])
 
   useHeaderLayoutEffect(() => {
-    const authState = getAuthState()
-    const cachedUser = readCachedHeaderUser()
-
-    if (cachedUser) {
-      setUser((prev) => (sameMiniUser(prev, cachedUser) ? prev : cachedUser))
+    if (initialUser) {
+      writeCachedHeaderUser(initialUser)
+      setUser((prev) => (sameHeaderUser(prev, initialUser) ? prev : initialUser))
       setUserResolved(true)
       return
     }
 
-    if (authState === 'out') {
+    const authState = getAuthState()
+    const cachedUser = readCachedHeaderUser()
+
+    if (cachedUser) {
+      setUser((prev) => (sameHeaderUser(prev, cachedUser) ? prev : cachedUser))
+      setUserResolved(true)
+      return
+    }
+
+    if (authState === 'out' || getAuthResolutionState() === 'unauthenticated') {
       setUser(null)
       setUserResolved(true)
     }
-  }, [])
+  }, [initialUser])
 
   const loadUser = useCallback(async () => {
     const seq = ++loadUserSeqRef.current
@@ -333,11 +294,22 @@ export default function SiteHeader() {
     if (seq !== loadUserSeqRef.current) return
 
     if (!session?.user?.id) {
-      // AuthSync may still be hydrating the session (RT cookie exchange in flight).
-      // If localStorage says the user was logged in, hold the cached header state
-      // until onAuthStateChange fires with the real session.
-      if (getAuthState() === 'in') return
-      writeCachedHeaderUser(null)
+      const cachedUser = readCachedHeaderUser()
+      const authResolution = getAuthResolutionState()
+
+      if (cachedUser && authResolution !== 'unauthenticated') {
+        setUser((prev) => (sameHeaderUser(prev, cachedUser) ? prev : cachedUser))
+        setUserResolved(true)
+        return
+      }
+
+      // Wait until AuthSync has definitively resolved the refresh-token exchange
+      // before rendering the guest header.
+      if (authResolution === 'unknown' || authResolution === 'authenticated' || getAuthState() === 'in') {
+        return
+      }
+
+      clearCachedHeaderUser()
       setUser(null)
       setUserResolved(true)
       return
@@ -359,9 +331,9 @@ export default function SiteHeader() {
         avatarUrl: prof.avatar_url ?? null,
       }
       writeCachedHeaderUser(nextUser)
-      setUser((prev) => (sameMiniUser(prev, nextUser) ? prev : nextUser))
+      setUser((prev) => (sameHeaderUser(prev, nextUser) ? prev : nextUser))
     } else {
-      writeCachedHeaderUser(null)
+      clearCachedHeaderUser()
       setUser(null)
     }
     setUserResolved(true)
@@ -406,7 +378,7 @@ export default function SiteHeader() {
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT' || (event as string) === 'TOKEN_REFRESH_FAILED') {
-        writeCachedHeaderUser(null)
+        clearCachedHeaderUser()
         setUser(null)
         setUserResolved(true)
         setThreads([])
@@ -427,12 +399,37 @@ export default function SiteHeader() {
   }, [loadUser, loadThreads])
 
   useEffect(() => {
+    return subscribeHeaderUser(({ user: nextUser }) => {
+      setUser((prev) => (sameHeaderUser(prev, nextUser) ? prev : nextUser))
+      setUserResolved(Boolean(nextUser) || getAuthResolutionState() === 'unauthenticated')
+
+      if (nextUser) {
+        void loadThreads()
+      } else {
+        setThreads([])
+        setMsgUnread(0)
+      }
+    })
+  }, [loadThreads])
+
+  useEffect(() => {
+    return subscribeAuthResolutionState((state) => {
+      if (state !== 'unauthenticated') return
+      clearCachedHeaderUser()
+      setUser(null)
+      setUserResolved(true)
+      setThreads([])
+      setMsgUnread(0)
+    })
+  }, [])
+
+  useEffect(() => {
     if (!user?.id) return
 
     const applyProfileUpdate = (payload: ProfileRefreshPayload | null) => {
       if (!payload || payload.userId !== user.id) return
 
-      const nextUser: MiniUser = {
+      const nextUser: HeaderUser = {
         id: user.id,
         username: payload.username ?? user.username,
         displayName: payload.displayName ?? user.displayName,
@@ -440,7 +437,7 @@ export default function SiteHeader() {
       }
 
       writeCachedHeaderUser(nextUser)
-      setUser((prev) => (sameMiniUser(prev, nextUser) ? prev : nextUser))
+      setUser((prev) => (sameHeaderUser(prev, nextUser) ? prev : nextUser))
       setUserResolved(true)
       void loadUser()
     }
@@ -579,7 +576,7 @@ export default function SiteHeader() {
     }
 
     closeAll()
-    writeCachedHeaderUser(null)
+    clearCachedHeaderUser()
     setUser(null)
     setUserResolved(true)
     // Mark the optimistic local state as signed out immediately.

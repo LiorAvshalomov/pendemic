@@ -4,6 +4,7 @@ import { adminError, adminOk } from '@/lib/admin/adminHttp'
 import { cleanupPostOwnedAssets } from '@/lib/storage/postAssetLifecycle'
 import { revalidatePath } from 'next/cache'
 import { revalidatePublicProfileForUserId } from '@/lib/revalidatePublicProfile'
+import { logPostPurgeEvents } from '@/lib/posts/postPurgeEvents'
 
 const MAX_REASON_LEN = 500
 
@@ -128,6 +129,30 @@ export async function POST(req: NextRequest) {
 
   // Audit logs BEFORE delete — any FK to posts.id must resolve while row still exists
   const auditTs = new Date().toISOString()
+
+  try {
+    await logPostPurgeEvents(auth.admin, [{
+      postId: post.id,
+      authorId: post.author_id,
+      actorUserId: auth.user.id,
+      actorKind: 'admin',
+      reason,
+      source: 'api/admin/posts/purge',
+      createdAt: auditTs,
+      postSnapshot: {
+        title: post.title,
+        slug: post.slug,
+        author_id: post.author_id,
+        channel_id: post.channel_id,
+        status: post.status,
+        published_at: post.published_at,
+        created_at: post.created_at,
+        is_anonymous: post.is_anonymous,
+      },
+    }])
+  } catch {
+    // best effort - don't block the purge
+  }
 
   try {
     await auth.admin.from('deletion_events').insert({

@@ -199,6 +199,7 @@ export default function ProfileSettingsPage() {
     })
 
     await revalidateProfileSurfaces(previousUsername, un)
+    await refreshHeaderSnapshot()
     notifyProfileUpdated({
       userId,
       previousUsername,
@@ -294,6 +295,20 @@ export default function ProfileSettingsPage() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(opts),
+    }).catch(() => null)
+  }
+
+  const refreshHeaderSnapshot = async () => {
+    const { data } = await supabase.auth.getSession()
+    const accessToken = data.session?.access_token
+    if (!accessToken) return
+
+    await fetch('/api/auth/presence', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
     }).catch(() => null)
   }
 

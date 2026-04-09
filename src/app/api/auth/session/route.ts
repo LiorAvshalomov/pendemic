@@ -12,6 +12,8 @@ import {
 import { setPresenceCookie, clearPresenceCookie, verifyPresence, PRESENCE_COOKIE } from '@/lib/auth/presenceCookie'
 import { isAdminUser } from '@/lib/auth/isAdminUser'
 import { fetchModerationRoutingHint } from '@/lib/auth/fetchModerationRoutingHint'
+import { buildHeaderUserFromAuthUser, fetchHeaderUserById } from '@/lib/auth/headerUser'
+import { clearHeaderUserCookie, setHeaderUserCookie } from '@/lib/auth/headerUserCookie'
 
 function getIp(req: NextRequest): string {
   return (
@@ -83,6 +85,7 @@ export async function GET(req: NextRequest) {
     })
     clearRefreshCookie(errRes)
     clearPresenceCookie(errRes)
+    clearHeaderUserCookie(errRes)
 
     // Audit: best-effort; never block the response.
     if (serviceKey) {
@@ -98,26 +101,35 @@ export async function GET(req: NextRequest) {
     return errRes
   }
 
+  const serviceClient = serviceKey
+    ? createClient(url, serviceKey, { auth: { persistSession: false } })
+    : null
+  const headerUser = serviceClient
+    ? await fetchHeaderUserById(serviceClient, data.user!.id)
+    : buildHeaderUserFromAuthUser(data.user)
+
   const res = NextResponse.json(
     {
       access_token: data.session.access_token,
       expires_at: data.session.expires_at,
       user: data.user,
+      header_user: headerUser,
     },
     { headers: { 'Cache-Control': 'no-store' } },
   )
 
   // Rotate: new RT replaces old one in the matching cookie variant.
   setRefreshCookie(res, data.session.refresh_token, rememberMe)
-  const moderation = serviceKey
+  const moderation = serviceClient
     ? await fetchModerationRoutingHint(
-        createClient(url, serviceKey, { auth: { persistSession: false } }),
+        serviceClient,
         data.user!.id,
         oldPresence?.moderation ?? 'none',
       )
     : oldPresence?.moderation ?? 'none'
 
   await setPresenceCookie(res, data.user!.id, isAdminUser(data.user!.id), rememberMe, moderation)
+  await setHeaderUserCookie(res, headerUser, rememberMe)
   return res
 }
 
@@ -171,21 +183,30 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const serviceClient = serviceKey
+    ? createClient(url, serviceKey, { auth: { persistSession: false } })
+    : null
+  const headerUser = serviceClient
+    ? await fetchHeaderUserById(serviceClient, data.user!.id)
+    : buildHeaderUserFromAuthUser(data.user)
+
   const res = NextResponse.json(
     {
       access_token: data.session.access_token,
       expires_at: data.session.expires_at,
       user: data.user,
+      header_user: headerUser,
     },
     { headers: { 'Cache-Control': 'no-store' } },
   )
   setRefreshCookie(res, data.session.refresh_token)
-  const moderation = serviceKey
+  const moderation = serviceClient
     ? await fetchModerationRoutingHint(
-        createClient(url, serviceKey, { auth: { persistSession: false } }),
+        serviceClient,
         data.user!.id,
       )
     : 'none'
   await setPresenceCookie(res, data.user!.id, isAdminUser(data.user!.id), true, moderation)
+  await setHeaderUserCookie(res, headerUser, true)
   return res
 }

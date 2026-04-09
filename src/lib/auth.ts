@@ -3,6 +3,15 @@ import type { Session, User } from '@supabase/supabase-js'
 
 import { USERNAME_MAX } from '@/lib/validation'
 import { broadcastAuthEvent } from '@/lib/auth/authEvents'
+import { publishHeaderUser, type HeaderUser } from '@/lib/auth/headerUser'
+
+type AuthResponseBody = {
+  access_token?: string
+  user?: User
+  error?: string
+  header_user?: HeaderUser | null
+  expires_at?: number
+}
 
 export function slugifyUsername(input: string) {
   return input
@@ -23,7 +32,7 @@ export async function signIn(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password, remember_me: rememberMe }),
   })
-  const body = await res.json() as { access_token?: string; user?: User; error?: string }
+  const body = await res.json() as AuthResponseBody
 
   if (!res.ok || body.error) {
     return { data: { session: null, user: null }, error: { message: body.error ?? 'שגיאה בכניסה' } }
@@ -32,6 +41,7 @@ export async function signIn(
   // AT lives in memory only; RT is now in an httpOnly cookie set by the server
   if (body.access_token) {
     await hydrateSession(body.access_token)
+    publishHeaderUser(body.header_user ?? null, body.expires_at)
     broadcastAuthEvent('SIGNED_IN')
   }
 
@@ -57,7 +67,7 @@ export async function signUp(params: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   })
-  const body = await res.json() as { access_token?: string; user?: User; error?: string }
+  const body = await res.json() as AuthResponseBody
 
   if (!res.ok || body.error) {
     return { data: { session: null, user: null }, error: { message: body.error ?? 'שגיאה בהרשמה' } }
@@ -66,6 +76,7 @@ export async function signUp(params: {
   // If email confirmation is disabled and session was returned, hydrate client
   if (body.access_token) {
     await hydrateSession(body.access_token)
+    publishHeaderUser(body.header_user ?? null, body.expires_at)
     broadcastAuthEvent('SIGNED_IN')
   }
 

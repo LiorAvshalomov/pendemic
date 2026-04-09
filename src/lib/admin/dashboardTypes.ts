@@ -9,6 +9,7 @@ export type KpisPayload = {
   avgSessionMinutes: number;
   uniqueUsers: number;
   signups: number;
+  commentsTotal: number;
   postsCreated: number;
   postsPublished: number;
   postsSoftDeleted: number;
@@ -37,11 +38,18 @@ export type SignupsPoint = {
   signups: number;
 };
 
+export type CommentsPoint = {
+  bucketStart: string;
+  commentsTotal: number;
+  repliesTotal: number;
+};
+
 export type PostsPoint = {
   bucketStart: string;
   postsCreated: number;
   postsPublished: number;
   postsSoftDeleted: number;
+  postsHardDeleted: number;
 };
 
 export type PurgesPoint = {
@@ -54,6 +62,7 @@ export type DashboardSeries = {
   traffic: TrafficPoint[];
   audience: AudiencePoint[];
   signups: SignupsPoint[];
+  comments: CommentsPoint[];
   posts: PostsPoint[];
   purges: PurgesPoint[];
 };

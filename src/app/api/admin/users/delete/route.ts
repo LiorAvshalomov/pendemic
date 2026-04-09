@@ -6,6 +6,7 @@ import {
   logUserModerationAction,
 } from '@/lib/admin/logUserModerationAction'
 import { cleanupPostOwnedAssets } from '@/lib/storage/postAssetLifecycle'
+import { logPostPurgeEvents } from '@/lib/posts/postPurgeEvents'
 import { revalidatePath } from 'next/cache'
 
 type Body = {
@@ -416,6 +417,29 @@ export async function POST(req: NextRequest) {
 
   if (postRows.length > 0) {
     const deletionAuditIso = new Date().toISOString()
+    try {
+      await logPostPurgeEvents(db, postRows.map((post) => ({
+        postId: post.id,
+        authorId: userId,
+        actorUserId: auth.user.id,
+        actorKind: 'admin',
+        reason,
+        source: 'api/admin/users/delete',
+        createdAt: deletionAuditIso,
+        postSnapshot: {
+          title: post.title,
+          slug: post.slug,
+          author_id: userId,
+          status: post.status,
+          published_at: post.published_at,
+          created_at: post.created_at,
+          is_anonymous: post.is_anonymous,
+        },
+      })))
+    } catch {
+      // best effort
+    }
+
     try {
       for (let i = 0; i < postRows.length; i += 100) {
         const chunkRows = postRows.slice(i, i + 100)

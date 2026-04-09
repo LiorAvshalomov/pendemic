@@ -9,8 +9,12 @@ import ProfileRouteAutoRefresh from "@/components/ProfileRouteAutoRefresh"
 import SiteHeader from "@/components/SiteHeader"
 import SiteFooter from "@/components/SiteFooter"
 import BetaWelcomeModal from "@/components/BetaWelcomeModal"
+import type { HeaderUser } from "@/lib/auth/headerUser"
 
-type Props = { children: React.ReactNode }
+type Props = {
+  children: React.ReactNode
+  initialHeaderUser?: HeaderUser | null
+}
 
 function isCleanRoute(pathname: string): boolean {
   // Pages that must be fully clean (no header/footer/background)
@@ -31,7 +35,7 @@ function isAuthRoute(pathname: string): boolean {
   return false
 }
 
-export default function ClientChrome({ children }: Props) {
+export default function ClientChrome({ children, initialHeaderUser = null }: Props) {
   const pathname = usePathname() || "/"
   const clean = useMemo(() => isCleanRoute(pathname), [pathname])
   const auth = useMemo(() => isAuthRoute(pathname), [pathname])
@@ -46,7 +50,7 @@ export default function ClientChrome({ children }: Props) {
         <AnalyticsPageviewClient />
         <PostRouteAutoRefresh />
         <ProfileRouteAutoRefresh />
-        <SiteHeader />
+        <SiteHeader initialUser={initialHeaderUser} />
         <main className="flex-1 overflow-hidden">{children}</main>
       </div>
     )
@@ -60,7 +64,7 @@ export default function ClientChrome({ children }: Props) {
       <AppBackground />
       <BetaWelcomeModal />
       <div className="min-h-screen flex flex-col">
-        <SiteHeader />
+        <SiteHeader initialUser={initialHeaderUser} />
         <main className="flex-1">{children}</main>
         <SiteFooter />
       </div>

@@ -15,6 +15,8 @@ import {
   setPresenceCookie,
   verifyPresence,
 } from '@/lib/auth/presenceCookie'
+import { fetchHeaderUserById } from '@/lib/auth/headerUser'
+import { setHeaderUserCookie } from '@/lib/auth/headerUserCookie'
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserFromRequest(req)
@@ -42,18 +44,27 @@ export async function POST(req: NextRequest) {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const serviceClient =
+    supabaseUrl && serviceRole
+      ? createClient(supabaseUrl, serviceRole, { auth: { persistSession: false } })
+      : null
 
   const moderation =
-    supabaseUrl && serviceRole
+    serviceClient
       ? await fetchModerationRoutingHint(
-          createClient(supabaseUrl, serviceRole, { auth: { persistSession: false } }),
+          serviceClient,
           auth.user.id,
           oldPresence?.moderation ?? 'none',
         )
       : await fetchModerationRoutingHint(auth.supabase, auth.user.id, oldPresence?.moderation ?? 'none')
 
+  const headerUser =
+    serviceClient
+      ? await fetchHeaderUserById(serviceClient, auth.user.id)
+      : await fetchHeaderUserById(auth.supabase, auth.user.id)
+
   const res = NextResponse.json(
-    { ok: true, moderation },
+    { ok: true, moderation, header_user: headerUser },
     { headers: { 'Cache-Control': 'no-store' } },
   )
 
@@ -64,6 +75,7 @@ export async function POST(req: NextRequest) {
     cookieState.rememberMe,
     moderation,
   )
+  await setHeaderUserCookie(res, headerUser, cookieState.rememberMe)
 
   return res
 }
