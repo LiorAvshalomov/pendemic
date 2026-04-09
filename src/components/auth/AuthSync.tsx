@@ -22,10 +22,17 @@ import {
   shouldRunLoginRedirect,
   syncLoginRedirectState,
 } from '@/lib/auth/protectedRoutes'
+import { clearCachedHeaderUser, publishHeaderUser, type HeaderUser } from '@/lib/auth/headerUser'
+import { syncAnalyticsIdentity } from '@/lib/analytics/syncIdentity'
 
 type Props = { children: React.ReactNode }
 
 type LostAuthReason = 'SIGNED_OUT' | 'TOKEN_REFRESH_FAILED' | 'SESSION_GONE'
+type AuthSessionResponseBody = {
+  access_token?: string
+  expires_at?: number
+  header_user?: HeaderUser | null
+}
 
 const LEGACY_LS_KEYS = [
   'sb-dowhdgcvxgzaikmpnchv-auth-token',
@@ -157,11 +164,21 @@ export default function AuthSync({ children }: Props) {
       }, delayMs)
     }
 
-    const markAuthenticated = (expiresAt?: number) => {
+    const markAuthenticated = ({
+      expiresAt,
+      accessToken,
+    }: {
+      expiresAt?: number
+      accessToken?: string
+    } = {}) => {
+      const wasAuthenticated = hadSessionRef.current
       hadSessionRef.current = true
       setAuthState('in')
       setAuthResolutionState('authenticated')
       if (expiresAt) scheduleRefresh(expiresAt)
+      if (!wasAuthenticated && accessToken) {
+        syncAnalyticsIdentity(accessToken, { path: pathnameRef.current })
+      }
       redirectAuthenticatedEntryRoute()
     }
 
@@ -177,6 +194,7 @@ export default function AuthSync({ children }: Props) {
       hadSessionRef.current = false
       setAuthState('out')
       setAuthResolutionState('unauthenticated')
+      clearCachedHeaderUser()
 
       if (!skipBroadcast && reason === 'TOKEN_REFRESH_FAILED') {
         broadcastAuthEvent('TOKEN_REFRESH_FAILED')
@@ -220,11 +238,12 @@ export default function AuthSync({ children }: Props) {
         if (res.status === 204 || res.status === 401) return 'unauthenticated'
         if (!res.ok) return 'error'
 
-        const body = await res.json() as { access_token?: string; expires_at?: number }
+        const body = await res.json() as AuthSessionResponseBody
         if (!body.access_token) return 'error'
 
         await hydrateSession(body.access_token)
-        markAuthenticated(body.expires_at)
+        publishHeaderUser(body.header_user ?? null, body.expires_at)
+        markAuthenticated({ expiresAt: body.expires_at, accessToken: body.access_token })
         return 'ok'
       } catch {
         return 'error'
@@ -274,7 +293,7 @@ export default function AuthSync({ children }: Props) {
 
           if (!res.ok) continue
 
-          const body = await res.json() as { access_token?: string; expires_at?: number }
+          const body = await res.json() as AuthSessionResponseBody
           if (!body.access_token) continue
 
           try {
@@ -284,7 +303,8 @@ export default function AuthSync({ children }: Props) {
           }
 
           await hydrateSession(body.access_token)
-          markAuthenticated(body.expires_at)
+          publishHeaderUser(body.header_user ?? null, body.expires_at)
+          markAuthenticated({ expiresAt: body.expires_at, accessToken: body.access_token })
           return true
         } catch {
           continue
@@ -307,7 +327,10 @@ export default function AuthSync({ children }: Props) {
       if (cancelled) return
 
       if (existing.data.session?.user?.id) {
-        markAuthenticated(existing.data.session.expires_at)
+        markAuthenticated({
+          expiresAt: existing.data.session.expires_at,
+          accessToken: existing.data.session.access_token,
+        })
         refreshPublicRouteAfterSignIn()
         return
       }
@@ -323,7 +346,10 @@ export default function AuthSync({ children }: Props) {
       setAuthResolutionState('unknown')
       const { data } = await supabase.auth.getSession()
       if (data.session?.user?.id) {
-        markAuthenticated(data.session.expires_at)
+        markAuthenticated({
+          expiresAt: data.session.expires_at,
+          accessToken: data.session.access_token,
+        })
         return
       }
 
@@ -338,6 +364,7 @@ export default function AuthSync({ children }: Props) {
       if (globalState === 'in') {
         handleLostAuth('SESSION_GONE')
       } else {
+        clearCachedHeaderUser()
         setAuthState('out')
         setAuthResolutionState('unauthenticated')
       }
@@ -363,7 +390,7 @@ export default function AuthSync({ children }: Props) {
       }
 
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        markAuthenticated(session?.expires_at)
+        markAuthenticated({ expiresAt: session?.expires_at, accessToken: session?.access_token })
       }
     })
 
@@ -409,6 +436,7 @@ export default function AuthSync({ children }: Props) {
             if (expectedAuthenticated) {
               handleLostAuth('SESSION_GONE')
             } else {
+              clearCachedHeaderUser()
               setAuthState('out')
               setAuthResolutionState('unauthenticated')
             }

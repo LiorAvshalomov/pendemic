@@ -37,7 +37,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   // Ensure the post exists and is owned by the requester
   const { data: post, error: postErr } = await auth.supabase
     .from('posts')
-    .select('id, author_id, slug, deleted_at, status, cover_image_url')
+    .select('id, author_id, title, slug, deleted_at, status, published_at, created_at, is_anonymous, cover_image_url')
     .eq('id', postId)
     .maybeSingle()
 
@@ -89,6 +89,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   if (updErr) {
     return NextResponse.json({ error: { code: 'db_error', message: updErr.message } }, { status: 500 })
+  }
+
+  try {
+    await svc.from('deletion_events').insert({
+      action: 'soft_delete',
+      actor_user_id: auth.user.id,
+      actor_kind: 'user',
+      target_post_id: post.id,
+      post_snapshot: {
+        title: post.title,
+        slug: post.slug,
+        author_id: post.author_id,
+        status: post.status,
+        published_at: post.published_at,
+        created_at: post.created_at,
+        is_anonymous: post.is_anonymous,
+      },
+      reason: null,
+      created_at: now,
+    })
+  } catch {
+    // best effort
   }
 
   // Invalidate ISR cache for all public post lists immediately.

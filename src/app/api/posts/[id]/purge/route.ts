@@ -6,6 +6,7 @@ import { requireUserFromRequest } from '@/lib/auth/requireUserFromRequest'
 import { rateLimit } from '@/lib/rateLimit'
 import { cleanupPostOwnedAssets } from '@/lib/storage/postAssetLifecycle'
 import { revalidatePublicProfileForUserId } from '@/lib/revalidatePublicProfile'
+import { logPostPurgeEvents } from '@/lib/posts/postPurgeEvents'
 
 function serviceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -96,9 +97,31 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     Promise.resolve(svc.from('notifications').delete().eq('entity_type', 'post').eq('entity_id', postId)),
   ])
 
+  const purgeLoggedAt = new Date().toISOString()
+
   try {
-      await svc.from('deletion_events').insert({
-        action: 'hard_delete',
+    await logPostPurgeEvents(svc, [{
+      postId: post.id,
+      authorId: post.author_id,
+      actorUserId: auth.user.id,
+      actorKind: 'user',
+      reason: 'user purge',
+      source: 'api/posts/[id]/purge',
+      createdAt: purgeLoggedAt,
+      postSnapshot: {
+        title: post.title,
+        slug: post.slug,
+        author_id: post.author_id,
+        deleted_at: post.deleted_at,
+      },
+    }])
+  } catch {
+    // best effort
+  }
+
+  try {
+    await svc.from('deletion_events').insert({
+      action: 'hard_delete',
       actor_user_id: auth.user.id,
       actor_kind: 'user',
       target_post_id: post.id,
@@ -108,7 +131,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         author_id: post.author_id,
       },
       reason: 'user purge',
-      created_at: new Date().toISOString(),
+      created_at: purgeLoggedAt,
     })
   } catch {
     // best effort

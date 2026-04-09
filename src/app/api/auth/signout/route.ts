@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { clearRefreshCookie } from '@/lib/auth/cookieHelpers'
 import { clearPresenceCookie } from '@/lib/auth/presenceCookie'
+import { clearAnalyticsSessionCookie } from '@/lib/analytics/sessionCookie'
 import { rateLimit } from '@/lib/rateLimit'
 
 function getIp(req: NextRequest): string {
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
   const res = NextResponse.json({ ok: true })
   clearRefreshCookie(res)
   clearPresenceCookie(res)
+  clearAnalyticsSessionCookie(res)
 
   if (!url || !anonKey || !serviceKey) {
     return res

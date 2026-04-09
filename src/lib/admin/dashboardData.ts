@@ -11,6 +11,7 @@ export type DashboardSnapshot = {
     avgSessionMinutes: number
     uniqueUsers: number
     signups: number
+    commentsTotal: number
     postsCreated: number
     postsPublished: number
     postsSoftDeleted: number
@@ -23,7 +24,8 @@ export type DashboardSnapshot = {
     traffic: Array<{ bucketStart: string; pageviews: number; sessions: number; uniqueUsers: number }>
     audience: Array<{ bucketStart: string; signedInVisits: number; guestVisits: number; signedInUsers: number }>
     signups: Array<{ bucketStart: string; signups: number }>
-    posts: Array<{ bucketStart: string; postsCreated: number; postsPublished: number; postsSoftDeleted: number }>
+    comments: Array<{ bucketStart: string; commentsTotal: number; repliesTotal: number }>
+    posts: Array<{ bucketStart: string; postsCreated: number; postsPublished: number; postsSoftDeleted: number; postsHardDeleted: number }>
     purges: Array<{ bucketStart: string; postsPurged: number; usersPurged: number }>
   }
 }
@@ -93,12 +95,13 @@ export async function loadDashboardPayload(
     bucket: Bucket
   },
 ): Promise<DashboardSnapshot> {
-  const [kpis, audienceKpis, traffic, audience, signups, posts, postPurges, userPurges] = await Promise.all([
+  const [kpis, audienceKpis, traffic, audience, signups, comments, posts, postPurges, userPurges] = await Promise.all([
     admin.rpc('admin_kpis_v2', { p_start: start, p_end: end }) as unknown as Promise<RpcResult<unknown>>,
     admin.rpc('admin_audience_kpis', { p_start: start, p_end: end }) as unknown as Promise<RpcResult<unknown>>,
     admin.rpc('admin_pageviews_timeseries', { p_start: start, p_end: end, p_bucket: bucket }) as unknown as Promise<RpcResult<unknown[]>>,
     admin.rpc('admin_audience_timeseries', { p_start: start, p_end: end, p_bucket: bucket }) as unknown as Promise<RpcResult<unknown[]>>,
     admin.rpc('admin_signups_timeseries', { p_start: start, p_end: end, p_bucket: bucket }) as unknown as Promise<RpcResult<unknown[]>>,
+    admin.rpc('admin_comments_timeseries', { p_start: start, p_end: end, p_bucket: bucket }) as unknown as Promise<RpcResult<unknown[]>>,
     admin.rpc('admin_posts_timeseries', { p_start: start, p_end: end, p_bucket: bucket }) as unknown as Promise<RpcResult<unknown[]>>,
     admin.rpc('admin_post_purges_timeseries', { p_start: start, p_end: end, p_bucket: bucket }) as unknown as Promise<RpcResult<unknown[]>>,
     admin.rpc('admin_user_purges_timeseries', { p_start: start, p_end: end, p_bucket: bucket }) as unknown as Promise<RpcResult<unknown[]>>,
@@ -110,6 +113,7 @@ export async function loadDashboardPayload(
     traffic.error ||
     audience.error ||
     signups.error ||
+    comments.error ||
     posts.error ||
     postPurges.error ||
     userPurges.error
@@ -151,6 +155,15 @@ export async function loadDashboardPayload(
     }
   })
 
+  const commentsSeries = (comments.data ?? []).map((row) => {
+    const record = asRecord(row)
+    return {
+      bucketStart: str(record.bucket_start),
+      commentsTotal: num(record.comments_total),
+      repliesTotal: num(record.replies_total),
+    }
+  })
+
   const postsSeries = (posts.data ?? []).map((row) => {
     const record = asRecord(row)
     return {
@@ -158,6 +171,7 @@ export async function loadDashboardPayload(
       postsCreated: num(record.posts_created),
       postsPublished: num(record.posts_published),
       postsSoftDeleted: num(record.posts_soft_deleted),
+      postsHardDeleted: num(record.posts_hard_deleted ?? record.posts_purged),
     }
   })
 
@@ -188,6 +202,7 @@ export async function loadDashboardPayload(
       avgSessionMinutes: num(kpiRecord.avg_session_minutes),
       uniqueUsers: num(kpiRecord.unique_users),
       signups: num(kpiRecord.signups),
+      commentsTotal: num(kpiRecord.comments_total),
       postsCreated: num(kpiRecord.posts_created),
       postsPublished: num(kpiRecord.posts_published),
       postsSoftDeleted: num(kpiRecord.posts_soft_deleted),
@@ -200,6 +215,7 @@ export async function loadDashboardPayload(
       traffic: trafficSeries,
       audience: audienceSeries,
       signups: signupsSeries,
+      comments: commentsSeries,
       posts: postsSeries,
       purges: bucketKeys.map((bucketStart) => ({
         bucketStart,

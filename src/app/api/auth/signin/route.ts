@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { rateLimit } from '@/lib/rateLimit'
-import { createHash } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { setRefreshCookie } from '@/lib/auth/cookieHelpers'
 import { setPresenceCookie } from '@/lib/auth/presenceCookie'
 import { isAdminUser } from '@/lib/auth/isAdminUser'
 import { fetchModerationRoutingHint } from '@/lib/auth/fetchModerationRoutingHint'
+import { buildHeaderUserFromAuthUser, fetchHeaderUserById } from '@/lib/auth/headerUser'
+import { setAnalyticsSessionCookie } from '@/lib/analytics/sessionCookie'
 
 function getIp(req: Request): string {
   return (
@@ -87,15 +89,20 @@ export async function POST(req: Request) {
   // Refresh token goes into an httpOnly cookie — never exposed to JavaScript.
   // Only the access token is returned in the response body.
   const moderation = await fetchModerationRoutingHint(serviceClient, data.user.id)
+  const headerUser =
+    (await fetchHeaderUserById(serviceClient, data.user.id)) ??
+    buildHeaderUserFromAuthUser(data.user)
   const res = NextResponse.json(
     {
       access_token: data.session.access_token,
       expires_at:   data.session.expires_at,
       user:         data.user,
+      header_user:  headerUser,
     },
     { headers: { 'Cache-Control': 'no-store' } },
   )
   setRefreshCookie(res, data.session.refresh_token, rememberMe)
   await setPresenceCookie(res, data.user.id, isAdminUser(data.user.id), rememberMe, moderation)
+  setAnalyticsSessionCookie(res, randomUUID())
   return res
 }

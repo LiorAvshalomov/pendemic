@@ -1,9 +1,12 @@
+import { randomUUID } from 'crypto'
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { rateLimit } from '@/lib/rateLimit'
 import { setRefreshCookie } from '@/lib/auth/cookieHelpers'
 import { setPresenceCookie } from '@/lib/auth/presenceCookie'
 import { fetchModerationRoutingHint } from '@/lib/auth/fetchModerationRoutingHint'
+import { buildHeaderUserFromAuthUser, fetchHeaderUserById } from '@/lib/auth/headerUser'
+import { setAnalyticsSessionCookie } from '@/lib/analytics/sessionCookie'
 
 function getIp(req: Request): string {
   return (
@@ -92,16 +95,21 @@ export async function POST(req: Request) {
   // If email confirmation is required, data.session is null — no cookie is set.
   if (data.session) {
     const moderation = await fetchModerationRoutingHint(serviceClient, data.user!.id)
+    const headerUser =
+      (await fetchHeaderUserById(serviceClient, data.user!.id)) ??
+      buildHeaderUserFromAuthUser(data.user)
     const res = NextResponse.json(
       {
         access_token: data.session.access_token,
         expires_at:   data.session.expires_at,
         user:         data.user,
+        header_user:  headerUser,
       },
       { headers: { 'Cache-Control': 'no-store' } },
     )
     setRefreshCookie(res, data.session.refresh_token)
     await setPresenceCookie(res, data.user!.id, false, true, moderation)
+    setAnalyticsSessionCookie(res, randomUUID())
     return res
   }
 

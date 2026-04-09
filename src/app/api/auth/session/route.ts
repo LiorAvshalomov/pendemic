@@ -12,6 +12,7 @@ import {
 import { setPresenceCookie, clearPresenceCookie, verifyPresence, PRESENCE_COOKIE } from '@/lib/auth/presenceCookie'
 import { isAdminUser } from '@/lib/auth/isAdminUser'
 import { fetchModerationRoutingHint } from '@/lib/auth/fetchModerationRoutingHint'
+import { buildHeaderUserFromAuthUser, fetchHeaderUserById } from '@/lib/auth/headerUser'
 
 function getIp(req: NextRequest): string {
   return (
@@ -98,20 +99,28 @@ export async function GET(req: NextRequest) {
     return errRes
   }
 
+  const serviceClient = serviceKey
+    ? createClient(url, serviceKey, { auth: { persistSession: false } })
+    : null
+  const headerUser = serviceClient
+    ? await fetchHeaderUserById(serviceClient, data.user!.id)
+    : buildHeaderUserFromAuthUser(data.user)
+
   const res = NextResponse.json(
     {
       access_token: data.session.access_token,
       expires_at: data.session.expires_at,
       user: data.user,
+      header_user: headerUser,
     },
     { headers: { 'Cache-Control': 'no-store' } },
   )
 
   // Rotate: new RT replaces old one in the matching cookie variant.
   setRefreshCookie(res, data.session.refresh_token, rememberMe)
-  const moderation = serviceKey
+  const moderation = serviceClient
     ? await fetchModerationRoutingHint(
-        createClient(url, serviceKey, { auth: { persistSession: false } }),
+        serviceClient,
         data.user!.id,
         oldPresence?.moderation ?? 'none',
       )
@@ -171,18 +180,26 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const serviceClient = serviceKey
+    ? createClient(url, serviceKey, { auth: { persistSession: false } })
+    : null
+  const headerUser = serviceClient
+    ? await fetchHeaderUserById(serviceClient, data.user!.id)
+    : buildHeaderUserFromAuthUser(data.user)
+
   const res = NextResponse.json(
     {
       access_token: data.session.access_token,
       expires_at: data.session.expires_at,
       user: data.user,
+      header_user: headerUser,
     },
     { headers: { 'Cache-Control': 'no-store' } },
   )
   setRefreshCookie(res, data.session.refresh_token)
-  const moderation = serviceKey
+  const moderation = serviceClient
     ? await fetchModerationRoutingHint(
-        createClient(url, serviceKey, { auth: { persistSession: false } }),
+        serviceClient,
         data.user!.id,
       )
     : 'none'

@@ -35,11 +35,13 @@ export default function AnalyticsPageviewClient() {
 
       fetch("/api/internal/pv", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           path: pathname,
           referrer: typeof document !== "undefined" ? document.referrer || null : null,
-          ...(token ? { token } : {}),
         }),
         signal: controller.signal,
         keepalive: true,

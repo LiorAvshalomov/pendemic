@@ -8,7 +8,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -34,6 +33,7 @@ import {
   Flag,
   Mail,
   RefreshCw,
+  MessageCircle,
 } from "lucide-react";
 
 import { adminFetch } from "@/lib/admin/adminFetch";
@@ -74,6 +74,7 @@ type DashboardKpis = {
   avgSessionMinutes: number;
   uniqueUsers: number;
   signups: number;
+  commentsTotal: number;
   postsCreated: number;
   postsPublished: number;
   postsSoftDeleted: number;
@@ -86,13 +87,15 @@ type DashboardKpis = {
 type TrafficPoint = { bucketStart: string; pageviews: number; sessions: number; uniqueUsers: number };
 type AudiencePoint = { bucketStart: string; signedInVisits: number; guestVisits: number; signedInUsers: number };
 type SignupsPoint = { bucketStart: string; signups: number };
-type PostsPoint = { bucketStart: string; postsCreated: number; postsPublished: number; postsSoftDeleted: number };
+type CommentsPoint = { bucketStart: string; commentsTotal: number; repliesTotal: number };
+type PostsPoint = { bucketStart: string; postsCreated: number; postsPublished: number; postsSoftDeleted: number; postsHardDeleted: number };
 type PurgesPoint = { bucketStart: string; postsPurged: number; usersPurged: number };
 
 type DashboardSeries = {
   traffic: TrafficPoint[];
   audience: AudiencePoint[];
   signups: SignupsPoint[];
+  comments: CommentsPoint[];
   posts: PostsPoint[];
   purges: PurgesPoint[];
 };
@@ -103,6 +106,7 @@ type DashboardResponse = {
   trafficSeries?: unknown;
   audienceSeries?: unknown;
   signupsSeries?: unknown;
+  commentsSeries?: unknown;
   postsSeries?: unknown;
   purgesSeries?: unknown;
 };
@@ -169,6 +173,17 @@ function fmtTick(iso: string | number): string {
   }
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const clean = hex.replace("#", "");
+  if (clean.length !== 6) return hex;
+
+  const r = Number.parseInt(clean.slice(0, 2), 16);
+  const g = Number.parseInt(clean.slice(2, 4), 16);
+  const b = Number.parseInt(clean.slice(4, 6), 16);
+
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 /* ── normalization ── */
 
 function normalizeDashboard(payload: DashboardResponse): { kpis: DashboardKpis; series: DashboardSeries } {
@@ -183,6 +198,7 @@ function normalizeDashboard(payload: DashboardResponse): { kpis: DashboardKpis; 
     avgSessionMinutes: toNum(rawKpis.avgSessionMinutes ?? rawKpis.avg_session_minutes),
     uniqueUsers: toNum(rawKpis.uniqueUsers ?? rawKpis.unique_users),
     signups: toNum(rawKpis.signups),
+    commentsTotal: toNum(rawKpis.commentsTotal ?? rawKpis.comments_total),
     postsCreated: toNum(rawKpis.postsCreated ?? rawKpis.posts_created),
     postsPublished: toNum(rawKpis.postsPublished ?? rawKpis.posts_published),
     postsSoftDeleted: toNum(rawKpis.postsSoftDeleted ?? rawKpis.posts_soft_deleted),
@@ -197,6 +213,7 @@ function normalizeDashboard(payload: DashboardResponse): { kpis: DashboardKpis; 
   const trafficSrc = (rawSeries.traffic as unknown[]) ?? (payload.trafficSeries as unknown[]) ?? [];
   const audienceSrc = (rawSeries.audience as unknown[]) ?? (payload.audienceSeries as unknown[]) ?? [];
   const signupsSrc = (rawSeries.signups as unknown[]) ?? (payload.signupsSeries as unknown[]) ?? [];
+  const commentsSrc = (rawSeries.comments as unknown[]) ?? (payload.commentsSeries as unknown[]) ?? [];
   const postsSrc = (rawSeries.posts as unknown[]) ?? (payload.postsSeries as unknown[]) ?? [];
   const purgesSrc = (rawSeries.purges as unknown[]) ?? (payload.purgesSeries as unknown[]) ?? [];
 
@@ -228,6 +245,15 @@ function normalizeDashboard(payload: DashboardResponse): { kpis: DashboardKpis; 
     };
   });
 
+  const comments: CommentsPoint[] = (Array.isArray(commentsSrc) ? commentsSrc : []).map((r) => {
+    const row = (r ?? {}) as Record<string, unknown>;
+    return {
+      bucketStart: String(row.bucketStart ?? row.bucket_start ?? ""),
+      commentsTotal: toNum(row.commentsTotal ?? row.comments_total),
+      repliesTotal: toNum(row.repliesTotal ?? row.replies_total),
+    };
+  });
+
   const posts: PostsPoint[] = (Array.isArray(postsSrc) ? postsSrc : []).map((r) => {
     const row = (r ?? {}) as Record<string, unknown>;
     return {
@@ -235,6 +261,7 @@ function normalizeDashboard(payload: DashboardResponse): { kpis: DashboardKpis; 
       postsCreated: toNum(row.postsCreated ?? row.posts_created),
       postsPublished: toNum(row.postsPublished ?? row.posts_published),
       postsSoftDeleted: toNum(row.postsSoftDeleted ?? row.posts_soft_deleted),
+      postsHardDeleted: toNum(row.postsHardDeleted ?? row.posts_hard_deleted ?? row.postsPurged ?? row.posts_purged),
     };
   });
 
@@ -247,7 +274,7 @@ function normalizeDashboard(payload: DashboardResponse): { kpis: DashboardKpis; 
     };
   });
 
-  return { kpis, series: { traffic, audience, signups, posts, purges } };
+  return { kpis, series: { traffic, audience, signups, comments, posts, purges } };
 }
 
 /* ── presentational components ── */
@@ -258,30 +285,58 @@ const LABEL_MAP: Record<string, string> = {
   uniqueUsers: "ייחודיים",
   activeUsers: "פעילים",
   signups: "הרשמות",
+  commentsTotal: "תגובות",
+  repliesTotal: "תגובות תשובה",
   postsCreated: "נוצרו",
   postsPublished: "פורסמו",
   postsSoftDeleted: "נמחקו (soft)",
-  postsPurged: "פוסטים נוקו",
+  postsHardDeleted: "נמחקו לצמיתות",
+  postsPurged: "נמחקו לצמיתות",
   usersPurged: "משתמשים נוקו",
 };
 
 type TtPayloadEntry = { dataKey?: string | number; name?: string | number; value?: string | number; color?: string };
 type TtProps = { active?: boolean; payload?: TtPayloadEntry[]; label?: string | number };
+type ChartChip = { label: string; color: string };
 
 function StyledTooltip({ active, payload, label }: TtProps) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-neutral-200 dark:border-border bg-white dark:bg-card px-3 py-2.5 shadow-lg">
-      <div className="mb-1.5 text-[11px] font-medium text-neutral-400 dark:text-muted-foreground">{fmtTick(String(label ?? ""))}</div>
+    <div className="min-w-[170px] rounded-2xl border border-neutral-200/90 dark:border-white/10 bg-white/95 dark:bg-neutral-950/95 px-3.5 py-3 shadow-[0_18px_40px_-22px_rgba(0,0,0,0.45)] backdrop-blur-md">
+      <div className="mb-2 border-b border-neutral-200/70 pb-2 text-[11px] font-semibold tracking-[0.18em] text-neutral-500 dark:border-white/10 dark:text-muted-foreground">
+        {fmtTick(String(label ?? ""))}
+      </div>
       {payload.map((entry) => (
-        <div key={String(entry.dataKey)} className="flex items-center gap-2 text-[12px] leading-5">
+        <div key={String(entry.dataKey)} className="flex items-center gap-2.5 py-0.5 text-[12px] leading-5">
           <span
-            className="inline-block h-2 w-2 rounded-full"
+            className="inline-block h-2.5 w-2.5 rounded-full ring-4 ring-white/30 dark:ring-white/5"
             style={{ backgroundColor: String(entry.color ?? P.ink) }}
           />
-          <span className="text-neutral-500 dark:text-muted-foreground">{LABEL_MAP[String(entry.dataKey)] ?? String(entry.name)}</span>
-          <span className="mr-auto font-semibold text-neutral-900 dark:text-foreground">{formatInt(toNum(entry.value))}</span>
+          <span className="text-neutral-600 dark:text-muted-foreground">{LABEL_MAP[String(entry.dataKey)] ?? String(entry.name)}</span>
+          <span className="mr-auto font-semibold text-neutral-950 dark:text-foreground">{formatInt(toNum(entry.value))}</span>
         </div>
+      ))}
+    </div>
+  );
+}
+
+function ChartChips({ items }: { items?: ChartChip[] }) {
+  if (!items?.length) return null;
+
+  return (
+    <div className="flex flex-wrap justify-end gap-1.5">
+      {items.map((item) => (
+        <span
+          key={`${item.label}-${item.color}`}
+          className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold text-neutral-700 dark:text-neutral-200"
+          style={{
+            borderColor: hexToRgba(item.color, 0.18),
+            backgroundColor: hexToRgba(item.color, 0.08),
+          }}
+        >
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+          {item.label}
+        </span>
       ))}
     </div>
   );
@@ -323,11 +378,32 @@ function KpiCard({
   );
 }
 
-function DashChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+function DashChartCard({
+  title,
+  subtitle,
+  chips,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  chips?: ChartChip[];
+  children: React.ReactNode;
+}) {
   return (
-    <div className="rounded-xl border border-neutral-100 dark:border-border/50 bg-white dark:bg-card p-4 shadow-sm sm:p-5">
-      <h3 className="mb-3 text-sm font-bold text-neutral-800 dark:text-foreground">{title}</h3>
-      <div className="h-[240px] w-full sm:h-[260px]">{children}</div>
+    <div className="group relative overflow-hidden rounded-2xl border border-neutral-200/70 dark:border-border/60 bg-white/95 dark:bg-card/95 p-4 shadow-[0_12px_30px_-18px_rgba(15,23,42,0.28)] sm:p-5">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.9),transparent_40%)] dark:bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.06),transparent_38%)]" />
+      <div className="relative flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-[28rem]">
+          <h3 className="text-sm font-black tracking-tight text-neutral-900 dark:text-foreground">{title}</h3>
+          {subtitle ? (
+            <p className="mt-1 text-xs leading-5 text-neutral-500 dark:text-muted-foreground">{subtitle}</p>
+          ) : null}
+        </div>
+        <ChartChips items={chips} />
+      </div>
+      <div className="relative mt-4 h-[240px] w-full overflow-hidden rounded-2xl border border-neutral-200/70 bg-neutral-50/80 px-2 pt-2 dark:border-white/5 dark:bg-neutral-950/30 sm:h-[260px]">
+        {children}
+      </div>
     </div>
   );
 }
@@ -343,7 +419,7 @@ function EmptyChart() {
   );
 }
 
-const chartMargin = { top: 8, right: 8, left: -12, bottom: 0 };
+const chartMargin = { top: 14, right: 10, left: -16, bottom: 6 };
 
 /* ── main component ── */
 
@@ -379,9 +455,48 @@ export default function AdminDashboardClient({
   }, []);
 
   const CP = isDark ? darkP : P;
-  const localGridProps = { strokeDasharray: "3 3", stroke: CP.grid, strokeOpacity: 0.8 };
-  const localXAxisBase = { dataKey: "bucketStart" as const, tickFormatter: fmtTick, tick: { fontSize: 11, fill: CP.mist }, axisLine: false, tickLine: false };
-  const localYAxisBase = { tick: { fontSize: 11, fill: CP.mist }, axisLine: false, tickLine: false, width: 40 };
+  const localGridProps = { strokeDasharray: "4 6", stroke: CP.grid, strokeOpacity: isDark ? 0.42 : 0.78, vertical: false };
+  const localXAxisBase = {
+    dataKey: "bucketStart" as const,
+    tickFormatter: fmtTick,
+    tick: { fontSize: 11, fill: CP.mist },
+    axisLine: false,
+    tickLine: false,
+    tickMargin: 10,
+    minTickGap: 24,
+  };
+  const localYAxisBase = {
+    tick: { fontSize: 11, fill: CP.mist },
+    axisLine: false,
+    tickLine: false,
+    tickMargin: 8,
+    width: 44,
+    allowDecimals: false,
+  };
+  const trafficChips = [
+    { label: "צפיות", color: CP.ink },
+    { label: "ביקורים", color: CP.emerald },
+  ];
+  const audienceChips = [
+    { label: "מחוברים", color: CP.ink },
+    { label: "אורחים", color: CP.emerald },
+  ];
+  const activeUsersChips = [{ label: "פעילים", color: CP.ink }];
+  const signupsChips = [{ label: "הרשמות", color: CP.ink }];
+  const postsChips = [
+    { label: "נוצרו", color: CP.ink },
+    { label: "פורסמו", color: CP.emerald },
+    { label: "נמחקו (soft)", color: CP.amber },
+    { label: "נמחקו לצמיתות", color: CP.red },
+  ];
+  const commentsChips = [
+    { label: "תגובות", color: CP.ink },
+    { label: "תגובות תשובה", color: CP.slate },
+  ];
+  const purgesChips = [
+    { label: "פוסטים", color: CP.red },
+    { label: "משתמשים", color: CP.slate },
+  ];
 
   // Dashboard analytics
   useEffect(() => {
@@ -424,6 +539,7 @@ export default function AdminDashboardClient({
   const trafficData = useMemo(() => dash?.series.traffic ?? [], [dash]);
   const audienceData = useMemo(() => dash?.series.audience ?? [], [dash]);
   const signupsData = useMemo(() => dash?.series.signups ?? [], [dash]);
+  const commentsData = useMemo(() => dash?.series.comments ?? [], [dash]);
   const postsData = useMemo(() => dash?.series.posts ?? [], [dash]);
   const purgesData = useMemo(() => dash?.series.purges ?? [], [dash]);
 
@@ -435,8 +551,9 @@ export default function AdminDashboardClient({
   );
   const isActiveEmpty = useMemo(() => isSeriesEmpty(activeData, ["activeUsers"]), [activeData]);
   const isSignupsEmpty = useMemo(() => isSeriesEmpty(signupsData, ["signups"]), [signupsData]);
+  const isCommentsEmpty = useMemo(() => isSeriesEmpty(commentsData, ["commentsTotal", "repliesTotal"]), [commentsData]);
   const isPostsEmpty = useMemo(
-    () => isSeriesEmpty(postsData, ["postsCreated", "postsPublished", "postsSoftDeleted"]),
+    () => isSeriesEmpty(postsData, ["postsCreated", "postsPublished", "postsSoftDeleted", "postsHardDeleted"]),
     [postsData]
   );
   const isPurgesEmpty = useMemo(() => isSeriesEmpty(purgesData, ["postsPurged", "usersPurged"]), [purgesData]);
@@ -581,11 +698,12 @@ export default function AdminDashboardClient({
               <KpiCard label="אורך ביקור" value={formatMinutes(k.avgSessionMinutes)} sub="דקות (ממוצע)" icon={<Clock size={15} />} />
               <KpiCard label="משתמשים מחוברים ייחודיים" value={formatInt(k.uniqueUsers)} sub="Distinct signed-in users" icon={<Users size={15} />} />
               <KpiCard label="נרשמו" value={formatInt(k.signups)} icon={<UserPlus size={15} />} />
+              <KpiCard label="תגובות" value={formatInt(k.commentsTotal)} icon={<MessageCircle size={15} />} />
 
               <KpiCard label="פוסטים נוצרו" value={formatInt(k.postsCreated)} icon={<FileText size={15} />} />
               <KpiCard label="פוסטים פורסמו" value={formatInt(k.postsPublished)} icon={<BookOpen size={15} />} />
               <KpiCard label="נמחקו (soft)" value={formatInt(k.postsSoftDeleted)} icon={<Trash2 size={15} />} />
-              <KpiCard label="פוסטים נוקו" value={formatInt(k.postsPurged)} icon={<XCircle size={15} />} />
+              <KpiCard label="נמחקו לצמיתות" value={formatInt(k.postsPurged)} icon={<XCircle size={15} />} />
 
               <KpiCard label="מושעים" value={formatInt(k.usersSuspended)} icon={<UserX size={15} />} />
               <KpiCard label="חסומים" value={formatInt(k.usersBanned)} icon={<Ban size={15} />} />
@@ -596,7 +714,11 @@ export default function AdminDashboardClient({
 
         {!dashLoading && !dashErr && dash ? (
           <div className="grid gap-4 lg:grid-cols-2">
-            <DashChartCard title="תנועה (צפיות + ביקורים)">
+            <DashChartCard
+              title="תנועה (צפיות + ביקורים)"
+              subtitle="מגמת הצפייה והביקורים לאורך הזמן בטווח שנבחר."
+              chips={trafficChips}
+            >
               {isTrafficEmpty ? (
                 <EmptyChart />
               ) : (
@@ -616,80 +738,114 @@ export default function AdminDashboardClient({
                     <XAxis {...localXAxisBase} />
                     <YAxis {...localYAxisBase} />
                     <Tooltip content={<StyledTooltip />} />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                    <Area type="monotone" dataKey="pageviews" name="צפיות" stroke={CP.ink} fill="url(#gPageviewsModern)" strokeWidth={2} dot={false} activeDot={{ r: 3, strokeWidth: 0 }} />
-                    <Area type="monotone" dataKey="sessions" name="ביקורים" stroke={CP.emerald} fill="url(#gSessionsModern)" strokeWidth={2} dot={false} activeDot={{ r: 3, strokeWidth: 0 }} />
+                    <Area type="monotone" dataKey="pageviews" name="צפיות" stroke={CP.ink} fill="url(#gPageviewsModern)" strokeWidth={2.4} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                    <Area type="monotone" dataKey="sessions" name="ביקורים" stroke={CP.emerald} fill="url(#gSessionsModern)" strokeWidth={2.4} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
             </DashChartCard>
 
-            <DashChartCard title="ביקורים לפי קהל (מחוברים / אורחים)">
+            <DashChartCard
+              title="ביקורים לפי קהל (מחוברים / אורחים)"
+              subtitle="חלוקת הטראפיק בין משתמשים מזוהים לבין אורחים."
+              chips={audienceChips}
+            >
               {isAudienceEmpty ? (
                 <EmptyChart />
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={audienceData} margin={chartMargin}>
+                  <BarChart data={audienceData} margin={chartMargin} barCategoryGap="28%">
                     <CartesianGrid {...localGridProps} />
                     <XAxis {...localXAxisBase} />
                     <YAxis {...localYAxisBase} />
                     <Tooltip content={<StyledTooltip />} />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                    <Bar dataKey="signedInVisits" name="ביקורי מחוברים" fill={CP.ink} radius={[3, 3, 0, 0]} maxBarSize={28} />
-                    <Bar dataKey="guestVisits" name="ביקורי אורחים" fill={CP.emerald} radius={[3, 3, 0, 0]} maxBarSize={28} />
+                    <Bar dataKey="signedInVisits" name="ביקורי מחוברים" fill={CP.ink} radius={[10, 10, 4, 4]} maxBarSize={24} />
+                    <Bar dataKey="guestVisits" name="ביקורי אורחים" fill={CP.emerald} radius={[10, 10, 4, 4]} maxBarSize={24} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
             </DashChartCard>
 
-            <DashChartCard title="הרשמות">
+            <DashChartCard
+              title="הרשמות"
+              subtitle="משתמשים חדשים שנרשמו בטווח שנבחר."
+              chips={signupsChips}
+            >
               {isSignupsEmpty ? (
                 <EmptyChart />
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={signupsData} margin={chartMargin}>
+                  <BarChart data={signupsData} margin={chartMargin} barCategoryGap="38%">
                     <CartesianGrid {...localGridProps} />
                     <XAxis {...localXAxisBase} />
                     <YAxis {...localYAxisBase} />
                     <Tooltip content={<StyledTooltip />} />
-                    <Bar dataKey="signups" name="הרשמות" fill={CP.ink} radius={[3, 3, 0, 0]} maxBarSize={32} />
+                    <Bar dataKey="signups" name="הרשמות" fill={CP.ink} radius={[12, 12, 4, 4]} maxBarSize={24} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
             </DashChartCard>
 
-            <DashChartCard title="פוסטים (נוצרו / פורסמו / נמחקו)">
+            <DashChartCard
+              title="פוסטים (נוצרו / פורסמו / נמחקו / נמחקו לצמיתות)"
+              subtitle="מחזור החיים של פוסטים לאורך הטווח, כולל מחיקה זמנית ומחיקה לצמיתות."
+              chips={postsChips}
+            >
               {isPostsEmpty ? (
                 <EmptyChart />
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={postsData} margin={chartMargin}>
+                  <BarChart data={postsData} margin={chartMargin} barCategoryGap="24%">
                     <CartesianGrid {...localGridProps} />
                     <XAxis {...localXAxisBase} />
                     <YAxis {...localYAxisBase} />
                     <Tooltip content={<StyledTooltip />} />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                    <Bar dataKey="postsCreated" name="נוצרו" fill={CP.ink} stackId="a" maxBarSize={32} />
-                    <Bar dataKey="postsPublished" name="פורסמו" fill={CP.emerald} stackId="a" maxBarSize={32} />
-                    <Bar dataKey="postsSoftDeleted" name="נמחקו (soft)" fill={CP.amber} stackId="a" radius={[3, 3, 0, 0]} maxBarSize={32} />
+                    <Bar dataKey="postsCreated" name="נוצרו" fill={CP.ink} radius={[10, 10, 4, 4]} maxBarSize={16} />
+                    <Bar dataKey="postsPublished" name="פורסמו" fill={CP.emerald} radius={[10, 10, 4, 4]} maxBarSize={16} />
+                    <Bar dataKey="postsSoftDeleted" name="נמחקו (soft)" fill={CP.amber} radius={[10, 10, 4, 4]} maxBarSize={16} />
+                    <Bar dataKey="postsHardDeleted" name="נמחקו לצמיתות" fill={CP.red} radius={[10, 10, 4, 4]} maxBarSize={16} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
             </DashChartCard>
 
-            <DashChartCard title="מחיקות מערכת (Purge)">
-              {isPurgesEmpty ? (
+            <DashChartCard
+              title="תגובות / תגובות תשובה"
+              subtitle="תגובות על פוסטים פעילים בלבד, כך שהגרף נשאר מדויק גם אחרי מחיקה זמנית ושחזור."
+              chips={commentsChips}
+            >
+              {isCommentsEmpty ? (
                 <EmptyChart />
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={purgesData} margin={chartMargin}>
+                  <BarChart data={commentsData} margin={chartMargin} barCategoryGap="28%">
                     <CartesianGrid {...localGridProps} />
                     <XAxis {...localXAxisBase} />
                     <YAxis {...localYAxisBase} />
                     <Tooltip content={<StyledTooltip />} />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                    <Bar dataKey="postsPurged" name="פוסטים נוקו" fill={CP.red} radius={[3, 3, 0, 0]} maxBarSize={32} />
-                    <Bar dataKey="usersPurged" name="משתמשים נוקו" fill={CP.slate} radius={[3, 3, 0, 0]} maxBarSize={32} />
+                    <Bar dataKey="commentsTotal" name="תגובות" fill={CP.ink} radius={[10, 10, 4, 4]} maxBarSize={20} />
+                    <Bar dataKey="repliesTotal" name="תגובות תשובה" fill={CP.slate} radius={[10, 10, 4, 4]} maxBarSize={20} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </DashChartCard>
+
+            <DashChartCard
+              title="מחיקות לצמיתות"
+              subtitle="תמונה מרוכזת של מחיקות קשיחות של פוסטים ומשתמשים."
+              chips={purgesChips}
+            >
+              {isPurgesEmpty ? (
+                <EmptyChart />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={purgesData} margin={chartMargin} barCategoryGap="30%">
+                    <CartesianGrid {...localGridProps} />
+                    <XAxis {...localXAxisBase} />
+                    <YAxis {...localYAxisBase} />
+                    <Tooltip content={<StyledTooltip />} />
+                    <Bar dataKey="postsPurged" name="פוסטים נמחקו לצמיתות" fill={CP.red} radius={[10, 10, 4, 4]} maxBarSize={24} />
+                    <Bar dataKey="usersPurged" name="משתמשים נוקו" fill={CP.slate} radius={[10, 10, 4, 4]} maxBarSize={24} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -804,7 +960,7 @@ export default function AdminDashboardClient({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {dashLoading ? (
           <>
-            {Array.from({ length: 8 }).map((_, i) => (
+            {Array.from({ length: 15 }).map((_, i) => (
               <SkeletonCard key={i} />
             ))}
           </>
@@ -829,11 +985,12 @@ export default function AdminDashboardClient({
 
             <KpiCard label="משתמשים ייחודיים" value={formatInt(k.uniqueUsers)} icon={<Users size={15} />} />
             <KpiCard label="נרשמו" value={formatInt(k.signups)} icon={<UserPlus size={15} />} />
+            <KpiCard label="תגובות" value={formatInt(k.commentsTotal)} icon={<MessageCircle size={15} />} />
             <KpiCard label="פוסטים נוצרו" value={formatInt(k.postsCreated)} icon={<FileText size={15} />} />
             <KpiCard label="פוסטים פורסמו" value={formatInt(k.postsPublished)} icon={<BookOpen size={15} />} />
 
             <KpiCard label="נמחקו (soft)" value={formatInt(k.postsSoftDeleted)} icon={<Trash2 size={15} />} />
-            <KpiCard label="פוסטים נוקו" value={formatInt(k.postsPurged)} icon={<XCircle size={15} />} />
+            <KpiCard label="נמחקו לצמיתות" value={formatInt(k.postsPurged)} icon={<XCircle size={15} />} />
             <KpiCard label="מושעים" value={formatInt(k.usersSuspended)} icon={<UserX size={15} />} />
             <KpiCard label="חסומים" value={formatInt(k.usersBanned)} icon={<Ban size={15} />} />
 
@@ -846,7 +1003,11 @@ export default function AdminDashboardClient({
       {!dashLoading && !dashErr && dash ? (
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Traffic */}
-          <DashChartCard title="תנועה (צפיות + ביקורים)">
+          <DashChartCard
+            title="תנועה (צפיות + ביקורים)"
+            subtitle="מגמת הצפייה והביקורים לאורך הזמן בטווח שנבחר."
+            chips={trafficChips}
+          >
             {isTrafficEmpty ? (
               <EmptyChart />
             ) : (
@@ -866,16 +1027,19 @@ export default function AdminDashboardClient({
                   <XAxis {...localXAxisBase} />
                   <YAxis {...localYAxisBase} />
                   <Tooltip content={<StyledTooltip />} />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                  <Area type="monotone" dataKey="pageviews" name="צפיות" stroke={CP.ink} fill="url(#gPageviews)" strokeWidth={2} dot={false} activeDot={{ r: 3, strokeWidth: 0 }} />
-                  <Area type="monotone" dataKey="sessions" name="ביקורים" stroke={CP.emerald} fill="url(#gSessions)" strokeWidth={2} dot={false} activeDot={{ r: 3, strokeWidth: 0 }} />
+                  <Area type="monotone" dataKey="pageviews" name="צפיות" stroke={CP.ink} fill="url(#gPageviews)" strokeWidth={2.4} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                  <Area type="monotone" dataKey="sessions" name="ביקורים" stroke={CP.emerald} fill="url(#gSessions)" strokeWidth={2.4} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
                 </AreaChart>
               </ResponsiveContainer>
             )}
           </DashChartCard>
 
           {/* Active users */}
-          <DashChartCard title="משתמשים פעילים">
+          <DashChartCard
+            title="משתמשים פעילים"
+            subtitle="משתמשים מחוברים ייחודיים שביקרו בפועל בכל נקודת זמן."
+            chips={activeUsersChips}
+          >
             {isActiveEmpty ? (
               <EmptyChart />
             ) : (
@@ -885,63 +1049,96 @@ export default function AdminDashboardClient({
                   <XAxis {...localXAxisBase} />
                   <YAxis {...localYAxisBase} />
                   <Tooltip content={<StyledTooltip />} />
-                  <Line type="monotone" dataKey="activeUsers" name="פעילים" stroke={CP.ink} strokeWidth={2.5} dot={false} activeDot={{ r: 3, fill: CP.ink, strokeWidth: 0 }} />
+                  <Line type="monotone" dataKey="activeUsers" name="פעילים" stroke={CP.ink} strokeWidth={2.8} dot={false} activeDot={{ r: 4, fill: CP.ink, strokeWidth: 0 }} />
                 </LineChart>
               </ResponsiveContainer>
             )}
           </DashChartCard>
 
           {/* Signups */}
-          <DashChartCard title="הרשמות">
+          <DashChartCard
+            title="הרשמות"
+            subtitle="משתמשים חדשים שנרשמו בטווח שנבחר."
+            chips={signupsChips}
+          >
             {isSignupsEmpty ? (
               <EmptyChart />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={signupsData} margin={chartMargin}>
+                <BarChart data={signupsData} margin={chartMargin} barCategoryGap="38%">
                   <CartesianGrid {...localGridProps} />
                   <XAxis {...localXAxisBase} />
                   <YAxis {...localYAxisBase} />
                   <Tooltip content={<StyledTooltip />} />
-                  <Bar dataKey="signups" name="הרשמות" fill={CP.ink} radius={[3, 3, 0, 0]} maxBarSize={32} />
+                  <Bar dataKey="signups" name="הרשמות" fill={CP.ink} radius={[12, 12, 4, 4]} maxBarSize={24} />
                 </BarChart>
               </ResponsiveContainer>
             )}
           </DashChartCard>
 
           {/* Posts */}
-          <DashChartCard title="פוסטים (נוצרו / פורסמו / נמחקו)">
+          <DashChartCard
+            title="פוסטים (נוצרו / פורסמו / נמחקו / נמחקו לצמיתות)"
+            subtitle="מחזור החיים של פוסטים לאורך הטווח, כולל מחיקה זמנית ומחיקה לצמיתות."
+            chips={postsChips}
+          >
             {isPostsEmpty ? (
               <EmptyChart />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={postsData} margin={chartMargin}>
+                <BarChart data={postsData} margin={chartMargin} barCategoryGap="24%">
                   <CartesianGrid {...localGridProps} />
                   <XAxis {...localXAxisBase} />
                   <YAxis {...localYAxisBase} />
                   <Tooltip content={<StyledTooltip />} />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                  <Bar dataKey="postsCreated" name="נוצרו" fill={CP.ink} stackId="a" maxBarSize={32} />
-                  <Bar dataKey="postsPublished" name="פורסמו" fill={CP.emerald} stackId="a" maxBarSize={32} />
-                  <Bar dataKey="postsSoftDeleted" name="נמחקו" fill={CP.amber} stackId="a" radius={[3, 3, 0, 0]} maxBarSize={32} />
+                  <Bar dataKey="postsCreated" name="נוצרו" fill={CP.ink} radius={[10, 10, 4, 4]} maxBarSize={16} />
+                  <Bar dataKey="postsPublished" name="פורסמו" fill={CP.emerald} radius={[10, 10, 4, 4]} maxBarSize={16} />
+                  <Bar dataKey="postsSoftDeleted" name="נמחקו (soft)" fill={CP.amber} radius={[10, 10, 4, 4]} maxBarSize={16} />
+                  <Bar dataKey="postsHardDeleted" name="נמחקו לצמיתות" fill={CP.red} radius={[10, 10, 4, 4]} maxBarSize={16} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </DashChartCard>
+
+          {/* Comments */}
+          <DashChartCard
+            title="תגובות / תגובות תשובה"
+            subtitle="תגובות על פוסטים פעילים בלבד, כך שהגרף נשאר מדויק גם אחרי מחיקה זמנית ושחזור."
+            chips={commentsChips}
+          >
+            {isCommentsEmpty ? (
+              <EmptyChart />
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={commentsData} margin={chartMargin} barCategoryGap="28%">
+                  <CartesianGrid {...localGridProps} />
+                  <XAxis {...localXAxisBase} />
+                  <YAxis {...localYAxisBase} />
+                  <Tooltip content={<StyledTooltip />} />
+                  <Bar dataKey="commentsTotal" name="תגובות" fill={CP.ink} radius={[10, 10, 4, 4]} maxBarSize={20} />
+                  <Bar dataKey="repliesTotal" name="תגובות תשובה" fill={CP.slate} radius={[10, 10, 4, 4]} maxBarSize={20} />
                 </BarChart>
               </ResponsiveContainer>
             )}
           </DashChartCard>
 
           {/* Purges */}
-          <DashChartCard title="מחיקות מערכת (Purge)">
+          <DashChartCard
+            title="מחיקות לצמיתות"
+            subtitle="תמונה מרוכזת של מחיקות קשיחות של פוסטים ומשתמשים."
+            chips={purgesChips}
+          >
             {isPurgesEmpty ? (
               <EmptyChart />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={purgesData} margin={chartMargin}>
+                <BarChart data={purgesData} margin={chartMargin} barCategoryGap="30%">
                   <CartesianGrid {...localGridProps} />
                   <XAxis {...localXAxisBase} />
                   <YAxis {...localYAxisBase} />
                   <Tooltip content={<StyledTooltip />} />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                  <Bar dataKey="postsPurged" name="פוסטים נוקו" fill={CP.red} radius={[3, 3, 0, 0]} maxBarSize={32} />
-                  <Bar dataKey="usersPurged" name="משתמשים נוקו" fill={CP.slate} radius={[3, 3, 0, 0]} maxBarSize={32} />
+                  <Bar dataKey="postsPurged" name="פוסטים נמחקו לצמיתות" fill={CP.red} radius={[10, 10, 4, 4]} maxBarSize={24} />
+                  <Bar dataKey="usersPurged" name="משתמשים נוקו" fill={CP.slate} radius={[10, 10, 4, 4]} maxBarSize={24} />
                 </BarChart>
               </ResponsiveContainer>
             )}

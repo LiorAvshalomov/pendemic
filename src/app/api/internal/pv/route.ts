@@ -3,12 +3,25 @@ import { createClient } from "@supabase/supabase-js"
 import { randomUUID } from "crypto"
 import { rateLimit } from "@/lib/rateLimit"
 import { PRESENCE_COOKIE, verifyPresence } from "@/lib/auth/presenceCookie"
+import {
+  ANALYTICS_AUTH_BACKFILL_WINDOW_MS,
+  ANALYTICS_SESSION_COOKIE,
+  ANALYTICS_SESSION_IDLE_TIMEOUT_MS,
+  setAnalyticsSessionCookie,
+} from "@/lib/analytics/sessionCookie"
 
 type PageviewBody = {
   path?: string
   referrer?: string | null
   /** Optional: If you later want user attribution, send an access token (Bearer or body.token). */
   token?: string
+}
+
+type AnalyticsSessionRow = {
+  session_id: string
+  user_id: string | null
+  created_at: string
+  last_seen_at: string
 }
 
 function isSkippablePath(path: string): boolean {
@@ -49,6 +62,13 @@ function getClientIp(req: NextRequest): string | null {
   return req.headers.get("x-real-ip")
 }
 
+function isWithinWindow(dateString: string | null | undefined, windowMs: number): boolean {
+  if (!dateString) return false
+  const ts = Date.parse(dateString)
+  if (!Number.isFinite(ts)) return false
+  return Date.now() - ts <= windowMs
+}
+
 export async function POST(req: NextRequest) {
   // Block analytics writes on non-production deployments (localhost, Vercel preview)
   if (process.env.VERCEL_ENV !== "production") {
@@ -84,11 +104,6 @@ export async function POST(req: NextRequest) {
 
   const referrer = body?.referrer ?? null
 
-  // session cookie
-  let sessionId = req.cookies.get("pd_sid")?.value ?? null
-  const isNewSession = !sessionId
-  if (!sessionId) sessionId = randomUUID()
-
   // optional user attribution (token)
   const bearer = req.headers.get("authorization") ?? ""
   const headerToken = bearer.startsWith("Bearer ") ? bearer.slice(7) : ""
@@ -111,25 +126,59 @@ export async function POST(req: NextRequest) {
   }
 
   const nowIso = new Date().toISOString()
+  let sessionId = req.cookies.get(ANALYTICS_SESSION_COOKIE)?.value ?? null
+  let existingSession: AnalyticsSessionRow | null = null
+
+  if (sessionId) {
+    const { data } = await admin
+      .from("analytics_sessions")
+      .select("session_id, user_id, created_at, last_seen_at")
+      .eq("session_id", sessionId)
+      .maybeSingle()
+
+    existingSession = (data ?? null) as AnalyticsSessionRow | null
+  }
+
+  const rotateForIdle =
+    Boolean(existingSession?.last_seen_at) &&
+    !isWithinWindow(existingSession?.last_seen_at, ANALYTICS_SESSION_IDLE_TIMEOUT_MS)
+  const rotateForUserMismatch = Boolean(
+    (userId && existingSession?.user_id && existingSession.user_id !== userId) ||
+      (!userId && existingSession?.user_id),
+  )
+  const rotateForAnonymousCarryover = Boolean(
+    userId &&
+      existingSession &&
+      !existingSession.user_id &&
+      !isWithinWindow(existingSession.created_at, ANALYTICS_AUTH_BACKFILL_WINDOW_MS),
+  )
+
+  const isNewSession = !sessionId || rotateForIdle || rotateForUserMismatch || rotateForAnonymousCarryover
+  if (isNewSession) {
+    sessionId = randomUUID()
+    existingSession = null
+  }
 
   // 1) Create the session row once (ignore duplicates)
-  const { error: insertSessionError } = await admin
-    .from("analytics_sessions")
-    .upsert(
-      {
-        session_id: sessionId,
-        user_id: userId,
-        first_path: path,
-        referrer,
-        user_agent: userAgent,
-        ip,
-        last_seen_at: nowIso,
-      },
-      { onConflict: "session_id", ignoreDuplicates: true }
-    )
+  if (!existingSession) {
+    const { error: insertSessionError } = await admin
+      .from("analytics_sessions")
+      .upsert(
+        {
+          session_id: sessionId,
+          user_id: userId,
+          first_path: path,
+          referrer,
+          user_agent: userAgent,
+          ip,
+          last_seen_at: nowIso,
+        },
+        { onConflict: "session_id", ignoreDuplicates: true }
+      )
 
-  if (insertSessionError) {
-    return NextResponse.json({ ok: false, error: "session_insert_failed" }, { status: 500 })
+    if (insertSessionError) {
+      return NextResponse.json({ ok: false, error: "session_insert_failed" }, { status: 500 })
+    }
   }
 
   // 2) Always update last_seen_at (+ attach user_id if we have it)
@@ -149,6 +198,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "session_update_failed" }, { status: 500 })
   }
 
+  if (
+    userId &&
+    existingSession &&
+    !existingSession.user_id &&
+    !isNewSession &&
+    isWithinWindow(existingSession.created_at, ANALYTICS_AUTH_BACKFILL_WINDOW_MS)
+  ) {
+    const { error: backfillError } = await admin
+      .from("analytics_pageviews")
+      .update({ user_id: userId })
+      .eq("session_id", sessionId)
+      .is("user_id", null)
+
+    if (backfillError) {
+      return NextResponse.json({ ok: false, error: "pageview_backfill_failed" }, { status: 500 })
+    }
+  }
+
   const { error: pvErr } = await admin.from("analytics_pageviews").insert({
     session_id: sessionId,
     user_id: userId,
@@ -161,16 +228,9 @@ export async function POST(req: NextRequest) {
   if (pvErr) {
     return NextResponse.json({ ok: false, error: "pageview_insert_failed" }, { status: 500 })
   }
-  const isProd = process.env.NODE_ENV === "production"
   const res = NextResponse.json({ ok: true, new_session: isNewSession })
-  if (isNewSession) {
-    res.cookies.set("pd_sid", sessionId, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30,
-    })
+  if (isNewSession && sessionId) {
+    setAnalyticsSessionCookie(res, sessionId)
   }
 
   return res
