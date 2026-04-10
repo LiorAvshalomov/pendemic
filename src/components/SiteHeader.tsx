@@ -493,14 +493,29 @@ const SiteHeaderChrome = React.memo(function SiteHeaderChrome({
   }, [loadThreads, user?.id])
 
   useEffect(() => {
-    return subscribeAuthResolutionState((state) => {
-      if (state !== 'unauthenticated') return
-      clearCachedHeaderUser()
-      setUser(null)
-      setUserResolved(true)
-      setThreads([])
-      setMsgUnread(0)
+    // Debounce the clear by 300ms so rapid 'unauthenticated' → 'authenticated'
+    // transitions (e.g. AuthSync recovering a session just after setting the state)
+    // do not cause a visible header flicker.
+    let clearTimer: ReturnType<typeof setTimeout> | null = null
+    const unsubscribe = subscribeAuthResolutionState((state) => {
+      if (state !== 'unauthenticated') {
+        // Auth recovered before the timer fired — cancel the pending clear.
+        if (clearTimer) { clearTimeout(clearTimer); clearTimer = null }
+        return
+      }
+      clearTimer = setTimeout(() => {
+        clearTimer = null
+        clearCachedHeaderUser()
+        setUser(null)
+        setUserResolved(true)
+        setThreads([])
+        setMsgUnread(0)
+      }, 300)
     })
+    return () => {
+      if (clearTimer) clearTimeout(clearTimer)
+      unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
