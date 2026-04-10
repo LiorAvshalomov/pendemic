@@ -118,6 +118,10 @@ export default function AuthSync({ children }: Props) {
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Guards against the handleLostAuth → signOut({ scope:'local' }) → onAuthStateChange loop.
   const isHandlingSignOutRef = useRef(false)
+  // Deduplicates concurrent calls to recoverSessionFromServer so that the RT cookie
+  // is never sent twice simultaneously (Supabase rotates RTs — a second in-flight call
+  // with the old token returns 401, which would falsely signal "unauthenticated").
+  const recoverInFlightRef = useRef<Promise<'ok' | 'unauthenticated' | 'error'> | null>(null)
   // pathnameRef lets mount-once closures always read the latest pathname
   const pathnameRef = useRef(pathname)
   pathnameRef.current = pathname
@@ -160,7 +164,13 @@ export default function AuthSync({ children }: Props) {
       refreshTimerRef.current = setTimeout(async () => {
         const result = await recoverSessionFromServer()
         if (cancelled) return
-        if (result === 'unauthenticated') handleLostAuth('SESSION_GONE')
+        if (result === 'unauthenticated') {
+          // Double-check the in-memory session before declaring auth lost.
+          // Guards against stale timers firing after a subsequent successful refresh
+          // (e.g. recoverSessionFromServer was called from another path concurrently).
+          const { data: check } = await supabase.auth.getSession()
+          if (!check.session?.user?.id) handleLostAuth('SESSION_GONE')
+        }
       }, delayMs)
     }
 
@@ -231,23 +241,35 @@ export default function AuthSync({ children }: Props) {
       router.refresh()
     }
 
-    const recoverSessionFromServer = async (): Promise<'ok' | 'unauthenticated' | 'error'> => {
-      setAuthResolutionState('unknown')
-      try {
-        const res = await fetch('/api/auth/session', { credentials: 'same-origin' })
-        if (res.status === 204 || res.status === 401) return 'unauthenticated'
-        if (!res.ok) return 'error'
+    const recoverSessionFromServer = (): Promise<'ok' | 'unauthenticated' | 'error'> => {
+      // Return the in-flight promise if one already exists. This prevents RT rotation
+      // races: Supabase rotates the RT on every use, so a second concurrent call with
+      // the old token returns 401, which would falsely signal 'unauthenticated'.
+      if (recoverInFlightRef.current) return recoverInFlightRef.current
 
-        const body = await res.json() as AuthSessionResponseBody
-        if (!body.access_token) return 'error'
+      const promise = (async (): Promise<'ok' | 'unauthenticated' | 'error'> => {
+        setAuthResolutionState('unknown')
+        try {
+          const res = await fetch('/api/auth/session', { credentials: 'same-origin' })
+          if (res.status === 204 || res.status === 401) return 'unauthenticated'
+          if (!res.ok) return 'error'
 
-        await hydrateSession(body.access_token)
-        publishHeaderUser(body.header_user ?? null, body.expires_at)
-        markAuthenticated({ expiresAt: body.expires_at, accessToken: body.access_token })
-        return 'ok'
-      } catch {
-        return 'error'
-      }
+          const body = await res.json() as AuthSessionResponseBody
+          if (!body.access_token) return 'error'
+
+          await hydrateSession(body.access_token)
+          publishHeaderUser(body.header_user ?? null, body.expires_at)
+          markAuthenticated({ expiresAt: body.expires_at, accessToken: body.access_token })
+          return 'ok'
+        } catch {
+          return 'error'
+        } finally {
+          recoverInFlightRef.current = null
+        }
+      })()
+
+      recoverInFlightRef.current = promise
+      return promise
     }
 
     const migrateLegacySession = async (): Promise<boolean> => {
@@ -361,6 +383,18 @@ export default function AuthSync({ children }: Props) {
       const migrated = await migrateLegacySession()
       if (migrated) return
 
+      // Before declaring auth lost for a previously-authenticated user, wait briefly
+      // and retry once. This handles: (a) Supabase transient failures returning 503
+      // that the route now surfaces, (b) any timing edge cases on cold session resume.
+      if (globalState === 'in' && recoverResult === 'unauthenticated') {
+        await new Promise<void>((resolve) => setTimeout(resolve, 800))
+        if (cancelled) return
+        const retryResult = await recoverSessionFromServer()
+        if (retryResult === 'ok') return
+        // Non-definitive failure — don't log out, silently stop.
+        if (retryResult !== 'unauthenticated') return
+      }
+
       if (globalState === 'in') {
         handleLostAuth('SESSION_GONE')
       } else {
@@ -434,7 +468,15 @@ export default function AuthSync({ children }: Props) {
           const result = await recoverSessionFromServer()
           if (result === 'unauthenticated') {
             if (expectedAuthenticated) {
-              handleLostAuth('SESSION_GONE')
+              // Mirror the retry guard in init(): wait briefly and retry once before
+              // calling handleLostAuth. Tab-focus events are a common trigger for this
+              // path; a single transient failure here would cause a redirect dance for
+              // a user simply switching back to the Tyuta tab.
+              await new Promise<void>((resolve) => setTimeout(resolve, 800))
+              if (cancelled) return
+              const retryResult = await recoverSessionFromServer()
+              if (retryResult === 'unauthenticated') handleLostAuth('SESSION_GONE')
+              // 'error' or 'ok' — either way, do not log out.
             } else {
               clearCachedHeaderUser()
               setAuthState('out')
@@ -448,7 +490,12 @@ export default function AuthSync({ children }: Props) {
         const secsLeft = expiresAt - Math.floor(Date.now() / 1000)
         if (secsLeft < 180) {
           const result = await recoverSessionFromServer()
-          if (result === 'unauthenticated') handleLostAuth('SESSION_GONE')
+          if (result === 'unauthenticated') {
+            // Double-check: getSession() should also see no session before logging out.
+            // Guards against a stale visibility event racing with a successful refresh.
+            const { data: check } = await supabase.auth.getSession()
+            if (!check.session?.user?.id) handleLostAuth('SESSION_GONE')
+          }
         }
       }).catch(() => {
         // ignore
@@ -457,6 +504,16 @@ export default function AuthSync({ children }: Props) {
 
     document.addEventListener('visibilitychange', onVisibilityChange)
 
+    // iOS Safari BFCache: when the user navigates back/forward and the page is
+    // restored from cache, visibilitychange may not fire reliably. pageshow with
+    // persisted=true is the canonical way to detect BFCache restores on iOS.
+    // All other auto-refresh components in this codebase (Feed, Post, Profile) do the same.
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return
+      onVisibilityChange()
+    }
+    window.addEventListener('pageshow', onPageShow)
+
     return () => {
       cancelled = true
       if (refreshTimerRef.current) {
@@ -464,6 +521,7 @@ export default function AuthSync({ children }: Props) {
         refreshTimerRef.current = null
       }
       window.removeEventListener('storage', onStorage)
+      window.removeEventListener('pageshow', onPageShow)
       document.removeEventListener('visibilitychange', onVisibilityChange)
       unsubscribeBC()
       sub.subscription.unsubscribe()

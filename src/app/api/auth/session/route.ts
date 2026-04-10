@@ -77,7 +77,22 @@ export async function GET(req: NextRequest) {
   const { data, error } = await client.auth.refreshSession({ refresh_token: rt })
 
   if (error || !data.session) {
-    // RT is invalid or expired; clear the cookies so the browser stops sending them.
+    // Only treat 4xx Supabase responses as definitive auth failures (token truly
+    // invalid/revoked). Network errors, 5xx responses, and unknown errors are
+    // transient — do NOT clear the RT cookie, or we permanently log the user out
+    // on a momentary Supabase hiccup.
+    const isDefinitiveFailure =
+      !error || (error.status != null && error.status >= 400 && error.status < 500)
+
+    if (!isDefinitiveFailure) {
+      // Transient error — tell the client to retry; keep cookies intact.
+      return new NextResponse(null, {
+        status: 503,
+        headers: { 'Cache-Control': 'no-store', 'Retry-After': '5' },
+      })
+    }
+
+    // RT is definitively invalid or revoked; clear cookies so the browser stops sending them.
     const errRes = new NextResponse(null, {
       status: 204,
       headers: { 'Cache-Control': 'no-store' },

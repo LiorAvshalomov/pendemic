@@ -1,4 +1,4 @@
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -60,12 +60,18 @@ export function clearHydratedSession(): void {
   }
 }
 
-export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey, {
+// createClient (not createBrowserClient from @supabase/ssr) is used intentionally.
+// createBrowserClient silently overrides both autoRefreshToken and storage after
+// spreading our options, causing the SDK to auto-refresh directly against Supabase
+// with the 'server-managed' sentinel RT (→ 400 → SIGNED_OUT → redirect dance).
+// createClient respects every option exactly as provided.
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage:           memStorage,
+    flowType:          'pkce',    // keep PKCE for password-reset / invite links
     persistSession:    true,
-    autoRefreshToken:  false,   // AuthSync owns the refresh cycle via /api/auth/session
-    detectSessionInUrl: true,   // Required for PKCE and implicit reset-password flows
+    autoRefreshToken:  false,     // AuthSync owns the refresh cycle via /api/auth/session
+    detectSessionInUrl: true,     // required for PKCE code exchange + implicit hash flows
   },
 })
 
