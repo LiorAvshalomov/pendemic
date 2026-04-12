@@ -1,6 +1,7 @@
 // src/app/(home)/page.tsx
 export const revalidate = 60
 
+import { preload } from 'react-dom'
 import Link from 'next/link'
 import Image from 'next/image'
 import { RelativeTime } from '@/components/RelativeTime'
@@ -1181,6 +1182,14 @@ export default async function HomePage(props: HomePageProps = {}) {
   }
 
   const featured = featuredId ? (postsById.get(featuredId) ? toCard(postsById.get(featuredId) as PostRow, featuredRank ?? undefined) : null) : null
+
+  // Preload the LCP image so the browser fetches it as early as possible,
+  // before finishing HTML parsing. React 19 hoists this to <head>.
+  if (featured?.cover_image_url) {
+    const lcpSrc = coverProxySrc(featured.cover_image_url)
+    if (lcpSrc) preload(lcpSrc, { as: 'image', fetchPriority: 'high' })
+  }
+
   const top1 = top1Rank?.post_id ? (postsById.get(top1Rank.post_id) ? toCard(postsById.get(top1Rank.post_id) as PostRow, top1Rank) : null) : null
   const top2 = top2Rank?.post_id ? (postsById.get(top2Rank.post_id) ? toCard(postsById.get(top2Rank.post_id) as PostRow, top2Rank) : null) : null
   const top3 = top3Rank?.post_id ? (postsById.get(top3Rank.post_id) ? toCard(postsById.get(top3Rank.post_id) as PostRow, top3Rank) : null) : null
