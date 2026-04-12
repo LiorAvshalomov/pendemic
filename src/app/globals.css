@@ -145,7 +145,6 @@ html {
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  scroll-behavior: smooth;
 }
 
 /* Make backdrop-blur actually look good (and avoid weird flattening on some setups) */
@@ -550,6 +549,15 @@ html {
 .tyuta-img-hover {
   position: relative;
   overflow: hidden;
+}
+
+/* Pre-promote card images to a GPU compositor layer only on true hover devices
+   (desktop/pointer:fine). On mobile there is no hover so will-change wastes GPU
+   memory and causes scroll jank — skip it entirely there. */
+@media (hover: hover) and (pointer: fine) {
+  .tyuta-img-hover img {
+    will-change: transform;
+  }
 }
 .tyuta-img-hover::after {
   content: '';
