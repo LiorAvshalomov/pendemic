@@ -61,6 +61,27 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Long-lived cache for versioned Next.js static chunks (already immutable by hash)
+        source: '/_next/static/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+        ],
+      },
+      {
+        // Public JS assets (ga.js etc.) — 1 day, allow background revalidation for a week
+        source: '/js/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' },
+        ],
+      },
+      {
+        // Static images & icons in public/ — 7 days, revalidate for 30 days
+        source: '/:path(.*\\.(?:png|jpg|jpeg|webp|avif|ico|svg|webmanifest))',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=604800, stale-while-revalidate=2592000' },
+        ],
+      },
+      {
         source: '/(.*)',
         headers: [
           { key: 'X-Frame-Options', value: 'DENY' },
