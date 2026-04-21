@@ -11,7 +11,7 @@ import {
   POST_REFRESH_STORAGE_KEY,
 } from '@/lib/postFreshness'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 type ProfileLite = {
   id: string
@@ -41,6 +41,12 @@ type NotifRowDb = {
   read_at: string | null
   created_at: string
   actor?: ProfileLite | null
+}
+
+type NotificationSliceResult = {
+  rows: NotifRowDb[]
+  total: number
+  unread: number
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -180,6 +186,32 @@ const NOTIF_SELECT = `
   actor:profiles!notifications_actor_id_fkey (id, username, display_name, avatar_url)
 `
 
+async function fetchNotificationSlice(uid: string, from: number, to: number): Promise<NotificationSliceResult> {
+  const [pageRes, unreadRes] = await Promise.all([
+    supabase
+      .from('notifications')
+      .select(NOTIF_SELECT, { count: 'exact' })
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to),
+    supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', uid)
+      .eq('is_read', false),
+  ])
+
+  if (pageRes.error) throw pageRes.error
+  if (unreadRes.error) throw unreadRes.error
+
+  return {
+    rows: (pageRes.data ?? []) as unknown as NotifRowDb[],
+    total: pageRes.count ?? 0,
+    unread: unreadRes.count ?? 0,
+  }
+}
+
 export default function NotificationsPage() {
   const router = useRouter()
   const { toast } = useToast()
@@ -187,45 +219,43 @@ export default function NotificationsPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [rows, setRows] = useState<NotifRowDb[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const loadSeqRef = useRef(0)
-  const cursorRef = useRef<string | null>(null)
   const loadingMoreRef = useRef(false)
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const rowsRef = useRef<NotifRowDb[]>([])
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { preserveLoaded?: boolean; silent?: boolean }) => {
+    const preserveLoaded = opts?.preserveLoaded === true
+    const silent = opts?.silent === true
     const loadSeq = ++loadSeqRef.current
-    setLoading(true)
+    const desiredCount = preserveLoaded ? Math.max(PAGE_SIZE, rowsRef.current.length || PAGE_SIZE) : PAGE_SIZE
+
+    if (!silent) setLoading(true)
     setErrorMsg(null)
-    cursorRef.current = null
     try {
       const resolution = await waitForClientSession(5000)
       if (loadSeq !== loadSeqRef.current) return
       const uid = resolution.status === 'authenticated' ? resolution.user.id : null
+      setCurrentUserId(uid)
       if (!uid) {
+        rowsRef.current = []
         setRows([])
         setHasMore(false)
+        setUnreadCount(0)
         setErrorMsg(null)
         return
       }
 
-      const { data, error } = await supabase
-        .from('notifications')
-        .select(NOTIF_SELECT)
-        .eq('user_id', uid)
-        .order('created_at', { ascending: false })
-        .limit(PAGE_SIZE + 1)
-
-      if (error) throw error
-
-      const page = ((data ?? []) as unknown as NotifRowDb[]).slice(0, PAGE_SIZE)
-      const more = (data?.length ?? 0) > PAGE_SIZE
-      cursorRef.current = page[page.length - 1]?.created_at ?? null
-
-      const hydratedRows = await hydrateRowsWithCurrentPostData(page)
+      const slice = await fetchNotificationSlice(uid, 0, desiredCount - 1)
+      const hydratedRows = await hydrateRowsWithCurrentPostData(slice.rows)
       if (loadSeq !== loadSeqRef.current) return
+      rowsRef.current = hydratedRows
       setRows(hydratedRows)
-      setHasMore(more)
+      setUnreadCount(slice.unread)
+      setHasMore(slice.total > slice.rows.length)
     } catch (error) {
       if (loadSeq !== loadSeqRef.current) return
       setErrorMsg(mapSupabaseError(error as { message?: string | null; details?: string | null; hint?: string | null; code?: string | null }) ?? 'לא הצלחנו לטעון את ההתראות כרגע.')
@@ -237,47 +267,63 @@ export default function NotificationsPage() {
   }, [])
 
   const loadMore = useCallback(async () => {
-    if (loadingMoreRef.current || !cursorRef.current) return
+    if (loadingMoreRef.current || !hasMore) return
     loadingMoreRef.current = true
     setLoadingMore(true)
     const seq = loadSeqRef.current
+    const offset = rowsRef.current.length
     try {
       const resolution = await waitForClientSession(5000)
       if (seq !== loadSeqRef.current) return
       const uid = resolution.status === 'authenticated' ? resolution.user.id : null
+      setCurrentUserId(uid)
       if (!uid) return
 
-      const { data, error } = await supabase
-        .from('notifications')
-        .select(NOTIF_SELECT)
-        .eq('user_id', uid)
-        .order('created_at', { ascending: false })
-        .lt('created_at', cursorRef.current)
-        .limit(PAGE_SIZE + 1)
-
-      if (error || seq !== loadSeqRef.current) return
-
-      const page = ((data ?? []) as unknown as NotifRowDb[]).slice(0, PAGE_SIZE)
-      const more = (data?.length ?? 0) > PAGE_SIZE
-      cursorRef.current = page[page.length - 1]?.created_at ?? null
-
-      const hydrated = await hydrateRowsWithCurrentPostData(page)
+      const slice = await fetchNotificationSlice(uid, offset, offset + PAGE_SIZE - 1)
       if (seq !== loadSeqRef.current) return
-      setRows((prev) => [...prev, ...hydrated])
-      setHasMore(more)
+
+      const hydrated = await hydrateRowsWithCurrentPostData(slice.rows)
+      if (seq !== loadSeqRef.current) return
+      const seen = new Set(rowsRef.current.map((row) => row.id))
+      const merged = [...rowsRef.current]
+      for (const row of hydrated) {
+        if (seen.has(row.id)) continue
+        seen.add(row.id)
+        merged.push(row)
+      }
+      rowsRef.current = merged
+      setRows(merged)
+      setUnreadCount(slice.unread)
+      setHasMore(slice.total > merged.length)
     } finally {
       loadingMoreRef.current = false
       setLoadingMore(false)
     }
-  }, [])
+  }, [hasMore])
 
   useEffect(() => {
     void load()
   }, [load])
 
   useEffect(() => {
+    if (!currentUserId) return
+    const channel = supabase
+      .channel(`notifications-page:${currentUserId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUserId}` },
+        () => void load({ preserveLoaded: true, silent: true }),
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [currentUserId, load])
+
+  useEffect(() => {
     const reload = () => {
-      void load()
+      void load({ preserveLoaded: true, silent: true })
     }
 
     const onWindowEvent = () => {
@@ -323,23 +369,25 @@ export default function NotificationsPage() {
     return () => observer.disconnect()
   }, [hasMore, loadMore])
 
-  const unreadCount = useMemo(() => rows.filter((r) => !r.is_read).length, [rows])
-
   const openNotif = async (r: NotifRowDb) => {
     if (!r.is_read) {
       const readAt = new Date().toISOString()
-      setRows((prev) => prev.map((row) => (
+      const previousRows = rowsRef.current
+      const nextRows = previousRows.map((row) => (
         row.id === r.id ? { ...row, is_read: true, read_at: readAt } : row
-      )))
+      ))
+      rowsRef.current = nextRows
+      setRows(nextRows)
+      setUnreadCount((count) => Math.max(0, count - 1))
       void supabase
         .from('notifications')
         .update({ is_read: true, read_at: readAt })
         .eq('id', r.id)
         .then(({ error }) => {
           if (!error) return
-          setRows((prev) => prev.map((row) => (
-            row.id === r.id ? { ...row, is_read: r.is_read, read_at: r.read_at } : row
-          )))
+          rowsRef.current = previousRows
+          setRows(previousRows)
+          setUnreadCount((count) => count + 1)
           const friendly = mapSupabaseError(error) ?? 'לא הצלחנו לעדכן את מצב ההתראה.'
           setErrorMsg(friendly)
           toast(friendly, 'error')
@@ -364,7 +412,7 @@ export default function NotificationsPage() {
           </div>
         </div>
         <button
-          onClick={() => void load()}
+          onClick={() => void load({ preserveLoaded: true })}
           className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
         >
           רענן

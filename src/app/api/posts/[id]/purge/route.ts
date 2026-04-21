@@ -94,7 +94,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     Promise.resolve(svc.from('post_votes').delete().eq('post_id', postId)),
     Promise.resolve(svc.from('post_tags').delete().eq('post_id', postId)),
     Promise.resolve(svc.from('moderation_actions').delete().eq('post_id', postId)),
-    Promise.resolve(svc.from('notifications').delete().eq('entity_type', 'post').eq('entity_id', postId)),
+    Promise.resolve(svc.rpc('purge_post_notifications', { p_post_id: postId })),
   ])
 
   const purgeLoggedAt = new Date().toISOString()

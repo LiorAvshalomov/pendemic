@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
   let coverWarning: string | null = null
   let inlineWarning: string | null = null
   let removedPublicInlineImages = 0
+  let notificationWarning: string | null = null
   let quarantinedCover: Awaited<ReturnType<typeof copyPublicCoverToPrivate>>
   try {
     quarantinedCover = await copyPublicCoverToPrivate(sb, {
@@ -116,6 +117,12 @@ export async function POST(req: NextRequest) {
     inlineWarning = error instanceof Error ? error.message : "Public inline cleanup failed"
   }
 
+  try {
+    await sb.rpc('archive_post_notifications', { p_post_id: post.id })
+  } catch (error) {
+    notificationWarning = error instanceof Error ? error.message : 'Notification archive failed'
+  }
+
   // Invalidate ISR cache for all public post lists immediately.
   revalidatePath("/")
   revalidatePath("/c/release")
@@ -147,7 +154,7 @@ export async function POST(req: NextRequest) {
   if (notifErr) {
     return adminOk({
       removed_public_inline_images: removedPublicInlineImages,
-      warning: [coverWarning, inlineWarning, `Notification warning: ${notifErr.message}`]
+      warning: [coverWarning, inlineWarning, notificationWarning, `Notification warning: ${notifErr.message}`]
         .filter(Boolean)
         .join(". "),
     })
@@ -191,7 +198,7 @@ export async function POST(req: NextRequest) {
     // ignore
   }
 
-  const warnings = [coverWarning, inlineWarning].filter(Boolean)
+  const warnings = [coverWarning, inlineWarning, notificationWarning].filter(Boolean)
   return adminOk({
     removed_public_inline_images: removedPublicInlineImages,
     ...(warnings.length > 0 ? { warning: warnings.join(". ") } : {}),

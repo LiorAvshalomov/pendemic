@@ -62,7 +62,7 @@ type ReplyTo = {
 }
 
 type LocalReaction = { emoji: string; count: number; mine: boolean }
-type ReplyMeta = { snippet: string; sender_id: string }
+type ReplyMeta = { snippet: string; sender_id: string; deleted?: boolean }
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡'] as const
 
@@ -133,7 +133,20 @@ function renderMessageBody(body: string): React.ReactNode {
 function mergeMessagesById(prev: Msg[], incoming: Msg[]) {
   const map = new Map<string, Msg>()
   for (const m of prev) map.set(m.id, m)
-  for (const m of incoming) map.set(m.id, m)
+  let changed = incoming.length > prev.length
+  for (const m of incoming) {
+    const existing = map.get(m.id)
+    if (!existing) { changed = true; map.set(m.id, m); continue }
+    if (
+      existing.read_at !== m.read_at ||
+      existing.deleted_at !== m.deleted_at ||
+      existing.body !== m.body
+    ) {
+      changed = true
+      map.set(m.id, m)
+    }
+  }
+  if (!changed) return prev
   return Array.from(map.values()).sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))
 }
 
@@ -184,9 +197,25 @@ export default function ChatClient({
   const canReport = !isAdminMode && !!myId && !!other?.id && other.id !== myId && !isSystemUser(other.id)
 
   const handleUnsend = useCallback(async (msgId: string) => {
+    // Optimistic update — show deleted state immediately
+    setMessages(prev => prev.map(m =>
+      m.id === msgId ? { ...m, deleted_at: new Date().toISOString(), body: '' } : m
+    ))
     const { error } = await supabase.rpc('delete_my_message', { p_message_id: msgId })
-    if (error) toast(mapSupabaseError(error) ?? 'לא הצלחנו לבטל את ההודעה', 'error')
-  }, [toast])
+    if (error) {
+      // Rollback on failure
+      setMessages(prev => prev.map(m =>
+        m.id === msgId ? { ...m, deleted_at: null } : m
+      ))
+      toast(mapSupabaseError(error) ?? 'לא הצלחנו למחוק את ההודעה', 'error')
+      return
+    }
+    // Update sidebar last_body if this was the last message
+    const msgs = messagesRef.current
+    if (msgs[msgs.length - 1]?.id === msgId) {
+      inboxBCRef.current?.postMessage({ type: 'message', conversationId, last_body: '', last_created_at: new Date().toISOString(), isOwn: true })
+    }
+  }, [toast, conversationId])
 
   const submitReport = useCallback(async () => {
     if (!canReport || !other?.id || !myId) return
@@ -261,8 +290,6 @@ export default function ChatClient({
   const suppressIntentRef = useRef(false)
   // Enter-stick: force snap-to-bottom in ResizeObserver for the first 2s after load
   const enterStickUntilRef = useRef(0)
-  // Entry mark-read: fires once per conversation entry (bypasses intent gate)
-  const entryReadCheckedRef = useRef(false)
   // BroadcastChannel for live inbox thread list updates
   const inboxBCRef = useRef<BroadcastChannel | null>(null)
 
@@ -310,14 +337,14 @@ export default function ChatClient({
   const isNearBottomForAutoFollow = useCallback(() => {
     const el = listRef.current
     if (!el) return true
-    return el.scrollTop + el.clientHeight >= el.scrollHeight - 80
+    return Math.max(0, el.scrollTop) + el.clientHeight >= el.scrollHeight - 80
   }, [])
 
   // Strict threshold: used only for read-receipt gating (must truly be at bottom)
   const isAtBottomForRead = useCallback(() => {
     const el = listRef.current
     if (!el) return true
-    return el.scrollTop + el.clientHeight >= el.scrollHeight - 8
+    return Math.max(0, el.scrollTop) + el.clientHeight >= el.scrollHeight - 8
   }, [])
 
   const isPageVisible = useCallback(() => {
@@ -331,7 +358,7 @@ export default function ChatClient({
   const syncScrollStateNow = useCallback(() => {
     const el = listRef.current
     if (!el) return
-    const dist = el.scrollHeight - (el.scrollTop + el.clientHeight)
+    const dist = el.scrollHeight - (Math.max(0, el.scrollTop) + el.clientHeight)
     const atBottom = dist <= 8
     const nearBottom = dist <= 80
 
@@ -555,28 +582,19 @@ export default function ChatClient({
     setReactions(map)
   }, [isAdminMode])
 
-  const markReadNow = useCallback(async (opts?: { allowEntryBypass?: boolean }) => {
+  const markReadNow = useCallback(async () => {
     if (!isPageVisible()) return
 
-    const allowEntryBypass = opts?.allowEntryBypass === true
     const scroller = listRef.current
     if (!scroller) return
 
-    const strictBottomNow = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 8
+    const scrolled = Math.max(0, scroller.scrollTop)
+    const strictBottomNow = scrolled + scroller.clientHeight >= scroller.scrollHeight - 8
     isAtBottomRef.current = strictBottomNow
     setIsStrictlyAtBottom(prev => (prev === strictBottomNow ? prev : strictBottomNow))
     if (!strictBottomNow) return
 
-    if (!allowEntryBypass && !hasReachedBottomSinceOpenRef.current) return
-
-    if (!allowEntryBypass) {
-      const dividerEl = scroller.querySelector('[data-unread-divider="1"]')
-      if (dividerEl) {
-        const dividerRect = dividerEl.getBoundingClientRect()
-        const scrollerRect = scroller.getBoundingClientRect()
-        if (dividerRect.bottom >= scrollerRect.top) return
-      }
-    }
+    if (!hasReachedBottomSinceOpenRef.current) return
 
     if (isAdminMode) {
       await adminFetch('/api/admin/inbox/read', {
@@ -587,14 +605,27 @@ export default function ChatClient({
       const resolution = await waitForClientSession(4000)
       if (resolution.status !== 'authenticated') return
       await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId })
+      // Optimistically mark all their messages as read in local state
+      const now = new Date().toISOString()
+      setMessages(prev => {
+        const myIdNow = myId
+        let dirty = false
+        const next = prev.map(m => {
+          if (m.sender_id !== myIdNow && m.read_at == null) {
+            dirty = true
+            return { ...m, read_at: now }
+          }
+          return m
+        })
+        return dirty ? next : prev
+      })
     }
 
-    await fetchMessages()
     // Notify sidebar/header to re-query unread counts
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('tyuta:thread-read'))
     }
-  }, [conversationId, fetchMessages, isAdminMode, isPageVisible])
+  }, [conversationId, isAdminMode, isPageVisible, myId])
 
   function clearStableBottomTimer() {
     if (stableBottomTimerRef.current) {
@@ -603,7 +634,7 @@ export default function ChatClient({
     }
   }
 
-  // mark-read policy: user must interact + stably reach bottom + (no divider OR passed divider)
+  // mark-read policy: user must have interacted + stably reached bottom
   const scheduleMarkReadIfStableBottom = useCallback(
     (unreadNowLocal: number) => {
       clearStableBottomTimer()
@@ -611,10 +642,7 @@ export default function ChatClient({
       if (!isPageVisible()) return
       if (!isAtBottomRef.current) return
       if (!hasReachedBottomSinceOpenRef.current) return
-      // If the unread divider is currently shown, require user to have scrolled past it
-      if (showUnreadDividerRef.current && !passedUnreadDividerRef.current) return
 
-      // capture session at scheduling time
       const sessionAtSchedule = bottomSessionRef.current
 
       stableBottomTimerRef.current = window.setTimeout(async () => {
@@ -622,7 +650,6 @@ export default function ChatClient({
         if (!isPageVisible()) return
         if (!isAtBottomRef.current) return
         if (!hasReachedBottomSinceOpenRef.current) return
-        if (showUnreadDividerRef.current && !passedUnreadDividerRef.current) return
 
         await markReadNow()
       }, 1800)
@@ -692,7 +719,6 @@ export default function ChatClient({
       reachedBottomDebounceRef.current = null
     }
     showUnreadDividerRef.current = false
-    entryReadCheckedRef.current = false
     prevScrollStateRef.current = { atBottom: true, atTop: true, stickyDay: null, autoFollow: true, unreadUiVisible: false }
     prevUnreadNowRef.current = 0
   }, [conversationId])
@@ -759,43 +785,9 @@ export default function ChatClient({
 
   // unreadNow as truth (state)
   const unreadNow = useMemo(() => computeUnreadCount(messages, myId), [messages, myId])
-
-  // One-time entry mark-read: wait for layout stability + enter-stick to end,
-  // then require 1000ms of strict-bottom before marking read.
-  useEffect(() => {
-    if (loading) return
-    if (entryReadCheckedRef.current) return
-    entryReadCheckedRef.current = true
-    if (unreadNow <= 0) return
-
-    let stableMs = 0
-    const TICK = 100
-    const REQUIRED_MS = 1000
-
-    const interval = window.setInterval(() => {
-      // Phase 1: wait for initial scroll to complete and enter-stick window to end
-      if (!isPageVisible() || !didInitialScrollRef.current || Date.now() < enterStickUntilRef.current) {
-        stableMs = 0
-        return
-      }
-      // Phase 2: require strict-bottom stability
-      if (isAtBottomRef.current) {
-        stableMs += TICK
-        if (stableMs >= REQUIRED_MS) {
-          window.clearInterval(interval)
-          window.clearTimeout(maxTimer)
-          void markReadNow({ allowEntryBypass: true })
-        }
-      } else {
-        stableMs = 0 // user scrolled up — reset
-      }
-    }, TICK)
-
-    // Give up after 15 s (user probably scrolled away intentionally)
-    const maxTimer = window.setTimeout(() => window.clearInterval(interval), 15000)
-
-    return () => { window.clearInterval(interval); window.clearTimeout(maxTimer) }
-  }, [isPageVisible, loading, unreadNow, markReadNow])
+  // Stable ref so D1 debounce and async callbacks always read the latest value
+  const unreadNowRef = useRef(0)
+  unreadNowRef.current = unreadNow
 
   const firstUnreadIndex = useMemo(() => computeFirstUnreadIndex(messages, myId), [messages, myId])
 
@@ -825,7 +817,10 @@ export default function ChatClient({
       requestAnimationFrame(() => {
         scrollListToBottom('auto') // syncScrollStateNow called inside
 
-        // אם יש unread – תציג UI (markRead only after user interaction, not on mount)
+        // Opening the chat is an implicit interaction — lets the D1 debounce arm mark-read
+        hasUserInteractedRef.current = true
+
+        // אם יש unread – תציג UI
         if (unreadNow > 0) setUnreadUiVisible(true)
 
         didInitialScrollRef.current = true
@@ -851,7 +846,7 @@ export default function ChatClient({
 
       const list = await fetchMessages()
       if (!mounted) return
-      if (list.length < 200) setHasOlderMessages(false)
+      if (list.length < 75) setHasOlderMessages(false)
 
       // Load reply metadata and reactions for initial messages
       const replyIds = list.map(m => m.reply_to_id).filter((id): id is string => id != null)
@@ -865,6 +860,15 @@ export default function ChatClient({
       setTimeout(() => {
         const unreadOnEntry = computeUnreadCount(list, effectiveUid)
         if (unreadOnEntry > 0) setUnreadUiVisible(true)
+        // Snap to absolute bottom after divider + reply-meta content renders
+        // (content may have grown since initial scroll, pushing us slightly up)
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const el = listRef.current
+          if (el && (autoFollowRef.current || Date.now() < enterStickUntilRef.current)) {
+            el.scrollTop = el.scrollHeight
+            syncScrollStateNow()
+          }
+        }))
       }, 200)
     })()
 
@@ -981,7 +985,7 @@ export default function ChatClient({
     }
 
     const obs = new ResizeObserver(() => {
-      if (autoFollowRef.current || (!hasUserInteractedRef.current && Date.now() < enterStickUntilRef.current)) {
+      if (autoFollowRef.current || Date.now() < enterStickUntilRef.current) {
         scrollListToBottom('auto')
       }
       if (stableTimer !== null) window.clearTimeout(stableTimer)
@@ -1017,7 +1021,7 @@ export default function ChatClient({
       const el = listRef.current
       if (el) {
         // Sync update for read-receipts: strict threshold
-        isAtBottomRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 8
+        isAtBottomRef.current = Math.max(0, el.scrollTop) + el.clientHeight >= el.scrollHeight - 8
       }
 
       cancelAnimationFrame(raf)
@@ -1065,13 +1069,15 @@ export default function ChatClient({
               reachedBottomDebounceRef.current = null
               if (isAtBottomRef.current && hasUserInteractedRef.current) {
                 hasReachedBottomSinceOpenRef.current = true
+                // Arm mark-read immediately after latch (no new scroll event will arrive)
+                scheduleMarkReadIfStableBottom(unreadNowRef.current)
               }
             }, 300)
           }
         }
 
         // autoFollow: hysteresis — switches off when > 140px from bottom, on when < 80px
-        const distFromBottom = el.scrollHeight - (el.scrollTop + el.clientHeight)
+        const distFromBottom = el.scrollHeight - (Math.max(0, el.scrollTop) + el.clientHeight)
         const autoFollowNow = autoFollowRef.current ? distFromBottom <= 140 : distFromBottom < 80
         if (autoFollowNow !== prevScrollStateRef.current.autoFollow) {
           prevScrollStateRef.current.autoFollow = autoFollowNow
@@ -1181,25 +1187,26 @@ export default function ChatClient({
 
             // שלי: תמיד לתחתית
             if (mine) {
-              setTimeout(() => scrollListToBottom('auto'), 0)
+              requestAnimationFrame(() => requestAnimationFrame(() => scrollListToBottom('auto')))
               return
             }
 
             // שלו/ה: sample strict bottom BEFORE any programmatic scroll
             const listEl = listRef.current
             const atBottomStrictNow = listEl
-              ? listEl.scrollTop + listEl.clientHeight >= listEl.scrollHeight - 8
+              ? Math.max(0, listEl.scrollTop) + listEl.clientHeight >= listEl.scrollHeight - 8
               : true
 
             if (atBottomStrictNow && isPageVisible()) {
               // Already seeing the latest — scroll to keep up and arm mark-read.
-              // No unread UI: user is at the bottom and will see it immediately.
               hasUserInteractedRef.current = true
               hasReachedBottomSinceOpenRef.current = true
-              setTimeout(() => {
-                scrollListToBottom('auto') // syncScrollStateNow called inside
-                scheduleMarkReadIfStableBottom(unreadNow + 1)
-              }, 0)
+              passedUnreadDividerRef.current = true
+              requestAnimationFrame(() => requestAnimationFrame(() => {
+                scrollListToBottom('auto')
+                // Pass 1 — we know there's ≥1 unread (the just-received message)
+                scheduleMarkReadIfStableBottom(1)
+              }))
             } else {
               // Not at bottom — show unread badge/pill immediately, no read receipt
               autoFollowRef.current = false
@@ -1226,16 +1233,25 @@ export default function ChatClient({
                 ? { ...m, read_at: next.read_at, deleted_at: next.deleted_at, body: next.body }
                 : m
             ))
+            // If this message was deleted and other messages quoted it, mark its replyMeta as deleted
+            if (next.deleted_at) {
+              setReplyMeta(prev => {
+                if (!prev.has(next.id)) return prev
+                const updated = new Map(prev)
+                updated.set(next.id, { ...updated.get(next.id)!, snippet: '', deleted: true })
+                return updated
+              })
+            }
           }
         }
       )
       .subscribe()
 
-    // safety polling
+    // safety polling — fallback for missed realtime events (deletions, reactions, etc.)
     const interval = window.setInterval(() => {
       if (!isPageVisible()) return
       void fetchMessages()
-    }, 6000)
+    }, 5000)
 
     return () => {
       window.clearInterval(interval)
@@ -1268,9 +1284,36 @@ export default function ChatClient({
         if (!uid) return
         if (uid === myId) return
 
+        // Forward to InboxThreads in the same tab (fixes desktop sidebar sync)
+        inboxBCRef.current?.postMessage({ type: 'typing', conversationId, userId: uid })
+
         setIsOtherTyping(true)
         if (typingTimeoutRef.current) window.clearTimeout(typingTimeoutRef.current)
         typingTimeoutRef.current = window.setTimeout(() => setIsOtherTyping(false), 2500)
+      })
+      .on('broadcast', { event: 'reaction' }, payload => {
+        const p = payload?.payload as { message_id?: string } | undefined
+        const msgId = p?.message_id
+        if (!msgId) return
+        void (async () => {
+          const { data } = await supabase
+            .from('message_reactions')
+            .select('message_id, sender_id, emoji')
+            .eq('message_id', msgId)
+          if (!data) return
+          const uid = myIdRef.current
+          const list: LocalReaction[] = []
+          for (const r of data as ReactionRow[]) {
+            const idx = list.findIndex(x => x.emoji === r.emoji)
+            if (idx === -1) list.push({ emoji: r.emoji, count: 1, mine: r.sender_id === uid })
+            else list[idx] = { ...list[idx], count: list[idx].count + 1, mine: list[idx].mine || r.sender_id === uid }
+          }
+          setReactions(prev => {
+            const next = new Map(prev)
+            next.set(msgId, list)
+            return next
+          })
+        })()
       })
       .subscribe()
 
@@ -1283,19 +1326,9 @@ export default function ChatClient({
     }
   }, [conversationId, myId])
 
-  // realtime: message_reactions — re-fetch on any change to keep counts in sync
-  useEffect(() => {
-    if (isAdminMode || !myId) return
-    const channel = supabase
-      .channel(`reactions-${conversationId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'message_reactions' },
-        () => { void loadReactions(messagesRef.current, myId) }
-      )
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [conversationId, isAdminMode, myId, loadReactions])
+  // myIdRef: stable ref used inside async callbacks to avoid stale closure
+  const myIdRef = useRef<string | null>(null)
+  myIdRef.current = myId
 
   const sendTyping = useCallback(async () => {
     if (!myId) return
@@ -1401,7 +1434,15 @@ export default function ChatClient({
     if (reactionError) {
       setReactions(previousReactions)
       toast(mapSupabaseError(reactionError) ?? 'לא הצלחנו לעדכן תגובה', 'error')
+      return
     }
+
+    // Broadcast to the other participant via the existing typing channel
+    await typingChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'reaction',
+      payload: { message_id: msgId },
+    })
   }, [isAdminMode, myId, reactions, toast])
 
   function handleReply(m: Msg, mine: boolean) {
@@ -1424,7 +1465,6 @@ export default function ChatClient({
   }, [])
 
   // Auto-fetch reply meta for any messages whose reply_to_id isn't in the map yet.
-  // Runs when messages array or replyMeta map changes (e.g. after a realtime INSERT).
   useEffect(() => {
     const missingIds = [...new Set(
       messages
@@ -1434,6 +1474,13 @@ export default function ChatClient({
     if (missingIds.length === 0) return
     void doLoadReplyMeta(missingIds)
   }, [messages, replyMeta, doLoadReplyMeta])
+
+  // After reply meta loads, the bubble height increases — scroll to bottom if following
+  useEffect(() => {
+    if (autoFollowRef.current && !loadingOlderRef.current) {
+      requestAnimationFrame(() => scrollListToBottom('auto'))
+    }
+  }, [replyMeta, scrollListToBottom])
 
   /** Open emoji picker, computing position from the clicked button element */
   const openEmojiPicker = useCallback((anchor: HTMLElement) => {
@@ -1581,11 +1628,26 @@ export default function ChatClient({
           if (capturedReply) setReplyTo(capturedReply)
           return
         }
+
+        // Optimistic insert so the message appears immediately (realtime will dedup via seenIds)
+        const optimistic: Msg = {
+          id: messageId as string,
+          conversation_id: conversationId,
+          sender_id: uid,
+          body: bodyTrimmed,
+          created_at: new Date().toISOString(),
+          read_at: null,
+          reply_to_id: capturedReply?.id ?? null,
+          deleted_at: null,
+        }
+        seenIdsRef.current.add(optimistic.id)
+        autoFollowRef.current = true
+        setMessages(prev => [...prev, optimistic])
       }
 
       setText('')
-      await fetchMessages()
-      setTimeout(() => scrollListToBottom('auto'), 0)
+      // Double RAF: wait for React paint + layout before scrolling
+      requestAnimationFrame(() => requestAnimationFrame(() => scrollListToBottom('auto')))
       // Notify sidebar/header (thread may be new or have new unread)
       window.dispatchEvent(new CustomEvent('tyuta:thread-read'))
     } finally {
@@ -2207,8 +2269,8 @@ function _groupedRender(
                         <div className={['truncate text-xs font-bold leading-snug', mine ? 'text-white/80' : 'text-[#3B6CE3]'].join(' ')}>
                           {quotedMeta.sender_id === myId ? 'אתה' : extras.otherName}
                         </div>
-                        <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug opacity-60">
-                          {quotedMeta.snippet}
+                        <div className={['mt-0.5 line-clamp-2 text-[11px] leading-snug', quotedMeta.deleted ? 'opacity-40 italic' : 'opacity-60'].join(' ')}>
+                          {quotedMeta.deleted ? 'הודעה זו נמחקה' : quotedMeta.snippet}
                         </div>
                       </div>
                     </button>

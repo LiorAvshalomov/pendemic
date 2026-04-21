@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
       await auth.admin.from('moderation_actions').delete().eq('post_id', postId)
     },
     async () => {
-      await auth.admin.from('notifications').delete().eq('entity_type', 'post').eq('entity_id', postId)
+      await auth.admin.rpc('purge_post_notifications', { p_post_id: postId })
     },
   ]
 

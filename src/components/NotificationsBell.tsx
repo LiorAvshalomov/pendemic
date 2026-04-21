@@ -70,6 +70,12 @@ type NotifGroup = {
   any_unread: boolean
 }
 
+type NotificationSliceResult = {
+  rows: NotifRowDb[]
+  total: number
+  unread: number
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v)
 }
@@ -243,18 +249,194 @@ function formatDateTime(iso: string): string {
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} · ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+const BELL_PAGE_SIZE = 50
+
+const NOTIF_SELECT = `
+  id, user_id, actor_id, type, entity_type, entity_id, payload, is_read, read_at, created_at,
+  actor:profiles!notifications_actor_id_fkey (id, username, display_name, avatar_url)
+`
+
+async function fetchNotificationSlice(uid: string, from: number, to: number): Promise<NotificationSliceResult> {
+  const [pageRes, unreadRes] = await Promise.all([
+    supabase
+      .from("notifications")
+      .select(NOTIF_SELECT, { count: "exact" })
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to),
+    supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", uid)
+      .eq("is_read", false),
+  ])
+
+  if (pageRes.error) throw pageRes.error
+  if (unreadRes.error) throw unreadRes.error
+
+  return {
+    rows: (pageRes.data ?? []) as unknown as NotifRowDb[],
+    total: pageRes.count ?? 0,
+    unread: unreadRes.count ?? 0,
+  }
+}
+
+async function hydrateNotificationRows(rows: NotifRowDb[]): Promise<NotifRowDb[]> {
+  const profileIds = new Set<string>()
+  const postIds = new Set<string>()
+  const commentIds = new Set<string>()
+
+  for (const row of rows) {
+    if (row.actor_id) profileIds.add(String(row.actor_id))
+    const payload = isRecord(row.payload) ? row.payload : null
+    if (payload) {
+      const fromId = str(payload.from_user_id)
+      if (fromId) profileIds.add(fromId)
+      const authorId = str(payload.author_id)
+      if (authorId) profileIds.add(authorId)
+
+      const postId = str(payload.post_id)
+      if (postId) postIds.add(postId)
+
+      const nested = payload.payload
+      const nestedComment = payload.comment
+      const commentId =
+        str(payload.comment_id) ||
+        (isRecord(nested) ? str(nested.comment_id) : null) ||
+        (isRecord(nestedComment) ? str(nestedComment.id) : null)
+      if (commentId) commentIds.add(commentId)
+    }
+
+    const rawType = String(row.type ?? "")
+    if (row.entity_type === "post" && row.entity_id) postIds.add(String(row.entity_id))
+    if ((row.entity_type === "comment" || rawType === "comment") && row.entity_id) {
+      commentIds.add(String(row.entity_id))
+    }
+  }
+
+  const profilesById = new Map<string, ProfileLite>()
+  if (profileIds.size > 0) {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id, username, display_name, avatar_url")
+      .in("id", Array.from(profileIds))
+      .limit(500)
+    const list = (data ?? []) as unknown as ProfileLite[]
+    for (const profile of list) profilesById.set(profile.id, profile)
+  }
+
+  type CommentLite = { id: string; content: string; parent_comment_id: string | null; post_id: string }
+  const commentsById = new Map<string, CommentLite>()
+  if (commentIds.size > 0) {
+    const { data } = await supabase
+      .from("comments")
+      .select("id, content, parent_comment_id, post_id")
+      .in("id", Array.from(commentIds))
+      .limit(500)
+    const list = (data ?? []) as unknown as CommentLite[]
+    for (const comment of list) {
+      commentsById.set(comment.id, comment)
+      if (comment.post_id) postIds.add(comment.post_id)
+    }
+  }
+
+  type PostLite = { id: string; slug: string; title: string | null }
+  const postsById = new Map<string, PostLite>()
+  if (postIds.size > 0) {
+    const { data } = await supabase
+      .from("posts")
+      .select("id, slug, title")
+      .in("id", Array.from(postIds))
+      .limit(500)
+    const list = (data ?? []) as unknown as PostLite[]
+    for (const post of list) postsById.set(post.id, post)
+  }
+
+  return rows.map((row) => {
+    const payload = isRecord(row.payload) ? { ...row.payload } : {}
+    const fromId = str(payload.from_user_id)
+    const fallbackActorId = fromId ?? (row.actor_id ? String(row.actor_id) : null)
+    const actor = row.actor ?? (fallbackActorId ? profilesById.get(fallbackActorId) ?? null : null)
+
+    const rawType = String(row.type ?? "")
+    const commentId =
+      (row.entity_type === "comment" || rawType === "comment")
+        ? (row.entity_id ? String(row.entity_id) : str(payload.comment_id))
+        : str(payload.comment_id)
+    if (commentId && commentsById.has(commentId)) {
+      const comment = commentsById.get(commentId)!
+      payload.comment_id = commentId
+      payload.comment_text = comment.content
+      payload.parent_comment_id = comment.parent_comment_id
+      payload.post_id = comment.post_id
+    }
+
+    const postId = str(payload.post_id)
+    if (postId && postsById.has(postId)) {
+      const post = postsById.get(postId)!
+      payload.post_slug = post.slug
+      payload.post_title = post.title
+    }
+
+    return {
+      ...row,
+      actor,
+      payload,
+    }
+  })
+}
+
+function buildNotificationGroups(rows: NotifRowDb[]): NotifGroup[] {
+  const normalizedRows = rows.map(normalizeRow)
+  const map = new Map<string, NotifGroup>()
+
+  for (const row of normalizedRows) {
+    const key = groupKey(row)
+    const existingGroup = map.get(key)
+    const actorName = row.actor_display_name || actorNameFromPayload(row.payload) || ""
+
+    if (!existingGroup) {
+      map.set(key, {
+        key,
+        type: row.type,
+        created_at: row.created_at,
+        rows: [row],
+        actor_display_names: actorName ? [actorName] : [],
+        actor_avatars: [row.actor_avatar_url ?? null],
+        any_unread: !(row.is_read || row.read_at),
+      })
+      continue
+    }
+
+    existingGroup.rows.push(row)
+    if (existingGroup.created_at < row.created_at) existingGroup.created_at = row.created_at
+    if (actorName) existingGroup.actor_display_names.push(actorName)
+    existingGroup.actor_avatars.push(row.actor_avatar_url ?? null)
+    if (!(row.is_read || row.read_at)) existingGroup.any_unread = true
+  }
+
+  return Array.from(map.values()).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+}
+
 export default function NotificationsBell() {
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
   const [unread, setUnread] = useState(0)
   const [groups, setGroups] = useState<NotifGroup[]>([])
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [desktopPanelPos, setDesktopPanelPos] = useState<{ top: number; left: number; width: number } | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const panelScrollRef = useRef<HTMLDivElement | null>(null)
   const loadStampRef = useRef(0)
   const loadSeqRef = useRef(0)
+  const loadingMoreRef = useRef(false)
+  const rowsRef = useRef<NotifRowDb[]>([])
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -264,169 +446,35 @@ export default function NotificationsBell() {
     return resolution.status === "authenticated" ? resolution.user.id : null
   }, [])
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { preserveLoaded?: boolean; silent?: boolean }) => {
+    const preserveLoaded = opts?.preserveLoaded === true
+    const silent = opts?.silent === true
     const loadSeq = ++loadSeqRef.current
-    setLoading(true)
+    const desiredCount = preserveLoaded ? Math.max(BELL_PAGE_SIZE, rowsRef.current.length || BELL_PAGE_SIZE) : BELL_PAGE_SIZE
+
+    if (!silent) setLoading(true)
     try {
       const uid = await getUid()
       if (loadSeq !== loadSeqRef.current) return
+      setCurrentUserId(uid)
       if (!uid) {
+        rowsRef.current = []
         setGroups([])
         setUnread(0)
+        setHasMore(false)
         setHasLoadedOnce(true)
         return
       }
 
-      const { data, error } = await supabase
-        .from("notifications")
-        .select(
-          `
-          id, user_id, actor_id, type, entity_type, entity_id, payload, is_read, read_at, created_at,
-          actor:profiles!notifications_actor_id_fkey (id, username, display_name, avatar_url)
-        `
-        )
-        .eq("user_id", uid)
-        .order("created_at", { ascending: false })
-        .limit(200)
-
-      if (error) throw error
-
-      const rows = (data ?? []) as unknown as NotifRowDb[]
-
-      // --- Enrich missing actor/post/comment data from payloads (legacy triggers)
-      const profileIds = new Set<string>()
-      const postIds = new Set<string>()
-      const commentIds = new Set<string>()
-
-      for (const r of rows) {
-        if (r.actor_id) profileIds.add(String(r.actor_id))
-        const p = isRecord(r.payload) ? r.payload : null
-        if (p) {
-          const fromId = str(p.from_user_id)
-          if (fromId) profileIds.add(fromId)
-          const authorId = str(p.author_id)
-          if (authorId) profileIds.add(authorId)
-
-          const postId = str(p.post_id)
-          if (postId) postIds.add(postId)
-
-          const nested = p['payload']
-          const nestedComment = p['comment']
-          const cId =
-            str(p.comment_id) ||
-            (isRecord(nested) ? str(nested['comment_id']) : null) ||
-            (isRecord(nestedComment) ? str(nestedComment['id']) : null)
-          if (cId) commentIds.add(cId)
-        }
-        const rawType = String(r.type ?? '')
-        if (r.entity_type === 'post' && r.entity_id) postIds.add(String(r.entity_id))
-        if ((r.entity_type === 'comment' || rawType === 'comment') && r.entity_id) commentIds.add(String(r.entity_id))
-      }
-
-      const profilesById = new Map<string, ProfileLite>()
-      if (profileIds.size > 0) {
-        const { data: ps } = await supabase
-          .from('profiles')
-          .select('id, username, display_name, avatar_url')
-          .in('id', Array.from(profileIds))
-          .limit(500)
-        const list = (ps ?? []) as unknown as ProfileLite[]
-        for (const pr of list) profilesById.set(pr.id, pr)
-      }
-
-      type CommentLite = { id: string; content: string; parent_comment_id: string | null; post_id: string }
-      const commentsById = new Map<string, CommentLite>()
-      if (commentIds.size > 0) {
-        const { data: cs } = await supabase
-          .from('comments')
-          .select('id, content, parent_comment_id, post_id')
-          .in('id', Array.from(commentIds))
-          .limit(500)
-        const list = (cs ?? []) as unknown as CommentLite[]
-        for (const c of list) {
-          commentsById.set(c.id, c)
-          if (c.post_id) postIds.add(c.post_id)
-        }
-      }
-
-      type PostLite = { id: string; slug: string; title: string | null }
-      const postsById = new Map<string, PostLite>()
-      if (postIds.size > 0) {
-        const { data: posts } = await supabase
-          .from('posts')
-          .select('id, slug, title')
-          .in('id', Array.from(postIds))
-          .limit(500)
-        const list = (posts ?? []) as unknown as PostLite[]
-        for (const p of list) postsById.set(p.id, p)
-      }
-
-      const hydrated: NotifRowDb[] = rows.map((r) => {
-        const p0 = isRecord(r.payload) ? { ...r.payload } : {}
-        const fromId = str(p0.from_user_id)
-        const fallbackActorId = fromId ?? (r.actor_id ? String(r.actor_id) : null)
-        const actor = r.actor ?? (fallbackActorId ? profilesById.get(fallbackActorId) ?? null : null)
-
-        // If this is a comment-like / reply flow, hydrate comment details
-        const rawType = String(r.type ?? '')
-        const commentId =
-          (r.entity_type === 'comment' || rawType === 'comment')
-            ? (r.entity_id ? String(r.entity_id) : str(p0.comment_id))
-            : str(p0.comment_id)
-        if (commentId && commentsById.has(commentId)) {
-          const c = commentsById.get(commentId)!
-          p0.comment_id = commentId
-          p0.comment_text = c.content
-          p0.parent_comment_id = c.parent_comment_id
-          p0.post_id = c.post_id
-        }
-
-        const postId = str(p0.post_id)
-        if (postId && postsById.has(postId)) {
-          const post = postsById.get(postId)!
-          p0.post_slug = post.slug
-          p0.post_title = post.title
-        }
-
-        return {
-          ...r,
-          actor,
-          payload: p0,
-        }
-      })
-
-      const norm = hydrated.map(normalizeRow)
-      const unreadCount = norm.reduce((acc, n) => acc + (n.is_read || n.read_at ? 0 : 1), 0)
-      setUnread(unreadCount)
-
-      const map = new Map<string, NotifGroup>()
-      for (const n of norm) {
-        const key = groupKey(n)
-        const g = map.get(key)
-        const actorName = n.actor_display_name || actorNameFromPayload(n.payload) || ""
-
-        if (!g) {
-          map.set(key, {
-            key,
-            type: n.type,
-            created_at: n.created_at,
-            rows: [n],
-            actor_display_names: actorName ? [actorName] : [],
-            actor_avatars: [n.actor_avatar_url ?? null],
-            any_unread: !(n.is_read || n.read_at),
-          })
-        } else {
-          g.rows.push(n)
-          if (g.created_at < n.created_at) g.created_at = n.created_at
-          if (actorName) g.actor_display_names.push(actorName)
-          g.actor_avatars.push(n.actor_avatar_url ?? null)
-          if (!(n.is_read || n.read_at)) g.any_unread = true
-        }
-      }
-
-      const arr = Array.from(map.values()).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+      const slice = await fetchNotificationSlice(uid, 0, desiredCount - 1)
       if (loadSeq !== loadSeqRef.current) return
-      setGroups(arr)
+
+      const hydrated = await hydrateNotificationRows(slice.rows)
+      if (loadSeq !== loadSeqRef.current) return
+      rowsRef.current = hydrated
+      setGroups(buildNotificationGroups(hydrated))
+      setUnread(slice.unread)
+      setHasMore(slice.total > slice.rows.length)
       loadStampRef.current = Date.now()
       setHasLoadedOnce(true)
     } catch {
@@ -438,6 +486,36 @@ export default function NotificationsBell() {
       }
     }
   }, [getUid])
+
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMore) return
+
+    const uid = currentUserId ?? await getUid()
+    if (!uid) return
+
+    const loadSeq = ++loadSeqRef.current
+    const desiredCount = rowsRef.current.length + BELL_PAGE_SIZE
+    loadingMoreRef.current = true
+    setLoadingMore(true)
+    try {
+      setCurrentUserId(uid)
+      const slice = await fetchNotificationSlice(uid, 0, desiredCount - 1)
+      if (loadSeq !== loadSeqRef.current) return
+
+      const hydrated = await hydrateNotificationRows(slice.rows)
+      if (loadSeq !== loadSeqRef.current) return
+
+      rowsRef.current = hydrated
+      setGroups(buildNotificationGroups(hydrated))
+      setUnread(slice.unread)
+      setHasMore(slice.total > slice.rows.length)
+      loadStampRef.current = Date.now()
+      setHasLoadedOnce(true)
+    } finally {
+      loadingMoreRef.current = false
+      setLoadingMore(false)
+    }
+  }, [currentUserId, getUid, hasMore])
 
   const markAllRead = useCallback(async () => {
     const uid = await getUid()
@@ -465,7 +543,7 @@ export default function NotificationsBell() {
       setGroups(previousGroups)
       setUnread(previousUnread)
       toast(mapSupabaseError(error) ?? "לא הצלחנו לסמן את כל ההתראות כנקראו", "error")
-      void load()
+      void load({ preserveLoaded: true })
     }
   }, [getUid, groups, load, toast, unread])
 
@@ -505,29 +583,53 @@ export default function NotificationsBell() {
         setGroups(previousGroups)
         setUnread(previousUnread)
         toast(mapSupabaseError(error) ?? "לא הצלחנו לסמן את ההתראות כנקראו", "error")
-        void load()
+        void load({ preserveLoaded: true })
       }
     },
     [getUid, groups, load, toast, unread]
   )
 
   const clearAll = useCallback(async () => {
-    const uid = await getUid()
-    if (!uid) return
+    const resolution = await waitForClientSession(4000)
+    const uid = resolution.status === "authenticated" ? resolution.user.id : null
+    const accessToken = resolution.status === "authenticated" ? resolution.session.access_token : null
+    if (!uid || !accessToken) return
 
     const previousGroups = groups
     const previousUnread = unread
-    const { error } = await supabase.from("notifications").delete().eq("user_id", uid)
-    if (!error) {
+    try {
+      const response = await fetch("/api/notifications/clear-all", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      })
+
+      const body = (await response.json().catch(() => null)) as { error?: { message?: string } | string } | null
+      if (!response.ok) {
+        const message =
+          typeof body?.error === "string"
+            ? body.error
+            : body?.error?.message || "לא הצלחנו לנקות את כל ההתראות"
+        throw new Error(message)
+      }
+
+      rowsRef.current = []
       setGroups([])
       setUnread(0)
-    } else {
+      setHasMore(false)
+    } catch (error) {
       setGroups(previousGroups)
       setUnread(previousUnread)
-      toast(mapSupabaseError(error) ?? error.message, "error")
-      void load()
+      toast(
+        mapSupabaseError(error as { message?: string | null; details?: string | null; hint?: string | null; code?: string | null }) ||
+          (error instanceof Error ? error.message : "לא הצלחנו לנקות את כל ההתראות"),
+        "error"
+      )
+      void load({ preserveLoaded: true })
     }
-  }, [getUid, groups, load, toast, unread])
+  }, [groups, load, toast, unread])
 
   // close on click outside (desktop)
   useEffect(() => {
@@ -600,24 +702,31 @@ export default function NotificationsBell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, searchParams.toString()])
 
-  // load once + realtime refresh
   useEffect(() => {
     void load()
+  }, [load])
+
+  useEffect(() => {
+    if (!currentUserId) return
 
     const ch = supabase
-      .channel("notifications-bell")
-      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, () => void load())
+      .channel(`notifications-bell:${currentUserId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${currentUserId}` },
+        () => void load({ preserveLoaded: true, silent: true })
+      )
       .subscribe()
 
     return () => {
       void supabase.removeChannel(ch)
     }
-  }, [load])
+  }, [currentUserId, load])
 
   useEffect(() => {
     const refreshBell = () => {
       if (!open && !hasLoadedOnce) return
-      void load()
+      void load({ preserveLoaded: true, silent: true })
     }
 
     const onWindowEvent = () => {
@@ -659,6 +768,25 @@ export default function NotificationsBell() {
   }, [hasLoadedOnce, loading, markAllRead, open, unread])
   const items = useMemo(() => groups, [groups])
   const showLoadingState = !hasLoadedOnce || (loading && items.length === 0)
+
+  const maybeLoadMore = useCallback((element?: HTMLDivElement | null) => {
+    if (!open || loading || loadingMore || !hasMore) return
+    const scroller = element ?? panelScrollRef.current
+    if (!scroller) return
+    const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+    if (remaining <= 120) {
+      void loadMore()
+    }
+  }, [hasMore, loadMore, loading, loadingMore, open])
+
+  useEffect(() => {
+    if (!open || showLoadingState || loadingMore || !hasMore) return
+    const scroller = panelScrollRef.current
+    if (!scroller) return
+    if (scroller.scrollHeight <= scroller.clientHeight + 24) {
+      void loadMore()
+    }
+  }, [groups, hasMore, loadMore, loadingMore, open, showLoadingState])
 
   const makeShortToken = useCallback(() => {
     const raw =
@@ -927,6 +1055,8 @@ const token = storeHighlightToken(ids)
         </div>
 
         <div
+          ref={panelScrollRef}
+          onScroll={(event) => maybeLoadMore(event.currentTarget)}
           className={isMobile ? "min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y" : "max-h-[440px] overflow-auto overscroll-contain"}
           style={isMobile ? { WebkitOverflowScrolling: 'touch' } : undefined}
         >
@@ -1018,6 +1148,9 @@ const token = storeHighlightToken(ids)
                   </div>
                 )
               })}
+              {loadingMore ? (
+                <div className="py-2 text-center text-xs text-neutral-500 dark:text-muted-foreground">טוען עוד...</div>
+              ) : null}
             </div>
           )}
         </div>
@@ -1040,7 +1173,7 @@ const token = storeHighlightToken(ids)
               window.dispatchEvent(new CustomEvent('tyuta:close-header-dropdowns'))
             }
             if (groups.length === 0 || Date.now() - loadStampRef.current > 15_000) {
-              void load()
+              void load({ preserveLoaded: rowsRef.current.length > 0 })
             }
           }
         }}
