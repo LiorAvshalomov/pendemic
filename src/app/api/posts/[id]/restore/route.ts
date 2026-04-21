@@ -139,6 +139,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     warnings.push(error instanceof Error ? error.message : 'public inline sync failed')
   }
 
+  try {
+    await svc.rpc('restore_post_notifications', {
+      p_post_id: postId,
+      p_clear_delete_notice: true,
+    })
+  } catch (error) {
+    warnings.push(error instanceof Error ? error.message : 'notification restore failed')
+  }
+
   revalidatePath('/')
   revalidatePath('/c/release')
   revalidatePath('/c/stories')

@@ -6,6 +6,8 @@ import { useEffect } from 'react'
  *  - Uses --vvh (set by VisualViewportSync) so height tracks the visual viewport exactly. */
 export default function InboxShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
+    // Reset any scroll offset carried over from the previous page before locking
+    window.scrollTo(0, 0)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = prev }

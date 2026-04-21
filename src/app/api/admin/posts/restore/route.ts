@@ -104,6 +104,7 @@ export async function POST(req: NextRequest) {
       }
     }
     let inlineWarning: string | null = null
+    let notificationWarning: string | null = null
     let publicInline = { uploaded: 0, removed: 0, retained: 0 }
     try {
       publicInline = status === "published"
@@ -120,6 +121,14 @@ export async function POST(req: NextRequest) {
     } catch (error) {
       inlineWarning = error instanceof Error ? error.message : "Public inline sync failed"
     }
+    try {
+      await auth.admin.rpc('restore_post_notifications', {
+        p_post_id: postId,
+        p_clear_delete_notice: true,
+      })
+    } catch (error) {
+      notificationWarning = error instanceof Error ? error.message : 'Notification restore failed'
+    }
   revalidatePath("/")
   revalidatePath("/c/release")
   revalidatePath("/c/stories")
@@ -131,7 +140,9 @@ export async function POST(req: NextRequest) {
       restored: true,
       mode: "admin_soft",
       public_inline: publicInline,
-      ...(inlineWarning ? { warning: inlineWarning } : {}),
+      ...([inlineWarning, notificationWarning].filter(Boolean).length > 0
+        ? { warning: [inlineWarning, notificationWarning].filter(Boolean).join('. ') }
+        : {}),
     })
   }
 
@@ -185,6 +196,7 @@ export async function POST(req: NextRequest) {
       }
     }
     let inlineWarning: string | null = null
+    let notificationWarning: string | null = null
     let publicInline = { uploaded: 0, removed: 0, retained: 0 }
     try {
       publicInline = shouldBePublic
@@ -201,6 +213,14 @@ export async function POST(req: NextRequest) {
     } catch (error) {
       inlineWarning = error instanceof Error ? error.message : "Public inline sync failed"
     }
+    try {
+      await auth.admin.rpc('restore_post_notifications', {
+        p_post_id: postId,
+        p_clear_delete_notice: true,
+      })
+    } catch (error) {
+      notificationWarning = error instanceof Error ? error.message : 'Notification restore failed'
+    }
   revalidatePath("/")
   revalidatePath("/c/release")
   revalidatePath("/c/stories")
@@ -212,7 +232,9 @@ export async function POST(req: NextRequest) {
       restored: true,
       mode: "user_soft",
       public_inline: publicInline,
-      ...(inlineWarning ? { warning: inlineWarning } : {}),
+      ...([inlineWarning, notificationWarning].filter(Boolean).length > 0
+        ? { warning: [inlineWarning, notificationWarning].filter(Boolean).join('. ') }
+        : {}),
     })
   }
 

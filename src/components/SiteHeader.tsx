@@ -220,6 +220,8 @@ const SiteHeaderChrome = React.memo(function SiteHeaderChrome({
   // callback can read the latest user without needing it as a dep.
   useHeaderLayoutEffect(() => { currentUserRef.current = user }, [user])
 
+  const headerRefreshTimerRef = useRef<number | null>(null)
+
   const [threads, setThreads] = useState<ThreadRow[]>([])
   const [msgUnread, setMsgUnread] = useState(0)
   const showPendingAuthShell = !user && !userResolved
@@ -601,12 +603,18 @@ const SiteHeaderChrome = React.memo(function SiteHeaderChrome({
 
       ch = supabase.channel(`header_messages_${user.id}`)
 
+      // Debounced loader: coalesces rapid INSERT+UPDATE events into one re-query
+      const scheduleLoadThreads = () => {
+        if (headerRefreshTimerRef.current) window.clearTimeout(headerRefreshTimerRef.current)
+        headerRefreshTimerRef.current = window.setTimeout(() => { void loadThreads() }, 300)
+      }
+
       // If we don't have any threads yet, fall back to an unfiltered subscription
       // (RLS still applies) so the badge can become live immediately.
       if (convIds.length === 0) {
         ch
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => { void loadThreads(); window.dispatchEvent(new CustomEvent('tyuta:inbox-refresh')) })
-          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, () => { void loadThreads(); window.dispatchEvent(new CustomEvent('tyuta:inbox-refresh')) })
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, scheduleLoadThreads)
+          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, scheduleLoadThreads)
           .subscribe()
         return
       }
@@ -616,12 +624,12 @@ const SiteHeaderChrome = React.memo(function SiteHeaderChrome({
           .on(
             'postgres_changes',
             { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${id}` },
-            () => { void loadThreads(); window.dispatchEvent(new CustomEvent('tyuta:inbox-refresh')) }
+            scheduleLoadThreads
           )
           .on(
             'postgres_changes',
             { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${id}` },
-            () => { void loadThreads(); window.dispatchEvent(new CustomEvent('tyuta:inbox-refresh')) }
+            scheduleLoadThreads
           )
       }
 
@@ -634,6 +642,7 @@ const SiteHeaderChrome = React.memo(function SiteHeaderChrome({
 
     return () => {
       active = false
+      if (headerRefreshTimerRef.current) window.clearTimeout(headerRefreshTimerRef.current)
       if (ch) void supabase.removeChannel(ch)
       window.removeEventListener('tyuta:thread-read', onThreadRead)
     }
@@ -714,6 +723,7 @@ const SiteHeaderChrome = React.memo(function SiteHeaderChrome({
             const name = identity.displayName
             const avatarSrc = identity.avatarUrl
             const snippet = (t.last_body ?? '').trim()
+            const unread = typeof t.unread_count === 'number' && Number.isFinite(t.unread_count) ? t.unread_count : 0
             return (
               <Link
                 key={t.conversation_id}
@@ -726,9 +736,9 @@ const SiteHeaderChrome = React.memo(function SiteHeaderChrome({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-sm font-bold text-neutral-900 dark:text-foreground truncate">{name}</div>
-                      {t.unread_count && t.unread_count > 0 ? (
+                      {unread > 0 ? (
                         <div className="shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-bold text-white">
-                          {t.unread_count}
+                          {unread > 99 ? '99+' : unread}
                         </div>
                       ) : null}
                     </div>

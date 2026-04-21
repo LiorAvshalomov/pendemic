@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { waitForClientSession } from '@/lib/auth/clientSession'
@@ -45,6 +45,12 @@ const THREADS_PAGE_SIZE = 25
 const THREADS_SELECT = 'conversation_id, other_user_id, other_username, other_display_name, other_avatar_url, last_body, last_created_at, unread_count'
 
 export default function InboxThreads() {
+  // Each mounted instance gets a unique channel suffix — prevents Supabase from
+  // routing postgres_changes events to only one of the two instances mounted by
+  // the desktop layout (sidebar) + mobile page (md:hidden) pattern.
+  const rawInstanceId = useId()
+  const instanceId = rawInstanceId.replace(/:/g, '')
+
   const pathname = usePathname()
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -76,8 +82,8 @@ export default function InboxThreads() {
     return m?.[1] ?? null
   }, [pathname])
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     cursorRef.current = null
     const gen = ++genRef.current
 
@@ -117,7 +123,19 @@ export default function InboxThreads() {
     const page = ((data ?? []) as ConvRow[]).slice(0, THREADS_PAGE_SIZE)
     const more = (data?.length ?? 0) > THREADS_PAGE_SIZE
     cursorRef.current = page[page.length - 1]?.last_created_at ?? null
-    setRows(page)
+    setRows(prev => {
+      if (prev.length === 0) return page
+      // Use server sort order so conversations with new messages bubble to top.
+      // Preserve object references for unchanged rows to prevent unnecessary re-renders.
+      const prevMap = new Map(prev.map(r => [r.conversation_id, r]))
+      return page.map(r => {
+        const old = prevMap.get(r.conversation_id)
+        if (!old) return r
+        return (old.last_body === r.last_body && old.unread_count === r.unread_count && old.last_created_at === r.last_created_at)
+          ? old
+          : r
+      })
+    })
     setHasMore(more)
     setLoading(false)
   }, [])
@@ -171,24 +189,26 @@ export default function InboxThreads() {
     return () => {
       sub.subscription.unsubscribe()
     }
-  }, [load])
+  }, [instanceId, load])
 
   // Subscribe / unsubscribe typing channels as conversation list changes
   useEffect(() => {
     const convIds = new Set(rows.map(r => r.conversation_id))
     const existing = typingChannelsRef.current
 
-    // Remove channels for conversations no longer in list
+    // Remove channels for conversations no longer in list OR that are now active
+    // (active conversation is handled by ChatClient which forwards via BroadcastChannel)
     for (const [id, ch] of existing) {
-      if (!convIds.has(id)) {
+      if (!convIds.has(id) || id === selectedConversationId) {
         supabase.removeChannel(ch)
         existing.delete(id)
       }
     }
 
-    // Add channels for new conversations
+    // Add channels for non-active conversations
     for (const id of convIds) {
       if (existing.has(id)) continue
+      if (id === selectedConversationId) continue  // ChatClient owns this channel
       const ch = supabase
         .channel(`typing-${id}`)
         .on('broadcast', { event: 'typing' }, payload => {
@@ -196,7 +216,6 @@ export default function InboxThreads() {
           const uid = p?.user_id
           if (!uid || uid === meIdRef.current) return
           setTypingMap(prev => ({ ...prev, [id]: { isTyping: true, updatedAt: Date.now() } }))
-          // Reset per-conversation timeout — same 2500ms as ChatClient
           const timers = typingTimersRef.current
           if (timers.has(id)) window.clearTimeout(timers.get(id))
           timers.set(id, window.setTimeout(() => {
@@ -207,7 +226,7 @@ export default function InboxThreads() {
         .subscribe()
       existing.set(id, ch)
     }
-  }, [rows])
+  }, [rows, selectedConversationId])
 
   // Cleanup all typing channels and timers on unmount
   useEffect(() => {
@@ -238,19 +257,18 @@ export default function InboxThreads() {
 
     const scheduleRefresh = () => {
       if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current)
-      refreshTimerRef.current = window.setTimeout(() => void load(), 250)
+      refreshTimerRef.current = window.setTimeout(() => void load(true), 250)
     }
 
     const ch = supabase
-      .channel('inbox-threads-refresh')
+      .channel(`inbox-threads-refresh-${instanceId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, scheduleRefresh)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, scheduleRefresh)
       .subscribe()
 
-    // Re-query when ChatClient marks a conversation as read, or SiteHeader realtime fires
-    const onThreadRead = () => void load()
+    // Re-query when ChatClient marks a conversation as read (silent — no spinner)
+    const onThreadRead = () => void load(true)
     window.addEventListener('tyuta:thread-read', onThreadRead)
-    window.addEventListener('tyuta:inbox-refresh', onThreadRead)
 
     // BroadcastChannel: instant updates from ChatClient (messages + typing) — mounted once, no activeConversationId dependency
     const bc = new BroadcastChannel('tyuta-inbox')
@@ -305,10 +323,9 @@ export default function InboxThreads() {
       if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current)
       supabase.removeChannel(ch)
       window.removeEventListener('tyuta:thread-read', onThreadRead)
-      window.removeEventListener('tyuta:inbox-refresh', onThreadRead)
       bc.close()
     }
-  }, [load])
+  }, [instanceId, load])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -337,7 +354,7 @@ export default function InboxThreads() {
               const unread = Number.isFinite(r.unread_count) ? r.unread_count : 0
               const hasUnread = unread > 0
               const rawBody = (r.last_body ?? '').trim()
-              const lastBody = rawBody ? (rawBody.length > 200 ? rawBody.slice(0, 200) + '…' : rawBody) : 'אין עדיין הודעות'
+              const lastBody = r.last_body === '' ? 'הודעה זו נמחקה' : rawBody ? (rawBody.length > 200 ? rawBody.slice(0, 200) + '…' : rawBody) : 'אין עדיין הודעות'
               const isTypingNow = typingMap[r.conversation_id]?.isTyping === true
 
               const rowClassName = [

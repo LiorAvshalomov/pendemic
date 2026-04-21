@@ -142,10 +142,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     warnings.push(error instanceof Error ? error.message : 'public inline cleanup failed')
   }
 
-  // Remove notifications that point to this post (they become dead links otherwise).
-  // Needs Service Role because notifications belong to other users.
+  // Soft delete should hide post-related notifications without losing them,
+  // so a later restore can bring them back as-is.
   try {
-    await svc.from('notifications').delete().eq('entity_type', 'post').eq('entity_id', postId)
+    await svc.rpc('archive_post_notifications', { p_post_id: postId })
   } catch {
     // non-fatal
   }
