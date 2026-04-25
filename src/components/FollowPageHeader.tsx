@@ -46,7 +46,7 @@ export default function FollowPageHeader({
 
           {/* Medals - compact */}
           {(medals.gold > 0 || medals.silver > 0 || medals.bronze > 0) && (
-            <div className="flex items-center gap-2 mt-2">
+            <div dir="ltr" className="flex items-center gap-2 mt-2">
               {medals.gold > 0 && (
                 <span dir="ltr" className="inline-flex items-center gap-1 text-sm">
                   <span className="font-semibold">{medals.gold}</span>
