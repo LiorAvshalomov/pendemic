@@ -4,25 +4,29 @@ export const revalidate = 60
 import type { Metadata } from 'next'
 import Link from '@/components/ContentLink'
 
+const HOME_TITLE = 'טיוטה - המקום לכל הגרסאות שלך'
+const HOME_DESCRIPTION =
+  'בית לכותבים בישראל וקהילת כתיבה עברית: מקום לכתוב, לשתף ולקרוא סיפורים, שירים, פריקה ומחשבות, מהטיוטה הראשונה ועד הפרסום.'
+
 export const metadata: Metadata = {
   title: {
-    absolute: 'Tyuta (טיוטה) - המקום לכל הגרסאות שלך',
+    absolute: HOME_TITLE,
   },
-  description: 'בית לכותבים בישראל: מקום לכתיבה עברית, שיתוף, סיפורים קצרים, שירים, פריקה, וידויים, מחשבות וטקסטים מקוריים שמוצאים קוראים.',
+  description: HOME_DESCRIPTION,
   alternates: { canonical: 'https://tyuta.net' },
   openGraph: {
     type: 'website',
     url: 'https://tyuta.net',
-    title: 'Tyuta (טיוטה) - המקום לכל הגרסאות שלך',
-    description: 'בית לכותבים בישראל: מקום לכתיבה עברית, שיתוף, סיפורים קצרים, שירים, פריקה, וידויים, מחשבות וטקסטים מקוריים שמוצאים קוראים.',
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
     siteName: 'Tyuta',
     locale: 'he_IL',
     images: [{ url: '/web-app-manifest-512x512.png', width: 512, height: 512, alt: 'Tyuta' }],
   },
   twitter: {
     card: 'summary',
-    title: 'Tyuta (טיוטה) - המקום לכל הגרסאות שלך',
-    description: 'בית לכותבים בישראל: מקום לכתיבה עברית, שיתוף, סיפורים קצרים, שירים, פריקה, וידויים, מחשבות וטקסטים מקוריים שמוצאים קוראים.',
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
     images: ['/web-app-manifest-512x512.png'],
   },
 }

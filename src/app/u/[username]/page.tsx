@@ -87,12 +87,22 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   const name = (data.display_name ?? '').trim() || `@${data.username}`
-  const description = ((data.bio ?? '').trim() || `${name} כותב/ת ב-Tyuta: בית לכותבים, כתיבה עברית, שיתוף, סיפורים, שירים ומחשבות מהקהילה.`).slice(0, 200)
+  const description = ((data.bio ?? '').trim() || `${name} בטיוטה: פרופיל כתיבה עם סיפורים, שירים ומחשבות מתוך קהילת הכותבים.`).slice(0, 200)
   const image = profileAvatarImageUrl(SITE_URL, data.avatar_url, name)
 
   return {
     title: name,
     description,
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+      },
+    },
     alternates: { canonical },
     openGraph: {
       type: 'profile',
@@ -101,7 +111,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       description,
       siteName: 'Tyuta',
       locale: 'he_IL',
-      images: [{ url: image }],
+      images: [{ url: image, alt: `תמונת פרופיל של ${name}`, width: 512, height: 512 }],
     },
     twitter: {
       card: 'summary',
@@ -322,6 +332,23 @@ export default async function PublicProfilePage({ params }: PageProps) {
 
   const profileUrl = `${SITE_URL}/u/${encodeURIComponent(prof.username)}`
   const profileImage = profileAvatarImageUrl(SITE_URL, prof.avatar_url, displayName)
+  const profileBreadcrumbJsonLd = {
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "טיוטה",
+        item: SITE_URL,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: displayName,
+        item: profileUrl,
+      },
+    ],
+  }
   const personJsonLd = {
     "@context": "https://schema.org",
     "@graph": [
@@ -330,17 +357,54 @@ export default async function PublicProfilePage({ params }: PageProps) {
         "@id": `${profileUrl}#profilepage`,
         url: profileUrl,
         name: displayName,
+        description: `${displayName} בטיוטה - פרופיל כתיבה ויצירה בעברית`,
+        inLanguage: "he-IL",
+        dateCreated: prof.created_at ? new Date(prof.created_at).toISOString() : undefined,
+        dateModified: prof.updated_at ? new Date(prof.updated_at).toISOString() : undefined,
         ...(profileImage ? { primaryImageOfPage: { "@type": "ImageObject", url: profileImage } } : {}),
+        ...(recentPosts.length > 0
+          ? {
+              hasPart: recentPosts.map((post) => ({
+                "@type": "Article",
+                headline: post.title,
+                url: `${SITE_URL}/post/${encodeURIComponent(post.slug)}`,
+                ...(post.published_at ? { datePublished: new Date(post.published_at).toISOString() } : {}),
+                author: { "@id": `${profileUrl}#person` },
+              })),
+            }
+          : {}),
         mainEntity: { "@id": `${profileUrl}#person` },
       },
       {
         "@type": "Person",
         "@id": `${profileUrl}#person`,
         name: displayName,
+        alternateName: `@${prof.username}`,
+        identifier: prof.id,
         url: profileUrl,
         ...(profileImage ? { image: profileImage } : {}),
         ...(bio ? { description: bio } : {}),
+        interactionStatistic: [
+          {
+            "@type": "InteractionCounter",
+            interactionType: "https://schema.org/FollowAction",
+            userInteractionCount: Number(followersCount ?? 0),
+          },
+        ],
+        agentInteractionStatistic: [
+          {
+            "@type": "InteractionCounter",
+            interactionType: "https://schema.org/WriteAction",
+            userInteractionCount: Number(postsCount ?? 0),
+          },
+          {
+            "@type": "InteractionCounter",
+            interactionType: "https://schema.org/FollowAction",
+            userInteractionCount: Number(followingCount ?? 0),
+          },
+        ],
       },
+      profileBreadcrumbJsonLd,
     ],
   }
 

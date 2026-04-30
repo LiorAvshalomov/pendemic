@@ -14,9 +14,9 @@ import ThemeSync from "@/components/ThemeSync"
 const SITE_URL = "https://tyuta.net"
 const SITE_NAME = "Tyuta"
 const SITE_NAME_HE = "טיוטה"
-const SITE_TITLE = "Tyuta (טיוטה) - המקום לכל הגרסאות שלך"
+const SITE_TITLE = "טיוטה - המקום לכל הגרסאות שלך"
 const SITE_DESCRIPTION =
-  "Tyuta (טיוטה) היא בית לכותבים בישראל: מקום לכתיבה עברית, שיתוף, סיפורים קצרים, שירים, פריקה, וידויים, מחשבות וטקסטים מקוריים."
+  "טיוטה (Tyuta) היא בית לכותבים בישראל וקהילת כתיבה עברית: מקום לכתוב, לשתף ולקרוא סיפורים, שירים, פריקה ומחשבות, מהטיוטה הראשונה ועד הפרסום."
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -46,6 +46,17 @@ export const metadata: Metadata = {
     template: "%s | Tyuta",
   },
   description: SITE_DESCRIPTION,
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
   alternates: {
     canonical: "/",
   },

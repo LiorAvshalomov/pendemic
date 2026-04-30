@@ -4,7 +4,7 @@ import ContactForm from '@/components/ContactForm'
 export const metadata: Metadata = {
   title: 'צור קשר',
   description:
-    'יצירת קשר עם צוות Tyuta (טיוטה): רעיונות, תקלות, דיווחים ושאלות על בית לכותבים, כתיבה עברית ושיתוף סיפורים בישראל.',
+    'יצירת קשר עם צוות Tyuta (טיוטה): רעיונות, תקלות, דיווחים ושאלות על בית הכתיבה והקהילה של טיוטה.',
   alternates: {
     canonical: '/contact',
   },
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary',
     title: 'צור קשר | Tyuta',
-    description: 'רעיונות, תקלות, דיווחים ושאלות על Tyuta, בית לכותבים ולקהילת הכתיבה העברית.',
+    description: 'רעיונות, תקלות, דיווחים ושאלות על Tyuta ועל קהילת הכתיבה העברית.',
   },
 }
 
