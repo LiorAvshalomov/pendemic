@@ -1,0 +1,35 @@
+# Tyuta
+
+> Tyuta (טיוטה) is a Hebrew-first writing community for writers in Israel: a home for writing, sharing, and reading original Hebrew texts.
+
+## Primary Pages
+
+- [Homepage](https://tyuta.net/): Tyuta, the place for every version of your writing.
+- [Stories](https://tyuta.net/c/stories): Short stories, true stories, serialized prose, and original Hebrew fiction.
+- [Personal Writing](https://tyuta.net/c/release): Personal writing, thoughts, poems, confessions, release, and emotional texts in Hebrew.
+- [Magazine](https://tyuta.net/c/magazine): Community magazine for writing culture, opinions, essays, and curiosity around Hebrew writing.
+- [About Tyuta](https://tyuta.net/about): The story and purpose of Tyuta as a home for Hebrew writers.
+- [Sitemap](https://tyuta.net/sitemap.xml): Canonical XML sitemap for public pages, posts, profiles, and image discovery.
+
+## Content Model
+
+- Public post pages are original user-authored writing.
+- Public profile pages represent writers in the Tyuta community.
+- Post pages should use the post cover image when available.
+- Profile pages should use the writer profile image shown on the page.
+- The platform is intended for Hebrew readers and writers in Israel.
+
+## Core Topics
+
+- Hebrew writing
+- Israeli writing community
+- Stories and short stories
+- Poems
+- Personal writing
+- Confessions
+- Thoughts
+- Writing, sharing, and reading original texts
+
+## Language
+
+Primary language: Hebrew (he-IL)

@@ -12,7 +12,7 @@ export const revalidate = 300 // 5 minutes; revalidatePath clears it immediately
 
 const SITE_URL = "https://tyuta.net"
 const POST_FALLBACK_DESCRIPTION =
-  "טקסט מקורי ב-Tyuta (טיוטה), בית לכותבים בישראל לכתיבה עברית, שיתוף, סיפורים, שירים, פריקה, וידויים ומחשבות שמוצאות קוראים."
+  "טקסט מקורי ב-Tyuta (טיוטה), בית לכותבים בישראל: כתיבה עברית, סיפורים, שירים, פריקה ומחשבות."
 
 /**
  * Safely serialize JSON for embedding in a <script> tag.
@@ -247,6 +247,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title,
     description,
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+      },
+    },
     alternates: { canonical },
     openGraph: {
       type: "article",
@@ -397,6 +407,16 @@ export default async function PostPage({ params }: PageProps) {
   }
 
   const authorUrl = authorUsername ? `${SITE_URL}/u/${encodeURIComponent(authorUsername)}` : undefined
+  const channel = data.channel?.[0] ?? null
+  const channelSlug = channel?.slug?.trim()
+  const channelName = channel?.name_he?.trim()
+  const breadcrumbItems = [
+    { name: "טיוטה", item: SITE_URL },
+    ...(channelSlug && channelName
+      ? [{ name: channelName, item: `${SITE_URL}/c/${encodeURIComponent(channelSlug)}` }]
+      : []),
+    { name: headline, item: canonical },
+  ]
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -410,6 +430,7 @@ export default async function PostPage({ params }: PageProps) {
     },
     headline,
     description,
+    inLanguage: "he-IL",
     image: rawCoverUrl
       ? [{ "@type": "ImageObject", url: imageUrl, width: 1200, height: 630 }]
       : [{ "@type": "ImageObject", url: imageUrl, width: 512, height: 512 }],
@@ -426,6 +447,16 @@ export default async function PostPage({ params }: PageProps) {
       url: SITE_URL,
       logo: { "@type": "ImageObject", url: absUrl("/apple-touch-icon.png") },
     },
+  }
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: breadcrumbItems.map((item, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: item.name,
+      item: item.item,
+    })),
   }
 
   const initialPostVersion = pickLatestVersion(
@@ -448,6 +479,10 @@ export default async function PostPage({ params }: PageProps) {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLdStringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: safeJsonLdStringify(breadcrumbJsonLd) }}
       />
       <PostClient initialData={data} initialExtras={initialExtras} />
     </>
